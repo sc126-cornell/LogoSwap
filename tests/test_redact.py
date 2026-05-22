@@ -281,6 +281,27 @@ def test_logoswap_name_handles_cjk():
     assert pipeline._logoswap_name(None) == "source_logoswap.pdf"
 
 
+def test_logoswap_name_caps_length_and_strips_control_chars():
+    # WR-05: the stem is the (CJK) display name and ends up in a Content-Disposition header.
+    # Cap its length and strip control characters so a 10 KB name or embedded CR/LF-adjacent
+    # bytes cannot reach the response header.
+    # Control chars (incl. CR/LF/TAB/NUL) are stripped from the stem.
+    name = pipeline._logoswap_name("a\r\nb\tc\x00.pdf")
+    assert name == "abc_logoswap.pdf"
+    assert "\r" not in name and "\n" not in name and "\t" not in name and "\x00" not in name
+
+    # An over-long stem is capped to MAX_STEM_LEN before the suffix.
+    long_stem = "圖" * 5000
+    capped = pipeline._logoswap_name(long_stem + ".pdf")
+    assert capped.endswith("_logoswap.pdf")
+    stem_part = capped[: -len("_logoswap.pdf")]
+    assert len(stem_part) == pipeline.MAX_STEM_LEN
+    assert len(stem_part) <= 128
+
+    # A name that is ALL control chars collapses to the safe fallback stem (never empty).
+    assert pipeline._logoswap_name("\x00\x01\x02.pdf") == "source_logoswap.pdf"
+
+
 def test_process_job_out_of_bounds_region_is_clamped_not_crash(ingested_session):
     # A rect far beyond the page must be clamped (flagged) and not crash / not redact outside.
     sid = ingested_session.session_id

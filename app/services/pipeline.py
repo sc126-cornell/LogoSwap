@@ -23,11 +23,18 @@ removal through :mod:`app.services.redact`.
 
 from __future__ import annotations
 
+import re
 import shutil
+import unicodedata
 from pathlib import Path
 
 from .. import storage
 from . import coords, pdf_engine, redact, render
+
+# WR-05: the export stem is the (possibly CJK) display name and is reflected into the
+# Content-Disposition header. Bound it so a 10 KB name cannot reach the header, and below we
+# strip control characters so embedded CR/LF/NUL bytes never do either.
+MAX_STEM_LEN = 128
 
 
 class PipelineError(Exception):
@@ -45,9 +52,23 @@ def _logoswap_name(filename: str | None) -> str:
     The display name may be CJK (e.g. ``圖紙.pdf`` -> ``圖紙_logoswap.pdf``). This is only
     ever used in the Content-Disposition header / as the output basename intent; the actual
     on-disk path in ``outputs/`` is fixed and session-scoped (threat T-02-06).
+
+    WR-05: the stem is sanitized before use — control characters (Unicode category ``Cc``,
+    incl. CR/LF/TAB/NUL) are stripped and the result is capped to :data:`MAX_STEM_LEN` — so an
+    adversarial display name (very long, or containing control bytes that survived earlier
+    sanitization) cannot be reflected into the response header. Header injection is already
+    mitigated by percent-encoding at the call site; this closes the unbounded-length /
+    control-char gap at the source. Falls back to ``source`` when nothing safe remains.
     """
     name = filename or "source.pdf"
     stem = Path(name).stem or "source"
+    # Strip control characters (Cc) — defends the Content-Disposition header (WR-05).
+    stem = "".join(ch for ch in stem if unicodedata.category(ch) != "Cc")
+    # Collapse any residual whitespace runs and trim, then cap the length.
+    stem = re.sub(r"\s+", " ", stem).strip()
+    stem = stem[:MAX_STEM_LEN].strip()
+    if not stem:
+        stem = "source"
     return f"{stem}_logoswap.pdf"
 
 
