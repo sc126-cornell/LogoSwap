@@ -75,7 +75,7 @@ const state = {
   pageCount: 0,
   pageIndex: 0, // 0-based
   zoomStep: 2, // index into ZOOM_STEPS (1.0 == 100%)
-  fitWidth: false, // when true, zoom factor is derived from the stage width instead of a step
+  fitPage: false, // when true, zoom factor fits the WHOLE page into the stage (contain), not a step
   // True render box (CSS px == device-independent px the server rendered at 200 DPI / devicePixelRatio).
   renderBox: { cssW: 0, cssH: 0 },
 };
@@ -93,11 +93,16 @@ function computeRenderBox(meta) {
   state.renderBox.cssH = meta.img_h / dpr;
 }
 
-// Current zoom factor: either the active discrete step, or the fit-to-width derived factor.
+// Current zoom factor: either the active discrete step, or the fit-to-PAGE derived factor.
+// Fit-to-page (the default on load) contains the whole page in the stage viewport: it takes the
+// smaller of the width- and height-fit ratios so a tall page is fully visible without scrolling,
+// and is capped at 1.0 so a small page is never upscaled (blurred) past its natural size.
 function currentZoomFactor() {
-  if (state.fitWidth && state.renderBox.cssW > 0) {
-    const available = stage.clientWidth - 64; // minus stage padding (~--space-xl each side)
-    return Math.max(0.1, available / state.renderBox.cssW);
+  if (state.fitPage && state.renderBox.cssW > 0 && state.renderBox.cssH > 0) {
+    const availW = stage.clientWidth - 64; // minus stage padding (~--space-xl each side)
+    const availH = stage.clientHeight - 64;
+    const fit = Math.min(availW / state.renderBox.cssW, availH / state.renderBox.cssH);
+    return Math.max(0.1, Math.min(fit, 1.0));
   }
   return ZOOM_STEPS[state.zoomStep];
 }
@@ -122,9 +127,9 @@ function applyZoom() {
 }
 
 function updateZoomButtons() {
-  // Discrete-step bounds (fit-to-width is a separate mode; both step buttons stay usable from it).
-  zoomOutBtn.disabled = !state.fitWidth && state.zoomStep <= 0;
-  zoomInBtn.disabled = !state.fitWidth && state.zoomStep >= ZOOM_STEPS.length - 1;
+  // Discrete-step bounds (fit-to-page is a separate mode; both step buttons stay usable from it).
+  zoomOutBtn.disabled = !state.fitPage && state.zoomStep <= 0;
+  zoomInBtn.disabled = !state.fitPage && state.zoomStep >= ZOOM_STEPS.length - 1;
 }
 
 function updateNavButtons() {
@@ -230,17 +235,17 @@ function jumpTo(value) {
 
 // ---- Zoom -------------------------------------------------------------------------
 function zoomIn() {
-  state.fitWidth = false;
+  state.fitPage = false;
   if (state.zoomStep < ZOOM_STEPS.length - 1) state.zoomStep += 1;
   applyZoom();
 }
 function zoomOut() {
-  state.fitWidth = false;
+  state.fitPage = false;
   if (state.zoomStep > 0) state.zoomStep -= 1;
   applyZoom();
 }
-function fitToWidth() {
-  state.fitWidth = true;
+function fitToPage() {
+  state.fitPage = true;
   applyZoom();
 }
 
@@ -254,7 +259,12 @@ function wireControls() {
   nextBtn.addEventListener("click", goNext);
   zoomInBtn.addEventListener("click", zoomIn);
   zoomOutBtn.addEventListener("click", zoomOut);
-  zoomFitBtn.addEventListener("click", fitToWidth);
+  zoomFitBtn.addEventListener("click", fitToPage);
+
+  // Re-fit on viewport resize while in fit-to-page mode so the page stays fully visible.
+  window.addEventListener("resize", () => {
+    if (state.fitPage && state.renderBox.cssW > 0) applyZoom();
+  });
 
   jumpInput.addEventListener("change", () => jumpTo(jumpInput.value));
   jumpInput.addEventListener("keydown", (e) => {
@@ -297,8 +307,8 @@ export async function initViewer({ session_id, page_count }) {
   state.sessionId = session_id;
   state.pageCount = page_count || 0;
   state.pageIndex = 0;
-  state.zoomStep = 2; // 100%
-  state.fitWidth = false;
+  state.zoomStep = 2; // 100% (used once the user picks a discrete zoom step)
+  state.fitPage = true; // default: fit the WHOLE page into the viewport so it's visible at once
 
   // Enable per-control disabled attributes (the clusters were revealed by app.js).
   jumpInput.disabled = false;
