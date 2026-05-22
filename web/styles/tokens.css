@@ -1,0 +1,93 @@
+/*
+ * Foundational design tokens — vanilla CSS custom properties (no build step).
+ * Source of truth: 01-UI-SPEC.md (incl. the "Dark theme" subsection) + 01-CONTEXT.md (D-05/D-06/D-07).
+ *
+ * Dual theme (D-06/D-07): LIGHT values live on :root; a [data-theme="dark"] block on the
+ * root OVERRIDES only the color tokens with the DARK values. theme.js flips data-theme.
+ * Spacing/typography tokens are theme-agnostic (declared once on :root).
+ *
+ * Accent is reserved (in BOTH themes) for ONLY: (1) the primary upload/confirm CTA,
+ * (2) the active/current page indicator. Everything else is neutral surface + border.
+ * All component rules in app.css consume these var() tokens — never the raw hexes —
+ * so a single [data-theme] flip reskins the whole UI.
+ */
+
+:root {
+  /* ---- Spacing scale (8-point; theme-agnostic) ---- */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
+  --space-2xl: 48px;
+  --space-3xl: 64px;
+
+  /* Interactive control minimum hit target (control sizing, not a spacing step). */
+  --control-hit: 40px;
+
+  /* ---- Typography (theme-agnostic) ---- */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Microsoft JhengHei", "PingFang TC", "Noto Sans TC",
+    Roboto, Helvetica, Arial, sans-serif;
+
+  --font-size-display: 28px;
+  --font-size-heading: 20px;
+  --font-size-body: 16px;
+  --font-size-label: 14px;
+
+  --font-weight-regular: 400;
+  --font-weight-semibold: 600;
+
+  --line-height-display: 1.2;
+  --line-height-heading: 1.25;
+  --line-height-body: 1.5;
+  --line-height-label: 1.4;
+
+  /* ---- Radii / elevation (theme-agnostic) ---- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --sheet-shadow: 0 1px 3px rgba(15, 23, 42, 0.12), 0 8px 24px rgba(15, 23, 42, 0.10);
+
+  /* ---- Colors — LIGHT theme (default) ---- */
+  --color-surface: #F5F6F8;        /* 60% — app background / preview stage backdrop */
+  --color-panel: #FFFFFF;          /* 30% — toolbar, side panel, cards, dropzone fill */
+  --color-accent: #2563EB;         /* 10% — primary action + active page indicator ONLY */
+  --color-accent-hover: #1D4ED8;
+  --color-danger: #DC2626;
+  --color-text: #1F2933;
+  --color-text-muted: #6B7280;
+  --color-border: #D9DCE1;
+  --color-neutral-hover: #EDEFF2;  /* neutral button hover (not accent) */
+  --color-focus-ring: #2563EB;     /* tracks the accent hue in light */
+  --color-scrim: rgba(15, 23, 42, 0.45);
+}
+
+/*
+ * DARK theme overrides (D-07). Light = absence of [data-theme="dark"] so :root applies.
+ * Only color values change; the 60/30/10 split and accent-reserved-for rule are identical.
+ */
+:root[data-theme="dark"] {
+  --color-surface: #0F172A;        /* slate-900 */
+  --color-panel: #1E293B;          /* slate-800 */
+  --color-accent: #F59E0B;         /* amber-500 */
+  --color-accent-hover: #D97706;   /* amber-600 */
+  --color-danger: #F87171;
+  --color-text: #E5E7EB;
+  --color-text-muted: #94A3B8;
+  --color-border: #334155;         /* slate-700 */
+  --color-neutral-hover: #334155;  /* neutral button hover in dark */
+  --color-focus-ring: #F59E0B;     /* tracks the amber accent in dark */
+  --color-scrim: rgba(2, 6, 23, 0.6);
+}
+
+/*
+ * Focus-ring utility — applied to all focusable controls for a visible keyboard
+ * affordance. Uses the accent hue but is a focus affordance, not a 10%-budget fill.
+ */
+.focus-ring:focus-visible,
+button:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}

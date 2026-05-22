@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LogoSwap — PDF 預覽</title>
+
+    <!--
+      Apply the persisted/preferred theme BEFORE first paint to avoid a flash of the wrong
+      theme. This tiny inline reader mirrors theme.js's resolve logic (enum-guarded); theme.js
+      then takes over for the toggle + persistence. Kept inline (not a module) so it runs
+      synchronously during head parse, before any styled element is painted.
+      Security (T-01-16): the stored value is treated as a strict "light"/"dark" enum and set
+      via setAttribute — never reflected as HTML.
+    -->
+    <script>
+      (function () {
+        try {
+          var stored = window.localStorage.getItem("pdftool-theme");
+          var theme =
+            stored === "dark" || stored === "light"
+              ? stored
+              : window.matchMedia &&
+                window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          if (theme === "dark") {
+            document.documentElement.setAttribute("data-theme", "dark");
+          }
+        } catch (e) {
+          /* localStorage/matchMedia unavailable — default light (no attribute). */
+        }
+      })();
+    </script>
+
+    <link rel="stylesheet" href="styles/tokens.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <!-- Top toolbar (full width). Page-nav + zoom clusters are disabled until a doc loads;
+           the theme toggle is ALWAYS usable. -->
+      <header class="toolbar" role="toolbar" aria-label="工具列">
+        <div class="toolbar__brand">
+          <h1 class="app-title">LogoSwap</h1>
+        </div>
+
+        <!-- Page navigator cluster (activated in Task 3) -->
+        <div class="toolbar__group page-nav" data-doc-control hidden>
+          <button
+            type="button"
+            id="page-prev"
+            class="icon-btn"
+            aria-label="上一頁"
+            title="上一頁"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path
+                d="M12.5 4.5 7 10l5.5 5.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+
+          <span class="page-indicator" id="page-indicator" aria-live="polite">
+            <span class="page-indicator__compact" id="page-indicator-compact" aria-hidden="true"
+              >0 / 0</span
+            >
+            <span class="visually-hidden" id="page-indicator-label">第 0 頁,共 0 頁</span>
+          </span>
+
+          <button
+            type="button"
+            id="page-next"
+            class="icon-btn"
+            aria-label="下一頁"
+            title="下一頁"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path
+                d="M7.5 4.5 13 10l-5.5 5.5"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+
+          <label class="jump" for="page-jump">
+            <span class="jump__label">跳至頁數</span>
+            <input
+              type="number"
+              id="page-jump"
+              class="jump__input"
+              placeholder="頁碼"
+              min="1"
+              inputmode="numeric"
+              disabled
+            />
+          </label>
+        </div>
+
+        <!-- Zoom cluster (activated in Task 3) -->
+        <div class="toolbar__group zoom" data-doc-control hidden>
+          <button
+            type="button"
+            id="zoom-out"
+            class="icon-btn"
+            aria-label="縮小"
+            title="縮小"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path d="M5 10h10" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+            </svg>
+          </button>
+          <span class="zoom__level" id="zoom-level" aria-live="polite">100%</span>
+          <button
+            type="button"
+            id="zoom-in"
+            class="icon-btn"
+            aria-label="放大"
+            title="放大"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path
+                d="M10 5v10M5 10h10"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+              />
+            </svg>
+          </button>
+          <button type="button" id="zoom-fit" class="text-btn" disabled>符合寬度</button>
+        </div>
+
+        <div class="toolbar__spacer"></div>
+
+        <!-- Replace-file action (shown only when a file is loaded; wired in Task 1) -->
+        <button type="button" id="replace-file" class="text-btn" hidden>更換檔案</button>
+
+        <!-- Theme toggle — neutral icon button, ALWAYS usable. Icon swapped in theme.js (Task 2). -->
+        <button
+          type="button"
+          id="theme-toggle"
+          class="icon-btn theme-toggle"
+          aria-label="切換深淺色模式"
+          title="切換深淺色模式"
+          aria-pressed="false"
+        >
+          <!-- sun (shown in light) -->
+          <svg
+            class="theme-toggle__icon theme-toggle__icon--sun"
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <circle cx="10" cy="10" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <path
+              d="M10 1.5v2.2M10 16.3v2.2M1.5 10h2.2M16.3 10h2.2M4 4l1.6 1.6M14.4 14.4 16 16M16 4l-1.6 1.6M5.6 14.4 4 16"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+          <!-- moon (shown in dark) -->
+          <svg
+            class="theme-toggle__icon theme-toggle__icon--moon"
+            width="20"
+            height="20"
+            viewBox="0 0 20 20"
+            aria-hidden="true"
+            focusable="false"
+          >
+            <path
+              d="M16.5 12.4A6.8 6.8 0 0 1 7.6 3.5a6.8 6.8 0 1 0 8.9 8.9Z"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linejoin="round"
+            />
+          </svg>
+        </button>
+      </header>
+
+      <!-- Main = [ preview stage 1fr | reserved side-panel column 0 (collapsed in Phase 1) ]. -->
+      <main class="main">
+        <!-- Page stage: position:relative host for the page <img>; future overlay (Phase 2)
+             will be position:absolute inset:0 over this same element. The state machine swaps
+             exactly one child visible: empty | uploading | loaded (the page) | error. -->
+        <section
+          id="page-stage"
+          class="page-stage"
+          tabindex="0"
+          aria-label="頁面預覽"
+        >
+          <!-- EMPTY state: the upload dropzone doubles as the empty state. -->
+          <div class="state state--empty" data-state="empty">
+            <div
+              id="dropzone"
+              class="dropzone"
+              role="button"
+              tabindex="0"
+              aria-label="選擇 PDF 檔案"
+            >
+              <h2 class="dropzone__heading">上傳 PDF 以開始</h2>
+              <p class="dropzone__body">
+                選擇或拖曳一個供應商 PDF 檔案,即可在此預覽各頁內容。原始檔案不會被更動。
+              </p>
+              <button type="button" id="choose-file" class="primary-btn">選擇 PDF 檔案</button>
+              <p class="dropzone__secondary">或將檔案拖曳到這裡</p>
+              <p class="dropzone__hint">支援 PDF 檔(單一檔案)</p>
+              <input
+                type="file"
+                id="file-input"
+                class="visually-hidden"
+                accept="application/pdf,.pdf"
+              />
+            </div>
+          </div>
+
+          <!-- UPLOADING / processing state -->
+          <div class="state state--uploading" data-state="uploading" hidden>
+            <div class="loader" role="status" aria-live="polite">
+              <span class="spinner" aria-hidden="true"></span>
+              <p class="loader__text" id="uploading-text">正在上傳檔案…</p>
+            </div>
+          </div>
+
+          <!-- LOADED state: the server-rendered page image lives inside the positioned wrapper. -->
+          <div class="state state--loaded" data-state="loaded" hidden>
+            <div class="page-frame" id="page-frame">
+              <img id="page-image" class="page-image" alt="PDF 頁面預覽" />
+              <!-- single-page loader overlay (shown while a page image loads) -->
+              <div class="page-loader" id="page-loader" role="status" hidden>
+                <span class="spinner" aria-hidden="true"></span>
+                <span class="page-loader__text">載入中…</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- ERROR state: inline, non-blocking error block. -->
+          <div class="state state--error" data-state="error" hidden>
+            <div class="error-block" role="alert">
+              <svg class="error-block__icon" width="24" height="24" viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8" />
+                <path d="M12 7v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+                <circle cx="12" cy="16.4" r="1.05" fill="currentColor" />
+              </svg>
+              <h2 class="error-block__heading" id="error-heading">無法開啟此檔案</h2>
+              <p class="error-block__body" id="error-body"></p>
+              <button type="button" id="error-retry" class="primary-btn">重試</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Reserved side-panel column (collapsed to 0 in Phase 1; Phase 2/3 expand it). -->
+        <aside class="side-panel" id="side-panel" aria-hidden="true"></aside>
+      </main>
+    </div>
+
+    <script type="module" src="js/api.js"></script>
+    <script type="module" src="js/theme.js"></script>
+    <script type="module" src="js/viewer.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>

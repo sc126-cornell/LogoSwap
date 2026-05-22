@@ -1,0 +1,438 @@
+/*
+ * app.css — component styling for the Phase-1 preview UI.
+ *
+ * HARD RULE: every color comes from a var(--color-*) token defined in tokens.css. No raw theme
+ * hexes appear here, so the [data-theme="dark"] overrides reskin the whole UI automatically.
+ * Accent (var(--color-accent)) is used ONLY on (1) the primary CTA and (2) the active page
+ * indicator — never on prev/next/zoom/jump/theme-toggle/secondary buttons.
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-regular);
+  line-height: var(--line-height-body);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- App shell (grid: toolbar row + main[stage 1fr | side-panel 0]) ---------- */
+
+.app-shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+.main {
+  display: grid;
+  /* Reserved side-panel column declared now (collapsed to 0); Phase 2/3 expand it. */
+  grid-template-columns: 1fr 0;
+  min-height: 0;
+}
+
+.side-panel {
+  /* Hidden/collapsed in Phase 1, present in the grid for forward-compatibility. */
+  width: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--color-border);
+  background: var(--color-panel);
+}
+
+/* ---------- Toolbar ---------- */
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-lg);
+  padding: var(--space-sm) var(--space-lg);
+  background: var(--color-panel);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.toolbar__brand {
+  display: flex;
+  align-items: center;
+}
+
+.app-title {
+  margin: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+  color: var(--color-text);
+}
+
+.toolbar__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.toolbar__spacer {
+  flex: 1 1 auto;
+}
+
+/* Doc-dependent clusters are dimmed + non-interactive until a document loads. */
+.toolbar__group[data-doc-control][aria-disabled="true"] {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* ---------- Buttons ---------- */
+
+.primary-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-lg);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: #ffffff; /* on-accent foreground (white reads on both blue and amber accents) */
+  background: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.primary-btn:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+/* Neutral icon button (prev/next, zoom, theme toggle) — surface + border, NOT accent. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-hit);
+  height: var(--control-hit);
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--color-neutral-hover);
+}
+
+.icon-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Neutral text button (fit-to-width, replace-file). */
+.text-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-md);
+  font-family: inherit;
+  font-size: var(--font-size-label);
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.text-btn:hover:not(:disabled) {
+  background: var(--color-neutral-hover);
+}
+
+.text-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Theme toggle stays neutral; icon visibility is driven by the root data-theme. */
+.theme-toggle__icon {
+  display: none;
+}
+:root:not([data-theme="dark"]) .theme-toggle__icon--sun {
+  display: block;
+}
+:root[data-theme="dark"] .theme-toggle__icon--moon {
+  display: block;
+}
+
+/* ---------- Page navigator ---------- */
+
+.page-indicator {
+  min-width: 4.5ch;
+  text-align: center;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+.page-indicator__compact {
+  font-variant-numeric: tabular-nums;
+}
+
+/* The CURRENT page number is the only extra accent (besides the primary CTA), in both themes. */
+.page-indicator__compact .page-current {
+  color: var(--color-accent);
+  font-weight: var(--font-weight-semibold);
+}
+
+.jump {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
+.jump__label {
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+.jump__input {
+  width: 4.5rem;
+  height: var(--control-hit);
+  padding: 0 var(--space-sm);
+  font-family: inherit;
+  font-size: var(--font-size-label);
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.jump__input:disabled {
+  opacity: 0.45;
+}
+
+/* ---------- Zoom control ---------- */
+
+.zoom__level {
+  min-width: 4ch;
+  text-align: center;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Page stage (overlay-ready host) ---------- */
+
+.page-stage {
+  position: relative; /* positioning context for a future Phase-2 absolute overlay */
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-xl);
+  background: var(--color-surface);
+}
+
+/* State machine: app.js toggles [hidden] so exactly one .state is visible. */
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+.state[hidden] {
+  display: none;
+}
+
+/* ---------- Dropzone / empty state ---------- */
+
+.dropzone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+  max-width: 32rem;
+  padding: var(--space-3xl) var(--space-2xl);
+  text-align: center;
+  background: var(--color-panel);
+  border: 2px dashed var(--color-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease;
+}
+
+/* Drag-over: accent-tinted border (accent hue as an affordance, not a fill). */
+.dropzone.is-dragover {
+  border-color: var(--color-accent);
+  background: var(--color-panel);
+}
+
+.dropzone__heading {
+  margin: 0;
+  font-size: var(--font-size-display);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-display);
+  color: var(--color-text);
+}
+
+.dropzone__body {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-text-muted);
+}
+
+.dropzone__secondary {
+  margin: 0;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+.dropzone__hint {
+  margin: 0;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Loader (whole-doc) ---------- */
+
+.loader {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.loader__text {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-text-muted);
+}
+
+/* Neutral spinner; accent stroke permitted as MOTION (the moving arc), not a fill. */
+.spinner {
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2.4s;
+  }
+}
+
+/* ---------- Loaded state: page frame + image ---------- */
+
+.page-frame {
+  position: relative; /* keeps the page loader overlay aligned to the true image box */
+  display: inline-block;
+  line-height: 0;
+  background: var(--color-panel);
+  box-shadow: var(--sheet-shadow);
+}
+
+.page-image {
+  display: block;
+  /* width/height are set imperatively by viewer.js to the CSS-scaled render box (D-02). */
+  max-width: none;
+}
+
+.page-loader {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-sm);
+  background: var(--color-scrim);
+}
+
+.page-loader[hidden] {
+  display: none;
+}
+
+.page-loader__text {
+  font-size: var(--font-size-label);
+  color: #ffffff;
+}
+
+/* ---------- Inline error block ---------- */
+
+.error-block {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-sm);
+  max-width: 30rem;
+  padding: var(--space-2xl);
+  text-align: center;
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.error-block__icon {
+  color: var(--color-danger);
+}
+
+.error-block__heading {
+  margin: 0;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.error-block__body {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-text-muted);
+}
+
+.error-block__body:empty {
+  display: none;
+}
+
+/* ---------- Responsiveness: single breakpoint so the toolbar wraps under ~720px ---------- */
+
+@media (max-width: 720px) {
+  .toolbar {
+    flex-wrap: wrap;
+    gap: var(--space-sm);
+  }
+
+  .toolbar__spacer {
+    flex-basis: 100%;
+  }
+}
