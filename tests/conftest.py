@@ -54,3 +54,21 @@ def isolated_data_dir(tmp_path, monkeypatch):
     data_root = tmp_path / "data"
     monkeypatch.setattr(config, "DATA_DIR", data_root)
     yield data_root
+
+
+@pytest.fixture
+def ingested_session(valid_pdf_bytes):
+    """Ingest a valid 2-page PDF and return its SessionInfo (real files on disk)."""
+    from app.services import ingest
+
+    return ingest.ingest_upload("design.pdf", valid_pdf_bytes)
+
+
+@pytest.fixture
+def client():
+    """FastAPI TestClient bound to the app (httpx-backed)."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    return TestClient(app)
