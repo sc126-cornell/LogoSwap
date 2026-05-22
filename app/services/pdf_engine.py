@@ -296,6 +296,14 @@ def place_logo(
     embedded image ``xref``. Subsequent placements of the SAME global logo (D-01): pass
     ``xref=<that value>`` and omit ``stream`` so PyMuPDF references the already-embedded object
     instead of re-embedding the PNG per region — avoids file bloat (Pitfall 4 / verified dedup).
+
+    ROTATION COMPENSATION: ``rect`` is in UNROTATED page space, but the page is displayed (and the
+    download baked) with its ``/Rotate``. Without compensation the logo — drawn upright in
+    unrotated space — rotates WITH the page and lands sideways in the orientation the user framed
+    on. So rotate the image by ``page.rotation`` (the effective /Rotate, intrinsic + any user
+    rotation the pipeline set before placement): live-verified that ``rotate == page /Rotate``
+    lands the logo UPRIGHT in the displayed output for 90/180/270 (no-op at 0). This also fixes
+    pages with an INTRINSIC /Rotate, where the logo was previously placed sideways.
     """
     return page.insert_image(
         rect,
@@ -303,6 +311,7 @@ def place_logo(
         xref=xref,
         keep_proportion=True,   # contain + center (LOGO-02) — verified
         overlay=True,           # paint ON TOP of the cleaned content — verified default
+        rotate=page.rotation % 360,  # keep the logo upright in the displayed (rotated) page
     )
 
 

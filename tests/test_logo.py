@@ -372,6 +372,59 @@ def test_auto_logo_picks_per_region_by_shape(valid_pdf_bytes, two_logo_library):
         pdf_engine.close(doc)
 
 
+def _red_top_blue_bottom_png(w: int = 80, h: int = 160) -> bytes:
+    """An unambiguously oriented logo: top half RED, bottom half BLUE."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    px = img.load()
+    for y in range(h):
+        for x in range(w):
+            px[x, y] = (255, 0, 0, 255) if y < h // 2 else (0, 0, 255, 255)
+    buf = BytesIO()
+    img.save(buf, "PNG")
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("rot", [0, 90, 180, 270])
+def test_place_logo_is_upright_in_displayed_rotated_page(rot):
+    """The placed logo stays UPRIGHT in the displayed (baked /Rotate) page for every rotation.
+
+    Regression for the UAT finding: without rotation compensation the logo rotated WITH the page
+    and landed sideways. place_logo rotates the image by page.rotation so it reads upright in the
+    orientation the user framed on. We render the page (which applies /Rotate) and assert the
+    red half sits ABOVE the blue half with a dominant vertical split.
+    """
+    import fitz
+    from PIL import Image
+
+    doc = fitz.open()
+    page = doc.new_page(width=300, height=200)  # landscape, intrinsic /Rotate = 0
+    pdf_engine.set_page_rotation(page, rot)
+    pdf_engine.place_logo(page, fitz.Rect(60, 40, 240, 160), stream=_red_top_blue_bottom_png())
+    pix = page.get_pixmap(dpi=100)  # applies /Rotate -> displayed orientation
+    img = Image.frombytes("RGB", (pix.width, pix.height), pix.samples)
+    load = img.load()
+    reds, blues = [], []
+    for y in range(0, img.height, 2):
+        for x in range(0, img.width, 2):
+            r, g, b = load[x, y]
+            if r > 150 and g < 100 and b < 100:
+                reds.append((x, y))
+            elif b > 150 and r < 100 and g < 100:
+                blues.append((x, y))
+    assert reds and blues, "logo colors must be present in the rendered output"
+    rx = sum(p[0] for p in reds) / len(reds)
+    ry = sum(p[1] for p in reds) / len(reds)
+    bx = sum(p[0] for p in blues) / len(blues)
+    by = sum(p[1] for p in blues) / len(blues)
+    # Upright: red centroid is ABOVE blue (smaller y) and the split is vertical, not sideways.
+    assert (by - ry) > abs(bx - rx), f"logo not upright at /Rotate={rot}: dx={bx-rx:.0f} dy={by-ry:.0f}"
+    doc.close()
+
+
 def test_auto_logo_empty_library_degrades_to_pure_removal(valid_pdf_bytes, tmp_path, monkeypatch):
     """auto_logo=True with no library: logo_skipped, redaction still completes, no image embedded."""
     monkeypatch.setattr(config, "LOGOS_DIR", tmp_path / "empty")
