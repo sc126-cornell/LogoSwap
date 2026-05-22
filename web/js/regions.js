@@ -354,8 +354,9 @@ function localPoint(e) {
 }
 
 function onPointerDown(e) {
-  // Only draw in original mode (overlay hidden/disabled in result mode), primary button only.
-  if (viewMode === "result") return;
+  // Drawing works in BOTH views: the user can frame the next region directly on the 移除結果
+  // after-image. A real drag commits in onPointerUp -> onRegionsEdited flips back to 原圖 and
+  // marks the result stale; a sub-threshold click creates nothing (no surprise view flip).
   if (e.button !== undefined && e.button !== 0) return;
   if (sessionId === null) return;
 
@@ -584,13 +585,16 @@ function setViewMode(mode) {
   viewResultBtn.setAttribute("aria-pressed", String(showingResult));
 
   if (showingResult) {
-    // Swap the page image to the result render (via the viewer helper + api URL); hide overlay.
+    // Swap the page image to the result render (via the viewer helper + api URL).
     // Pass the current page's rotation so the after-image matches the rotated orientation the
     // user framed on (symmetric with the 原圖 render).
     showResultImage(
       api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
     );
-    if (overlay) overlay.hidden = true;
+    // Keep the overlay PRESENT (interactive) so the user can draw the next region directly on
+    // the after-image. renderOverlay() below clears committed rects in result mode, so the
+    // before/after stays visually clean — the overlay is just a transparent draw-catcher.
+    if (overlay) overlay.hidden = false;
   } else {
     showOriginalImage();
     if (overlay) overlay.hidden = false;
