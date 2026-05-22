@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: verifying
+status: executing
 stopped_at: Phase 2 context gathered
-last_updated: "2026-05-22T08:38:54.386Z"
+last_updated: "2026-05-22T08:53:01.100Z"
 last_activity: 2026-05-22
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 5
-  completed_plans: 3
-  percent: 60
+  completed_plans: 4
+  percent: 80
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-22)
 ## Current Position
 
 Phase: 2 of 5 (框選與真正移除(向量)+ 下載)
-Plan: 1 of 3 complete (02-01 coordinate-mapper spine done; 02-02 removal next)
-Status: 02-01 complete — coordinate mapper proven (round-trip < 1px gate green)
-Last activity: 2026-05-22 -- executed 02-01 (coords spine)
+Plan: 2 of 3 complete (02-01 coords spine + 02-02 true-removal pipeline done; 02-03 region UI next)
+Status: 02-02 complete — true removal proven (region empty after redaction; original SHA-256 unchanged; 140 tests green)
+Last activity: 2026-05-22 -- executed 02-02 (removal pipeline + /process,/result endpoints)
 
-Progress: [██████░░░░] 60%
+Progress: [████████░░] 80%
 
 ## Performance Metrics
 
@@ -54,6 +54,7 @@ Progress: [██████░░░░] 60%
 *Updated after each plan completion*
 | Phase 01 P02 | ~16min | 3 tasks | 7 files |
 | Phase 02 P01 | ~35min | 2 tasks | 3 files |
+| Phase 02 P02 | ~8min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -75,6 +76,9 @@ Recent decisions affecting current work:
 - [Phase 2-01]: Coordinate mapper is pure (no fitz); the derotation/rotation matrix multiply lives in pdf_engine so `import fitz` stays in exactly one file (AGPL seam intact, T-02-03)
 - [Phase 2-01]: derotation_matrix maps displayed->unrotated CONTENT space (mediabox), NOT page.rect; redaction containment bound = derotated full-image box (pdf_engine.unrotated_content_box)
 - [Phase 2-01]: px<->pt round-trip proven < 1px (observed ~0.00004px) at 0/90/180/270 + offset MediaBox; this harness (tests/test_coords.py) gates Plan 02-02 removal
+- [Phase ?]: [Phase 2-02]: True removal uses fill=None (not white) — a white-fill annot paints a survivor rect that defeats the emptiness assertion; fill=None removes content and paints nothing (REMOVE-01)
+- [Phase ?]: [Phase 2-02]: Post-redaction emptiness assertion over the UNPADDED rect (5pt pad catches stroke wrappers); get_drawings overlap is degenerate-bbox-aware to catch flat stroke survivors (Pitfall 4)
+- [Phase ?]: [Phase 2-02]: /process + result-render + /result endpoints; JobSpec{dpi,regions[{page,px_rect}]} validated contract for 02-03; original SHA-256 proven unchanged (D-05); fitz still only in pdf_engine.py
 
 ### Pending Todos
 
@@ -96,6 +100,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T08:38:54.372Z
+Last session: 2026-05-22T08:52:29.771Z
 Stopped at: Phase 2 context gathered
 Resume file: None
