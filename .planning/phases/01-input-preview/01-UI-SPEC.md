@@ -1,7 +1,7 @@
 ---
 phase: 1
 slug: input-preview
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: 2026-05-22
@@ -206,6 +206,7 @@ Hand-rolled components the executor must build. All styled via the tokens above;
 
 ## Layout & Interaction Contract
 
+- **Primary focal point per state:** In the EMPTY / upload state, the upload dropzone's primary CTA (`選擇 PDF 檔案`, accent-colored) is the single primary visual anchor — centered, the largest accent element on screen. In the LOADED / preview state, the page-stage image is the primary focal point (largest element, paper-sheet shadow on the neutral `--color-surface` backdrop); the toolbar is secondary chrome and the active page indicator is the only other accent and is intentionally small. One clear anchor per state — never two competing focal points.
 - **App shell grid (forward-compatible):** `toolbar` row across the top; below it a two-column main area — `[ preview stage (1fr) | side panel (0 / collapsed in Phase 1) ]`. The side-panel column is declared now (e.g. `grid-template-columns: 1fr 0;` collapsing to `1fr` ) so Phase 2 (region list) and Phase 3 (logo picker) expand it to a fixed width (e.g. ~320px) with no structural change.
 - **Page stage as overlay host:** the page image lives inside a `position: relative` stage wrapper sized to the rendered image. Phase 2's transparent `<canvas>`/`<div>` overlay will be `position: absolute; inset: 0` over this wrapper — so Phase 1 must NOT bake the image directly into a flow that prevents absolute positioning.
 - **Coordinate-fidelity note (carry-forward, not built here):** because later phases map browser-image pixels → PDF points, the displayed page image must be rendered/scaled by a known factor and never letterboxed in a way that detaches displayed pixels from the server render. Keep the stage measuring the true image box. (Mechanics are Phase 2; this is only a layout caution.)
@@ -227,14 +228,14 @@ No shadcn, no third-party UI registry, no external component sources. Registry v
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS (focal point per state now explicitly declared — original non-blocking FLAG addressed)
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
 
-**Approval:** pending
+**Approval:** approved (2026-05-22, gsd-ui-checker — 6/6 dimensions; 1 non-blocking recommendation applied)
 
 ---
 
