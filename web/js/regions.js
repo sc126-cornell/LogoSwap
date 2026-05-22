@@ -30,6 +30,10 @@ import * as api from "./api.js";
 // WR-04: getViewerState was imported but never used (the module drives off currentPage +
 // page:changed event detail, not the viewer snapshot). Dropped to keep the data flow honest.
 import { showOriginalImage, showResultImage } from "./viewer.js";
+// Phase 3 (D-01/D-06): the selected global logo rides the SAME apply flow. We source the
+// selection from 03-01's logos.js export and include it as logo_id on /process; null = pure
+// removal. The conditional after-label reads "移除+置入結果" when a logo is selected.
+import { getSelectedLogoId } from "./logos.js";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
@@ -48,6 +52,11 @@ const COPY = {
   apply: "套用移除",
   // before/after
   noResultYet: "尚無移除結果,請先套用移除",
+  // Conditional after-label (D-06): with a logo selected the result is remove+place, else
+  // pure removal. Set via textContent on #view-result — never hardcoded in HTML.
+  resultLabelWithLogo: "移除+置入結果",
+  resultLabelNoLogo: "移除結果",
+  beforeafterAria: "切換處理前後對照",
   // notices / errors
   nothingRemoved:
     "框選區域內沒有可移除的內容。請確認框選位置,或此頁可能為圖片型(將於後續版本支援)。",
@@ -501,12 +510,25 @@ function updateActionGroup() {
     downloadBtn.hidden = total === 0; // only meaningful once the user is in the flow
   }
 
-  // The 移除結果 segment is only selectable when a fresh result exists.
+  // The result segment is only selectable when a fresh result exists.
   viewResultBtn.disabled = !resultFresh && viewMode !== "result";
+  // Keep its label in sync with the current logo selection (D-06).
+  refreshResultLabel();
 }
 
 function setActionStatus(text) {
   actionStatusEl.textContent = text || "";
+}
+
+// Conditional after-label (D-06 / UI-SPEC default #6): the #view-result segment reads
+// "移除+置入結果" when a logo is selected, else "移除結果". Set via textContent in JS so the
+// HTML default ("移除結果") is never the source of truth. The toggle mechanics are unchanged —
+// the work-copy render already contains the placed logo (zero new rendering).
+function refreshResultLabel() {
+  const hasLogo = Boolean(getSelectedLogoId());
+  viewResultBtn.textContent = hasLogo
+    ? COPY.resultLabelWithLogo
+    : COPY.resultLabelNoLogo;
 }
 
 // ---- Inline notice / error ---------------------------------------------------------
@@ -589,6 +611,9 @@ async function applyRemoval() {
       // a page whose effective DPI was reduced below this still redacts the correct area (CR-01).
       dpi: REQUESTED_DPI,
       regions: getJobRegions(),
+      // D-01: the optional global logo. null when nothing is picked (pure removal). api.js
+      // JSON-stringifies the whole spec unchanged — logo_id flows through with no seam change.
+      logo_id: getSelectedLogoId() || null,
     });
 
     applying = false;
@@ -706,6 +731,10 @@ export function initRegions({ session_id }) {
   viewOriginalBtn.setAttribute("aria-pressed", "true");
   viewResultBtn.classList.remove("is-selected");
   viewResultBtn.setAttribute("aria-pressed", "false");
+  // Broaden the toggle's accessible label so it reads correctly whether or not a logo is
+  // placed (D-06): "切換處理前後對照" covers both pure removal and remove+place.
+  beforeafterToggle.setAttribute("aria-label", COPY.beforeafterAria);
+  refreshResultLabel();
 
   hideNotice();
   setActionStatus("");
