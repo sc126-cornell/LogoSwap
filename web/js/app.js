@@ -13,6 +13,7 @@
 import * as api from "./api.js";
 import { initViewer, resetViewer } from "./viewer.js";
 import { initRegions, resetRegions } from "./regions.js";
+import { initLogos, resetLogos } from "./logos.js";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
@@ -142,6 +143,9 @@ async function handleFile(file) {
       page_count: session.page_count,
     });
 
+    // Activate the Phase 3 logo picker for this session (fetches the catalog once via api.js).
+    initLogos({ session_id: session.session_id });
+
     // Hand off to the viewer. It renders page 0 and wires nav/zoom (and fires page:changed,
     // which regions.js consumes to project the overlay onto the sized render box).
     await initViewer({
@@ -153,6 +157,7 @@ async function handleFile(file) {
     setDocControlsEnabled(false);
     setSidePanelExpanded(false);
     resetRegions();
+    resetLogos();
     resetViewer();
     showError(err);
   } finally {
@@ -197,6 +202,7 @@ errorRetry.addEventListener("click", () => {
   setDocControlsEnabled(false);
   setSidePanelExpanded(false);
   resetRegions();
+  resetLogos();
   showState("empty");
 });
 

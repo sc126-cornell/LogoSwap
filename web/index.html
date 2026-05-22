@@ -333,6 +333,36 @@
               <p class="region-notice__body" id="region-notice-body"></p>
               <button type="button" id="region-notice-retry" class="text-btn" hidden>重試</button>
             </div>
+
+            <!-- Logo picker (Phase 3, D-05) — a NEW section below the region list, same column.
+                 Rows are created by logos.js via createElement (never innerHTML, T-03-04). -->
+            <section class="logo-picker" id="logo-picker">
+              <header class="region-panel__header">
+                <h2 class="region-panel__heading">我司商標</h2>
+                <p class="region-panel__scope">選擇要置入移除區域的商標(套用後置入所有框選區域)</p>
+              </header>
+
+              <!-- Loading state (transient, while GET /logos is in flight). -->
+              <div class="logo-loading" id="logo-loading" hidden>
+                <span class="spinner" aria-hidden="true"></span>
+                <span class="logo-loading__text" id="logo-loading-text"></span>
+              </div>
+
+              <!-- Single-select thumbnail grid (cells created by logos.js). -->
+              <div class="logo-grid" id="logo-grid" role="group" hidden></div>
+
+              <!-- Empty state: shown when GET /logos returns { logos: [] } (A2). -->
+              <div class="region-empty" id="logo-empty" hidden>
+                <h3 class="region-empty__heading" id="logo-empty-heading"></h3>
+                <p class="region-empty__body" id="logo-empty-body"></p>
+              </div>
+
+              <!-- Load-failed notice (reuses the region-notice block) with a 重試. -->
+              <div class="region-notice" id="logo-notice" role="alert" hidden>
+                <p class="region-notice__body" id="logo-notice-body"></p>
+                <button type="button" id="logo-notice-retry" class="text-btn">重試</button>
+              </div>
+            </section>
           </div>
         </aside>
       </main>
@@ -361,6 +391,7 @@
     <script type="module" src="js/theme.js"></script>
     <script type="module" src="js/viewer.js"></script>
     <script type="module" src="js/regions.js"></script>
+    <script type="module" src="js/logos.js"></script>
     <script type="module" src="js/app.js"></script>
   </body>
 </html>

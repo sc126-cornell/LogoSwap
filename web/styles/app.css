@@ -796,6 +796,82 @@ body {
   filter: brightness(0.94);
 }
 
+/* ---------- Logo picker (Phase 3, D-05) — reuses existing tokens; one new accent element ---------- */
+
+/* The picker section lives below the region list inside .side-panel__inner; a top divider
+   separates it from the region area (mirrors .region-panel__header's border-bottom). */
+.logo-picker {
+  border-top: 1px solid var(--color-border);
+}
+
+/* Loading row: spinner + transient text (reuses the Phase-1 .spinner). */
+.logo-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-md);
+}
+
+.logo-loading[hidden] {
+  display: none;
+}
+
+.logo-loading__text {
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+/* Grid auto-fills the 320px column (typically 3 columns at 72px). */
+.logo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--logo-thumb-size), 1fr));
+  gap: var(--logo-grid-gap);
+  padding: var(--space-md);
+}
+
+.logo-grid[hidden] {
+  display: none;
+}
+
+/* A focusable thumbnail cell: neutral --color-surface backing behind a transparent PNG
+   (Pitfall 2 — keeps white/dark logos legible in both themes), neutral border + radius. */
+.logo-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  min-height: var(--control-hit);
+  padding: var(--space-xs);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+/* Hover is neutral (NOT accent — mirrors .region-row:hover). */
+.logo-thumb:hover {
+  background: var(--color-neutral-hover);
+}
+
+/* The ONE new accent element (UI-SPEC §Color reserved-for): the selected thumbnail. */
+.logo-thumb.is-selected {
+  border: 2px solid var(--color-accent);
+}
+
+.logo-thumb__img {
+  width: 100%;
+  height: var(--logo-thumb-size);
+  object-fit: contain; /* matches the D-02 contain the server applies in the PDF */
+}
+
+.logo-thumb__caption {
+  font-size: var(--font-size-label);
+  color: var(--color-text);
+  text-align: center;
+  word-break: break-word;
+}
+
 /* ---------- Responsiveness: single breakpoint so the toolbar wraps under ~720px ---------- */
 
 @media (max-width: 720px) {

@@ -72,6 +72,10 @@
   --color-region-border-strong: #1E293B; /* slate-800 — hovered/selected */
   --color-region-fill: rgba(71, 85, 105, 0.14);
   --color-region-fill-active: rgba(71, 85, 105, 0.10);
+
+  /* ---- Phase 3 additions: logo picker (theme-agnostic; no new color tokens) ---- */
+  --logo-thumb-size: 72px;            /* thumbnail cell min square; grid auto-fills the column */
+  --logo-grid-gap: var(--space-sm);   /* 8px gap between thumbnail cells (alias for readability) */
 }
 
 /*

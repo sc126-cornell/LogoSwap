@@ -451,6 +451,22 @@ function onRegionsEdited() {
   updateActionGroup();
 }
 
+// ---- Job-input change hook (the ONE shared stale machine — Pitfall 5 load-bearing) -------
+// A logo selection/clear (logos.js) is a job-input change, exactly like a region edit, so it
+// MUST run the SAME invalidation rather than forking the action-group machine. logos.js calls
+// this on every selection change. An optional message lets the logo case use its own stale copy
+// (UI-SPEC default #7); otherwise the Phase-2 notice is reused.
+export function notifyJobInputChanged(message) {
+  if (resultFresh) {
+    resultFresh = false;
+    if (viewMode === "result") {
+      setViewMode("original");
+    }
+    setActionStatus(message || COPY.staleNotice);
+  }
+  updateActionGroup();
+}
+
 // ---- Action group state machine ----------------------------------------------------
 // Exactly ONE accent-filled button per state: 套用移除 (accent) until a fresh result exists, then
 // 下載 PDF (accent) and apply demotes to neutral 重新套用. The accent is .primary-btn; neutral is

@@ -22,6 +22,14 @@
  *   GET  /sessions/{id}/result                  -> 200 application/pdf attachment (原名_logoswap.pdf);
  *                                                  404 result_not_ready before any /process run
  *
+ * Phase 3 contract consumed (authored by Plan 03-01):
+ *   GET  /logos                             -> 200 { logos:[{ id, name, tags }] } (no fs paths);
+ *                                              empty/absent library -> { logos: [] } (picker empty-state)
+ *   GET  /logos/{id}/image                  -> 200 image/png (the picker thumbnail src; CSS-scaled);
+ *                                              crafted/unknown id -> 404 { detail:{ code:"logo_not_found" } }
+ *   POST /sessions/{id}/process             gains an OPTIONAL global logo_id (D-01; added by Plan 03-02):
+ *                                              body { dpi, regions, logo_id? } — logo_id null/omitted = pure removal
+ *
  * The image/result endpoints are plain URLs — set them as an <img> src / anchor href. The browser
  * never parses the PDF (server-authoritative render; PDF.js is forbidden per SKELETON.md).
  */
@@ -170,4 +178,28 @@ export function resultImageURL(id, n) {
  */
 export function resultDownloadURL(id) {
   return API_BASE + "/sessions/" + encodeURIComponent(id) + "/result";
+}
+
+// ---- Phase 3 seam: fixed logo library (LOGO-01) ------------------------------------------
+
+/**
+ * List the fixed logo library: resolves to { logos: [{ id, name, tags }] }. An empty/absent
+ * library returns { logos: [] } (the picker shows an empty state — not an error). Throws
+ * ApiError on a non-2xx response so the caller maps it to fixed copy (never raw server text).
+ */
+export async function listLogos() {
+  const response = await fetch(API_BASE + "/logos");
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+  return response.json();
+}
+
+/**
+ * Build a logo-image URL (the picker thumbnail src), mirroring pageImageURL. Returns a string
+ * to set as an <img> src; the server resolves the id through the manifest allowlist (a crafted
+ * id is a plain 404, never a path read).
+ */
+export function logoImageURL(id) {
+  return API_BASE + "/logos/" + encodeURIComponent(id) + "/image";
 }
