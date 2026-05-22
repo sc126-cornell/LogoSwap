@@ -30,7 +30,6 @@ const COPY = {
       ? `檔案超過大小上限(${limit})。請改用較小的檔案。`
       : "檔案超過大小上限。請改用較小的檔案。",
   networkFailure: "上傳失敗,請檢查網路連線後再試一次。",
-  confirmReplace: "更換檔案會清除目前的預覽,確定要繼續嗎?",
 };
 
 // ---- DOM refs ---------------------------------------------------------------------
@@ -166,11 +165,10 @@ async function handleFile(file) {
   }
 }
 
-// Open the native file picker, optionally guarding when a doc is already loaded.
+// Open the native file picker directly. No extra confirmation on replace — the native dialog
+// is itself cancellable, and the current preview is only replaced once a file is actually chosen
+// (handleFile); cancelling the dialog leaves everything intact.
 function openPicker() {
-  if (hasLoadedDoc && !window.confirm(COPY.confirmReplace)) {
-    return;
-  }
   fileInput.click();
 }
 
@@ -228,7 +226,6 @@ dropzone.addEventListener("drop", (e) => {
   const dt = e.dataTransfer;
   const file = dt && dt.files && dt.files[0];
   if (!file) return;
-  if (hasLoadedDoc && !window.confirm(COPY.confirmReplace)) return;
   handleFile(file);
 });
 
