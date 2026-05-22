@@ -338,3 +338,43 @@ a real pytest under `tests/` or remove it to avoid bit-rot. As-is it duplicates
 _Reviewed: 2026-05-22T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Resolution (2026-05-22)
+
+All BLOCKER and WARNING findings fixed; Info findings (IN-01..05) intentionally deferred
+(out of the requested fix scope). Each fix is an atomic commit with a regression test that
+fails before the fix and passes after. Full pytest suite (147 passed) + the smoke harness
+(`scripts/smoke_02_03.py`) are green. Invariants verified intact: fitz confined to
+`pdf_engine.py` (AST test), the Phase-1 `session_id` allowlist, and original-file
+immutability (SHA-256 test).
+
+- **CR-01** (`0e741fc`) — `pipeline.process_job` re-derives the EFFECTIVE per-page DPI via
+  `render.fit_dpi_to_pixel_budget` (instead of trusting the JobSpec `dpi`) for clamp + mapping,
+  so a page whose effective DPI was reduced below the requested 200 redacts the correct area by
+  construction. `regions.js` records `meta.dpi` per page and documents the JobSpec `dpi` as the
+  requested ceiling (no hardcoded 200 for measurement). Regression: large-MediaBox page
+  (effective DPI < 200) — content removed; the old 200-based mapping proven divergent.
+- **CR-02** (`68d319b`) — added `pdf_engine.get_drawings_fully_inside`; the post-redaction
+  vector assertion now fails only for a drawing WHOLLY inside the user rect, aligning with
+  `LINE_ART_REMOVE_IF_COVERED`. A logo-on-CAD-linework job (line crossing the boundary) now
+  succeeds (text removed, through-line kept); a fully-covered vector is still removed. Semantics
+  documented in `redact.py`.
+- **WR-01** (`249fecf`) — `process_job` resets the work copy from the immutable original at the
+  start of every run, so "重新套用" is idempotent and never accumulates stale redactions.
+- **WR-02** (`29b7a9e`) — verified (and locked with a test) that the before/after images render
+  at the same effective DPI + pixel dims per page; resolved jointly with CR-01.
+- **WR-03 / WR-04** (`725ced5`) — `setActiveRegion` looks up by `dataset.regionId` instead of
+  interpolating the id into a CSS selector; removed the dead `getViewerState` import and the
+  write-only `pageCount` field.
+- **WR-05** (`e1a107a`) — `_logoswap_name` strips control characters and caps the stem to 128
+  before it reaches the Content-Disposition header. (The per-request caching sub-suggestion was
+  not adopted: re-derivation is a single cached-on-disk JSON read plus a bounded string op, and a
+  cache field would add staleness risk for negligible gain; the security-relevant bounding is the
+  substantive fix.)
+- **WR-06** (`7e64bb5`) — `coords.clamp_px_rect` compares the NORMALIZED input against the
+  clamped output, so the `clamped` flag (and the "超出頁面範圍" notice) fires only on a real
+  boundary move, never on a reversed-but-in-bounds drag.
+
+_Fixed: 2026-05-22 — Claude (gsd-code-fixer)_
