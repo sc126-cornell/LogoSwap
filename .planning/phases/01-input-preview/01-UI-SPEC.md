@@ -99,7 +99,7 @@ Notes: numeric page indicator (e.g. `3 / 12`) uses `font-variant-numeric: tabula
 
 ## Color
 
-Neutral, professional, calm palette with a single restrained accent. 60/30/10 split. Light theme only in Phase 1 (dark mode deferred). Hex values are defaults — confirm later.
+Neutral, professional, **minimalist** palette with a single restrained accent. 60/30/10 split. **Both light and dark themes, user-toggleable — confirmed in 01-CONTEXT.md (D-05–D-07).** The table below is the LIGHT theme; the dark theme is defined in the Dark Theme subsection.
 
 | Role | CSS var | Value | Usage |
 |------|---------|-------|-------|
@@ -124,6 +124,23 @@ Supporting neutrals (not part of the 10% accent budget):
 2. The **active / current page indicator** — the highlighted current page number in the page navigator.
 
 Everything else interactive (prev/next, zoom, jump-to-page input, secondary buttons) uses neutral surfaces with `--color-border` and a neutral hover (`#EDEFF2`), NOT the accent. Secondary buttons are outline/ghost style. The focus ring uses the accent hue but is a focus affordance, not a 10%-budget fill.
+
+### Dark theme (light/dark toggle — D-06/D-07)
+
+A user-toggleable light/dark theme. Initial theme follows `prefers-color-scheme`; the user's explicit choice is persisted in `localStorage`. Implement as CSS custom properties overridden under `[data-theme="dark"]` on the root. Dark theme keeps the SAME 60/30/10 discipline and the SAME accent reserved-for rule — only the values change. Accent switches to **amber**.
+
+| Role | CSS var | Light value | Dark value |
+|------|---------|-------------|------------|
+| Dominant (60%) | `--color-surface` | `#F5F6F8` | `#0F172A` |
+| Secondary (30%) | `--color-panel` | `#FFFFFF` | `#1E293B` |
+| Accent (10%) | `--color-accent` | `#2563EB` | `#F59E0B` (amber-500) |
+| Accent hover | `--color-accent-hover` | `#1D4ED8` | `#D97706` (amber-600) |
+| Destructive | `--color-danger` | `#DC2626` | `#F87171` |
+| Text primary | `--color-text` | `#1F2933` | `#E5E7EB` |
+| Text secondary | `--color-text-muted` | `#6B7280` | `#94A3B8` |
+| Border / divider | `--color-border` | `#D9DCE1` | `#334155` |
+
+Toolbar carries a theme toggle control (icon button, `aria-label` 切換深淺色模式 / "Toggle light/dark theme"). Exact dark surface shades and toggle icon/placement are Claude's discretion per 01-CONTEXT.md, keeping the professional-minimalist tone.
 
 ---
 
@@ -243,10 +260,14 @@ No shadcn, no third-party UI registry, no external component sources. Registry v
 
 Because this ran non-interactively, the following are reasonable defaults the team should confirm during planning/review:
 
-1. Accent hue `#2563EB` (calm professional blue) — swap to the company brand hue if one exists.
+**Resolved in 01-CONTEXT.md (2026-05-22 discussion):**
+- ✓ Accent + Theme (items 1, 7): light theme = professional blue `#2563EB`; **dark theme = amber `#F59E0B`**, with a user light/dark toggle (D-05–D-07). See the Dark theme subsection above.
+- ✓ Zoom (item 5): zoom **CSS-scales** the PNG — no re-render on zoom (D-02).
+- ✓ Render DPI (item 6): preview renders at **200 DPI** by default (D-02).
+- ✓ Upload limits: 50MB / 30 pages (D-04, enforced backend-side; drives the "檔案過大" error copy).
+
+**Still open (confirm during planning/review):**
 2. System-UI font stack vs a bundled brand font.
 3. Inline SVG icons vs adopting a lightweight icon set.
 4. The "更換檔案" soft-confirmation dialog — keep or drop as unnecessary friction.
-5. Discrete zoom steps (50–200%) and whether zoom CSS-scales the PNG or re-requests a higher-DPI render.
-6. Default render DPI for the preview (affects perceived sharpness) — coordinate with backend Plan 01-01 (`get_pixmap(dpi=…)`).
-7. Light-theme-only (dark mode deferred).
+8. Dark-theme surface/panel hex shades and exact toggle placement/icon — Claude's discretion per 01-CONTEXT.md.
