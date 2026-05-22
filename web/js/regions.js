@@ -64,6 +64,12 @@ const COPY = {
   removalFailed: "套用移除時發生問題。請再試一次,或調整框選範圍後重試。",
   resultRenderFailed: "無法產生移除結果預覽。請重新套用移除。",
   downloadFailed: "下載失敗,請檢查網路連線後再試一次。",
+  // WR-03: dedicated copy for the logo_* error codes so a logo problem is not mistaken for a
+  // framing failure. logoUnavailable covers a hard logo error (should be rare now that the
+  // server degrades to pure removal — WR-02); logoSkipped is the per-job soft warning the
+  // server returns (result.logo_skipped) after completing the removal without the logo.
+  logoUnavailable: "所選商標已無法使用,請改選其他商標或先不置入商標。",
+  logoSkipped: "所選商標無法置入,已完成移除但未置入商標。請改選其他商標後重新套用。",
 };
 
 // The REQUESTED render DPI (the ceiling). The server clamps this and may reduce the EFFECTIVE
@@ -589,6 +595,14 @@ function mapErrorCopy(err) {
       return COPY.removalFailed;
     case "result_not_ready":
       return COPY.downloadFailed;
+    // WR-03: the new logo_* codes get dedicated copy so the user knows the logo (not the
+    // framing) is the cause and can change/clear the selection instead of retrying the same
+    // doomed run. The server normally degrades logo failures to pure removal (WR-02), so these
+    // are a defensive surface for any path that still propagates a logo error.
+    case "logo_not_found":
+    case "logo_invalid":
+    case "logo_unreadable":
+      return COPY.logoUnavailable;
     default:
       return COPY.removalFailed; // network/unknown during apply
   }
@@ -623,7 +637,11 @@ async function applyRemoval() {
     const flags = (result && result.regions) || [];
     const anyRemoved = flags.some((r) => r.removed);
     const anyClamped = flags.some((r) => r.clamped);
-    if (flags.length > 0 && !anyRemoved) {
+    // WR-02/WR-03: the server completed the removal but could not place the requested logo —
+    // surface a dedicated notice (highest priority, since it changes what the result contains).
+    if (result && result.logo_skipped) {
+      showNotice(COPY.logoSkipped, false);
+    } else if (flags.length > 0 && !anyRemoved) {
       showNotice(COPY.nothingRemoved, false);
     } else if (anyClamped) {
       showNotice(COPY.clamped, false);
