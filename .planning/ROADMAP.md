@@ -11,7 +11,8 @@
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: 輸入與預覽骨幹** - 上傳向量 PDF、伺服器端渲染、瀏覽器多頁預覽,原始檔保留 (completed 2026-05-22)
-- [x] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載 (completed 2026-05-22)
+- [x] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載
+ (completed 2026-05-22)
 - [ ] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比)
 - [ ] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白
 - [ ] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理
@@ -71,8 +72,11 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: 商標庫(logos/ + manifest.json)、列表/挑選 API、前端 logo 選擇器
-- [ ] 03-02: logo 置入(insert_image、alpha 透明、長寬比貼合)、整合進匯出流程
+**Wave 1**
+- [ ] 03-01-PLAN.md — 固定商標庫(logos/ + manifest.json)、logo.py 服務(manifest 白名單防護)、GET /logos + /logos/{id}/image、側欄縮圖選擇器 (LOGO-01)
+
+**Wave 2** *(blocked on 03-01)*
+- [ ] 03-02-PLAN.md — place_logo(insert_image keep_proportion 置中貼合)、JobSpec.logo_id、整合進 process_job 匯出流程、結果含 logo 與條件式標籤 (LOGO-02)
 
 ### Phase 4: 點陣圖與圖片型檔案支援
 **Goal**: 支援圖片型(點陣/掃描)PDF 與獨立影像檔(PNG/JPG/TIFF)。移除區域以白色填滿,並可同樣置入我司 logo。
