@@ -135,6 +135,10 @@ let viewMode = "original"; // "original" | "result"
 // Result freshness: true only between a successful apply and the next region edit (D-05/D-07).
 let resultFresh = false;
 let applying = false;
+// WR-01: a monotonically increasing token bumped on every successful apply. It is appended to
+// the result after-image URL (?v=) so a re-apply ("重新套用") never shows a browser-cached PNG
+// from a prior apply — the preview always reflects the freshly re-redacted work copy / download.
+let resultVersion = 0;
 
 // ---- Helpers -----------------------------------------------------------------------
 function pageList(index) {
@@ -576,7 +580,7 @@ function setViewMode(mode) {
 
   if (showingResult) {
     // Swap the page image to the result render (via the viewer helper + api URL); hide overlay.
-    showResultImage(api.resultImageURL(sessionId, currentPage));
+    showResultImage(api.resultImageURL(sessionId, currentPage, resultVersion));
     if (overlay) overlay.hidden = true;
   } else {
     showOriginalImage();
@@ -632,6 +636,9 @@ async function applyRemoval() {
 
     applying = false;
     resultFresh = true;
+    // WR-01: bump the cache-busting token so the result image URL changes on every apply and
+    // the browser cannot serve a stale after-image from a previous apply.
+    resultVersion += 1;
 
     // Surface per-region feedback from the server's authoritative result (never assume applied).
     const flags = (result && result.regions) || [];
@@ -699,7 +706,7 @@ function onPageChanged(detail) {
   if (dragStart) cleanupDrag({});
   // Paging while viewing the result: re-fetch the correct page's after-image; else show original.
   if (viewMode === "result" && resultFresh) {
-    showResultImage(api.resultImageURL(sessionId, currentPage));
+    showResultImage(api.resultImageURL(sessionId, currentPage, resultVersion));
     if (overlay) overlay.hidden = true;
   } else if (viewMode === "result" && !resultFresh) {
     setViewMode("original");
@@ -739,6 +746,7 @@ export function initRegions({ session_id }) {
   nextRegionId = 1;
   resultFresh = false;
   applying = false;
+  resultVersion = 0; // WR-01: a new session starts with no cached result.
   viewMode = "original";
 
   ensureOverlay();

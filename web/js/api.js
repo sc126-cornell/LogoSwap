@@ -161,15 +161,22 @@ export async function processJob(id, jobSpec) {
  * work copy. Returns a string to set as an <img> src. Carries the same six X- headers as the
  * original page image, so the overlay maths is identical (D-04 before/after toggle).
  */
-export function resultImageURL(id, n) {
-  return (
+export function resultImageURL(id, n, v) {
+  let url =
     API_BASE +
     "/sessions/" +
     encodeURIComponent(id) +
     "/result/pages/" +
     encodeURIComponent(n) +
-    "/image"
-  );
+    "/image";
+  // WR-01: an optional cache-busting token. The result endpoint URL is otherwise identical
+  // across re-applies, so the browser may serve a STALE after-image from a prior apply even
+  // though the work copy on disk was freshly re-redacted. Bumping ?v= each apply forces a fresh
+  // fetch so the before/after preview always matches the file the user is about to download.
+  if (v !== undefined && v !== null) {
+    url += "?v=" + encodeURIComponent(v);
+  }
+  return url;
 }
 
 /**
