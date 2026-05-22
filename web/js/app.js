@@ -20,8 +20,13 @@ const COPY = {
   errorHeading: "無法開啟此檔案",
   unsupportedType: "此檔案格式不支援。請改用 PDF 檔案後再試一次。",
   corruptPdf: "這個 PDF 檔案無法讀取,可能已損毀。請確認檔案後再試一次。",
-  // {limit} is injected from the server message (which carries the limit value).
-  fileTooLarge: (limit) => `檔案超過大小上限(${limit})。請改用較小的檔案。`,
+  // {limit} is the numeric token extracted from the server message (e.g. "50 MB").
+  // Degrade gracefully when no limit could be parsed: omit the parenthetical rather
+  // than rendering an empty "()" or leaking the raw server string (WR-02 / T-01-14).
+  fileTooLarge: (limit) =>
+    limit
+      ? `檔案超過大小上限(${limit})。請改用較小的檔案。`
+      : "檔案超過大小上限。請改用較小的檔案。",
   networkFailure: "上傳失敗,請檢查網路連線後再試一次。",
   confirmReplace: "更換檔案會清除目前的預覽,確定要繼續嗎?",
 };
@@ -67,11 +72,14 @@ function setDocControlsEnabled(enabled) {
 }
 
 // ---- Error mapping -----------------------------------------------------------------
-// Pull a human limit (e.g. "50 MB" or "30 頁") out of the server message; fall back gracefully.
+// Pull ONLY a numeric limit token (e.g. "50 MB" or "30 頁") out of the server message.
+// On no-match, fall back to "" — NEVER the raw server string (WR-02 / T-01-14): the
+// caller's COPY.fileTooLarge("") omits the parenthetical, so a server-wording change can
+// no longer surface raw backend text in user-facing copy.
 function extractLimit(serverMessage) {
   if (!serverMessage) return "";
   const m = serverMessage.match(/(\d[\d.,]*\s*(?:MB|GB|KB|頁|pages?))/i);
-  return m ? m[1].trim() : serverMessage;
+  return m ? m[1].trim() : "";
 }
 
 function messageForError(err) {
