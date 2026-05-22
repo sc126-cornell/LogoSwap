@@ -27,11 +27,9 @@
  */
 
 import * as api from "./api.js";
-import {
-  getViewerState,
-  showOriginalImage,
-  showResultImage,
-} from "./viewer.js";
+// WR-04: getViewerState was imported but never used (the module drives off currentPage +
+// page:changed event detail, not the viewer snapshot). Dropped to keep the data flow honest.
+import { showOriginalImage, showResultImage } from "./viewer.js";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
@@ -105,7 +103,8 @@ const regionsByPage = new Map();
 const imageDimsByPage = new Map(); // pageIndex -> { imgW, imgH, dpi }
 
 let sessionId = null;
-let pageCount = 0;
+// WR-04: pageCount was assigned but never read (nav/paging is owned by viewer.js; this module
+// reacts to the page:changed event detail). Removed to avoid dead source-of-truth state.
 let currentPage = 0;
 let nextRegionId = 1;
 
@@ -295,16 +294,25 @@ function renderOverlay() {
 }
 
 // Highlight (or clear) the rectangle + row for a region id (bidirectional row<->rect).
+// WR-03: look up by dataset comparison rather than interpolating `id` into a CSS selector
+// string. Interpolation is safe only while ids are internal integers; a future non-numeric or
+// quote-bearing id would break the selector or allow selector injection. Comparing
+// dataset.regionId === String(id) is robust regardless of the id's shape.
 function setActiveRegion(id, active) {
+  const key = String(id);
   if (overlay) {
-    const rect = overlay.querySelector(`.region-rect[data-region-id="${id}"]`);
+    const rect = [...overlay.querySelectorAll(".region-rect")].find(
+      (el) => el.dataset.regionId === key
+    );
     if (rect) {
       rect.classList.toggle("is-active", active);
       const badge = rect.querySelector(".region-rect__badge");
       if (badge) badge.hidden = !active;
     }
   }
-  const row = regionListEl.querySelector(`.region-row[data-region-id="${id}"]`);
+  const row = [...regionListEl.querySelectorAll(".region-row")].find(
+    (el) => el.dataset.regionId === key
+  );
   if (row) row.classList.toggle("is-active", active);
 }
 
@@ -662,9 +670,10 @@ async function ensureDims(index) {
 }
 
 // ---- Public API (called by app.js) -------------------------------------------------
-export function initRegions({ session_id, page_count }) {
+// app.js passes { session_id, page_count }; page_count is intentionally unused here (paging is
+// viewer.js's concern — WR-04), so we only read session_id.
+export function initRegions({ session_id }) {
   sessionId = session_id;
-  pageCount = page_count || 0;
   currentPage = 0;
   regionsByPage.clear();
   imageDimsByPage.clear();
@@ -692,7 +701,6 @@ export function initRegions({ session_id, page_count }) {
 
 export function resetRegions() {
   sessionId = null;
-  pageCount = 0;
   currentPage = 0;
   regionsByPage.clear();
   imageDimsByPage.clear();
