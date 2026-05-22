@@ -164,6 +164,55 @@ def test_roundtrip_at_each_rotation(rotation, tmp_path):
         pdf_engine.close(doc)
 
 
+@pytest.mark.parametrize("base_rotation", ROTATIONS)
+@pytest.mark.parametrize("user_rotation", ROTATIONS)
+def test_roundtrip_composed_base_and_user_rotation(base_rotation, user_rotation, tmp_path):
+    """px -> pt -> px stays < 1px for EVERY (intrinsic, user) rotation combination.
+
+    Mirrors test_roundtrip_at_each_rotation but composes the page-rotation feature's
+    effective rotation: a page rendered/framed at (intrinsic + user) % 360. We build the
+    fixture at the INTRINSIC rotation, then set the EFFECTIVE rotation on the page via the
+    engine seam exactly as the render/pipeline layers do (set_page_rotation), so the mapper
+    derotates against the same orientation the user framed on. The fitz import here is the
+    test harness's (production coords.py stays fitz-free — see test_seam).
+    """
+    pdf_bytes = _make_pdf_bytes(rotation=base_rotation)
+    pdf_path = tmp_path / f"base{base_rotation}_user{user_rotation}.pdf"
+    pdf_path.write_bytes(pdf_bytes)
+
+    doc, page = _open_page(pdf_bytes)
+    try:
+        effective = (base_rotation + user_rotation) % 360
+        pdf_engine.set_page_rotation(page, effective)
+        assert int(page.rotation) == effective
+
+        # The render contract at the EFFECTIVE rotation: dims swap for a quarter turn. Mirror
+        # render.page_meta's math against the now-rotated page rect so dpi/img dims match what
+        # the rotated PNG would carry (page.rect already reflects /Rotate after set_rotation).
+        clamped = render.clamp_dpi(render.config.DEFAULT_DPI)
+        eff_dpi = render.fit_dpi_to_pixel_budget(
+            clamped, float(page.rect.width), float(page.rect.height)
+        )
+        scale = eff_dpi / 72.0
+        iw = round(float(page.rect.width) * scale)
+        ih = round(float(page.rect.height) * scale)
+
+        rects = [
+            (10, 20, 110, 220),
+            (0, 0, 50, 50),
+            (iw - 60, ih - 60, iw, ih),
+            (iw / 2 - 30, ih / 2 - 40, iw / 2 + 30, ih / 2 + 40),
+            (0, 0, iw, ih),
+        ]
+        bx0, by0, bx1, by1 = pdf_engine.unrotated_content_box(page, iw, ih, eff_dpi)
+        for px_rect in rects:
+            rect, _ = _assert_roundtrip(px_rect, eff_dpi, page)
+            assert rect.x0 >= bx0 - EDGE_TOL_PX and rect.y0 >= by0 - EDGE_TOL_PX
+            assert rect.x1 <= bx1 + EDGE_TOL_PX and rect.y1 <= by1 + EDGE_TOL_PX
+    finally:
+        pdf_engine.close(doc)
+
+
 @pytest.mark.parametrize("rotation", ROTATIONS)
 def test_offset_mediabox_roundtrip_and_inside_page(rotation, tmp_path):
     """On a non-(0,0) MediaBox page the round-trip still holds and stays INSIDE page.rect.

@@ -111,6 +111,134 @@ def test_process_then_render_then_download_full_slice(client, valid_pdf_bytes):
     assert _exported_region_empty(dl.content, px_rect, dpi, 0)
 
 
+@pytest.mark.parametrize("user_rotation", [90, 180, 270])
+def test_process_on_user_rotated_preview_redacts_correctly_and_bakes_rotation(
+    client, valid_pdf_bytes, user_rotation
+):
+    """A region framed on a user-ROTATED preview redacts the correct content AND the exported
+    page carries the expected effective /Rotate, while the original SHA-256 is unchanged (D-05).
+
+    The overlay measures px against the ROTATED meta (rotate=user_rotation), so we fetch that
+    meta and frame the region the same way: convert the unrotated content rect _REGION_PT into
+    the rotated DISPLAYED image-pixel space the user would see. We round-trip the same px the
+    client posts (with rotations) and assert the exported region is empty + the page is rotated.
+    """
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+
+    # The rotated render contract for page 0 (dims swap for 90/270).
+    meta = client.get(
+        f"/sessions/{sid}/pages/0/meta", params={"rotate": user_rotation}
+    ).json()
+    assert meta["rotation"] == user_rotation, meta
+    dpi = meta["dpi"]
+    iw, ih = meta["img_w"], meta["img_h"]
+
+    # Map the unrotated content rect _REGION_PT (points) into the ROTATED displayed pixel box.
+    # A point (x,y) in the unrotated page (W=200,H=300 pt) appears in the rotated DISPLAYED
+    # space as: 90 -> (H - y, x); 180 -> (W - x, H - y); 270 -> (y, W - x). Scale pt->px by dpi.
+    s = dpi / 72.0
+    W, H = 200.0, 300.0  # conftest page is 200x300pt
+
+    def to_disp(x, y):
+        if user_rotation == 90:
+            return (H - y, x)
+        if user_rotation == 180:
+            return (W - x, H - y)
+        return (y, W - x)  # 270
+
+    corners = [
+        to_disp(_REGION_PT[0], _REGION_PT[1]),
+        to_disp(_REGION_PT[2], _REGION_PT[3]),
+    ]
+    xs = [c[0] * s for c in corners]
+    ys = [c[1] * s for c in corners]
+    px_rect = [min(xs), min(ys), max(xs), max(ys)]
+    # sanity: the framed rect stays inside the rotated image box
+    assert 0 <= px_rect[0] <= iw and 0 <= px_rect[2] <= iw
+    assert 0 <= px_rect[1] <= ih and 0 <= px_rect[3] <= ih
+
+    original = storage.original_path(sid)
+    before = hashlib.sha256(original.read_bytes()).hexdigest()
+
+    resp = client.post(
+        f"/sessions/{sid}/process",
+        json={
+            "dpi": dpi,
+            "regions": [{"page": 0, "px_rect": px_rect}],
+            "rotations": {"0": user_rotation},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["regions"][0]["removed"] is True, resp.text
+
+    # Original is byte-for-byte unchanged (deferred-mutation D-05).
+    after = hashlib.sha256(original.read_bytes()).hexdigest()
+    assert before == after, "original must be unchanged after a rotated /process"
+
+    # The downloaded PDF page carries the baked effective rotation, and the framed region is
+    # truly empty. We open the exported bytes and check on the rotated page directly: derive
+    # the rotated displayed pixel dims from the page rect (which reflects /Rotate), map px->pt,
+    # and assert no residual words/drawings.
+    dl = client.get(f"/sessions/{sid}/result")
+    assert dl.status_code == 200
+    out_doc = pdf_engine.open_pdf(dl.content)
+    try:
+        page = pdf_engine.get_page(out_doc, 0)
+        assert int(page.rotation) == user_rotation, "download must bake the user rotation"
+        rect = coords.pixels_to_pdf_rect(px_rect, dpi, page)
+        rt = (rect.x0, rect.y0, rect.x1, rect.y1)
+        assert pdf_engine.get_text_words_in_rect(page, rt) == []
+        assert pdf_engine.get_drawings_fully_inside(page, rt) == []
+    finally:
+        pdf_engine.close(out_doc)
+
+
+def test_process_rotation_does_not_persist_to_work_copy(client, valid_pdf_bytes):
+    """The WORK copy stays at intrinsic rotation (0) so the result-render path re-applies the
+    user rotation transiently — symmetric with 原圖, avoiding a double rotation."""
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+    resp = client.post(
+        f"/sessions/{sid}/process",
+        json={
+            "dpi": dpi,
+            "regions": [{"page": 0, "px_rect": px_rect}],
+            "rotations": {"0": 90},
+        },
+    )
+    assert resp.status_code == 200, resp.text
+
+    # The result-render WITHOUT rotate reflects the work copy's intrinsic rotation (0).
+    img0 = client.get(f"/sessions/{sid}/result/pages/0/image")
+    assert img0.headers["X-Page-Rotation"] == "0", "work copy must stay at intrinsic rotation"
+    # The result-render WITH rotate=90 reflects the rotated orientation transiently.
+    img90 = client.get(f"/sessions/{sid}/result/pages/0/image", params={"rotate": 90})
+    assert img90.headers["X-Page-Rotation"] == "90"
+
+
+@pytest.mark.parametrize("endpoint", ["pages", "result"])
+def test_invalid_rotate_param_is_400(client, valid_pdf_bytes, endpoint):
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    base = (
+        f"/sessions/{sid}/pages/0/image"
+        if endpoint == "pages"
+        else f"/sessions/{sid}/result/pages/0/image"
+    )
+    resp = client.get(base, params={"rotate": 45})
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["code"] == "invalid_rotation"
+
+
+def test_process_invalid_rotation_value_is_422(client, valid_pdf_bytes):
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    resp = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": [], "rotations": {"0": 45}},
+    )
+    assert resp.status_code in {400, 422}
+    assert resp.status_code != 500
+
+
 def test_process_without_logo_is_pure_removal(client, valid_pdf_bytes):
     """D-01: a /process with no logo_id produces NO embedded image — Phase-2 behavior unchanged."""
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]
