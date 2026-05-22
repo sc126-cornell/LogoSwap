@@ -117,8 +117,16 @@ function updateIndicator() {
 }
 
 // ---- Page rendering ---------------------------------------------------------------
+// Monotonic request-generation token (WR-01): fast navigation (double-click Next, holding
+// ArrowRight, jump-then-arrow) interleaves async /meta fetches and image loads. Each
+// renderPage call claims the next token; any continuation — the awaited /meta result, the
+// img onload/onerror — bails out the moment a newer call has superseded it, so a slower
+// earlier page can never paint under a newer page's indicator or read a clobbered renderBox.
+let renderToken = 0;
+
 async function renderPage(index) {
   if (index < 0 || index >= state.pageCount) return;
+  const myToken = ++renderToken;
   state.pageIndex = index;
   updateNavButtons();
   updateIndicator();
@@ -128,9 +136,11 @@ async function renderPage(index) {
   // Size the frame to the true render box BEFORE the image loads (coordinate fidelity).
   try {
     const meta = await api.pageMeta(state.sessionId, index);
+    if (myToken !== renderToken) return; // a newer navigation superseded us
     computeRenderBox(meta);
     applyZoom();
   } catch {
+    if (myToken !== renderToken) return; // stale failure — let the newer call own the UI
     // /meta failed — fall back to letting the image's natural size drive layout once it loads.
     state.renderBox.cssW = 0;
     state.renderBox.cssH = 0;
@@ -139,6 +149,7 @@ async function renderPage(index) {
   // Set the <img> src to the server render URL (no dpi arg => server default 200). One fetch
   // per page; zoom never changes this URL.
   pageImage.onload = () => {
+    if (myToken !== renderToken) return; // a later page's load is the authoritative one
     showPageLoader(false);
     // If /meta was unavailable, derive the render box from the image's natural pixels now.
     if (state.renderBox.cssW === 0) {
@@ -149,6 +160,7 @@ async function renderPage(index) {
     }
   };
   pageImage.onerror = () => {
+    if (myToken !== renderToken) return; // stale error from a superseded page
     showPageLoader(false);
     showPageError();
   };
