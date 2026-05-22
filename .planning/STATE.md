@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 01-01-PLAN.md (backend skeleton)
-last_updated: "2026-05-22T06:37:06.485Z"
+stopped_at: Completed 01-02-PLAN.md (frontend preview) — Phase 1 complete
+last_updated: "2026-05-22T06:56:10.589Z"
 last_activity: 2026-05-22
 progress:
   total_phases: 5
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-22)
 ## Current Position
 
 Phase: 1 of 5 (輸入與預覽骨幹)
-Plan: 1 of 2 in current phase
-Status: 01-01 backend complete; 01-02 (frontend preview) next
-Last activity: 2026-05-22 -- executed 01-01 (FastAPI backend skeleton)
+Plan: 2 of 2 in current phase
+Status: Phase 1 complete (2/2 plans) — ready for Phase 2
+Last activity: 2026-05-22 -- executed 01-02 (vanilla-JS preview frontend)
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -52,6 +52,7 @@ Progress: [█████░░░░░] 50%
 - Trend: —
 
 *Updated after each plan completion*
+| Phase 01 P02 | ~16min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -67,6 +68,9 @@ Recent decisions affecting current work:
 - v1 獨立工具、內網免登入
 - [Phase 1]: Python 3.14.4 viable: PyMuPDF 1.27.2.3 installs via cp310-abi3 wheel (no source build needed)
 - [Phase 1]: Backend exposes server-authoritative render metadata (DPI + page_w/h_pt + rotation + img_w/h) via headers and /meta for the Phase 2 coordinate seam
+- [Phase 1]: Dual-theme CSS-custom-property token set established (light :root + [data-theme=dark] overrides, blue #2563EB / amber #F59E0B) — reused by Phases 2-5; all component CSS consumes var() tokens
+- [Phase 1]: Preview is a server-rendered PNG in a position:relative page stage sized to the true render box (no client PDF parser, no re-render on zoom per D-02) — overlay-ready host for Phase 2 region selection
+- [Phase 1]: web/js/api.js is the sole server seam (window.PDFTOOL_API_BASE override); theme switching is pure front-end via localStorage
 
 ### Pending Todos
 
@@ -88,6 +92,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T06:36:48.821Z
-Stopped at: Completed 01-01-PLAN.md (backend skeleton)
+Last session: 2026-05-22T06:55:27.578Z
+Stopped at: Completed 01-02-PLAN.md (frontend preview)
 Resume file: None

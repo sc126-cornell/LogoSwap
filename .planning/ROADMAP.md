@@ -10,7 +10,7 @@
 - Integer phases (1, 2, 3): Planned milestone work
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
-- [ ] **Phase 1: 輸入與預覽骨幹** - 上傳向量 PDF、伺服器端渲染、瀏覽器多頁預覽,原始檔保留
+- [x] **Phase 1: 輸入與預覽骨幹** - 上傳向量 PDF、伺服器端渲染、瀏覽器多頁預覽,原始檔保留 (completed 2026-05-22)
 - [ ] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載
 - [ ] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比)
 - [ ] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白
@@ -34,7 +34,7 @@ Plans:
 - [x] 01-01: 後端骨架(FastAPI)、檔案上傳與儲存、三目錄隔離、PyMuPDF 頁面渲染 API(get_pixmap + 頁面 metadata)
 
 **Wave 2** *(blocked on Wave 1 completion)*
-- [ ] 01-02: 前端預覽介面 — 顯示伺服器渲染頁面、多頁切換、縮放
+- [x] 01-02: 前端預覽介面 — 顯示伺服器渲染頁面、多頁切換、縮放
 
 ### Phase 2: 框選與真正移除(向量)+ 下載
 **Goal**: 使用者能在頁面上框選一個或多個矩形區域(可跨頁),把區域內的向量物件與文字「真正移除」(非覆蓋),先看移除前後對照確認無誤,再下載新的 PDF。本階段優先建立並測試「瀏覽器像素 ↔ PDF 點」座標對應骨幹。
@@ -105,7 +105,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 輸入與預覽骨幹 | 1/2 | In Progress|  |
+| 1. 輸入與預覽骨幹 | 2/2 | Complete   | 2026-05-22 |
 | 2. 框選與真正移除(向量)+ 下載 | 0/3 | Not started | - |
 | 3. 商標置入 | 0/2 | Not started | - |
 | 4. 點陣圖與圖片型檔案支援 | 0/2 | Not started | - |
