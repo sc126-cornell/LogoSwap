@@ -1,0 +1,19 @@
+# Core PDF processing engine — project-mandated; redaction does true removal in Phase 2.
+# Installed via the cp310-abi3 stable-ABI wheel, which is forward-compatible with
+# Python 3.14 (verified: PyMuPDF 1.27.2.3 imports and renders on 3.14.4).
+# NEVER `pip install fitz` — the PyPI package literally named `fitz` is NOT PyMuPDF.
+PyMuPDF>=1.27,<1.28
+
+# Web framework + ASGI server.
+fastapi>=0.115,<1.0
+uvicorn[standard]>=0.34
+
+# Image decode/validation (standalone image upload path lands in Phase 4).
+Pillow>=12,<13
+
+# Required by FastAPI for multipart/form-data file uploads.
+python-multipart>=0.0.9
+
+# --- dev / test ---
+pytest
+httpx

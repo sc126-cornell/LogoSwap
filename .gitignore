@@ -1,0 +1,8 @@
+# Runtime storage (originals / work / outputs) — never committed.
+data/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
