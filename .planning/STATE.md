@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-05-22T10:40:41.905Z"
-last_activity: 2026-05-22 -- Phase 3 planning complete
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-05-22T12:45:17.063Z"
+last_activity: 2026-05-22
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 7
-  completed_plans: 5
-  percent: 71
+  completed_plans: 6
+  percent: 86
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-22)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 2 — 框選與真正移除(向量)+ 下載
+**Current focus:** Phase 3 — logo-placement
 
 ## Current Position
 
-Phase: 2 of 5 complete (框選與真正移除(向量)+ 下載) — next: Phase 3 商標置入
-Plan: 3 of 3 complete (02-01 coords spine + 02-02 true-removal pipeline + 02-03 region UI all done)
+Phase: 3 (logo-placement) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-05-22 -- Phase 3 planning complete
+Last activity: 2026-05-22
 
-Progress: [██████████] 100%
+Progress: [█████████░] 86%
 
 ## Performance Metrics
 
@@ -56,6 +56,7 @@ Progress: [██████████] 100%
 | Phase 02 P01 | ~35min | 2 tasks | 3 files |
 | Phase 02 P02 | ~8min | 2 tasks | 9 files |
 | Phase 02 P03 | ~9min | 3 tasks | 8 files |
+| Phase 03 P01 | ~25 min | 2 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -83,6 +84,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2-03]: Region rects stored client-side in IMAGE-PIXEL space (imageX = localX × img_w/frameW), anchored to the true render box — zoom-stable and exact against the server px_rect at dpi=200 (deferred-mutation D-05)
 - [Phase ?]: [Phase 2-03]: viewer.js overlay seam is additive — page:changed/page:zoomed CustomEvents + showOriginal/showResult helpers; api.js stays the sole server seam (regions.js never fetches)
 - [Phase ?]: [Phase 2-03]: Action group keeps exactly ONE accent button — 套用移除 until a fresh result, then 下載 PDF; editing invalidates the result (重新套用 + 框選已變更 stale notice, download disabled)
+- [Phase ?]: [Phase 3-01]: logo_id resolves only as a manifest dict key + is_relative_to(LOGOS_DIR) assert (T-03-01); logo.py/logos.py fitz-free; ONE shared stale machine
 
 ### Pending Todos
 
@@ -104,6 +106,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T10:19:32.049Z
-Stopped at: Phase 3 UI-SPEC approved
-Resume file: .planning/phases/03-logo-placement/03-UI-SPEC.md
+Last session: 2026-05-22T12:45:17.047Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None

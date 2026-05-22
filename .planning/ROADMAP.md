@@ -73,7 +73,7 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 03-01-PLAN.md — 固定商標庫(logos/ + manifest.json)、logo.py 服務(manifest 白名單防護)、GET /logos + /logos/{id}/image、側欄縮圖選擇器 (LOGO-01)
+- [x] 03-01-PLAN.md — 固定商標庫(logos/ + manifest.json)、logo.py 服務(manifest 白名單防護)、GET /logos + /logos/{id}/image、側欄縮圖選擇器 (LOGO-01)
 
 **Wave 2** *(blocked on 03-01)*
 - [ ] 03-02-PLAN.md — place_logo(insert_image keep_proportion 置中貼合)、JobSpec.logo_id、整合進 process_job 匯出流程、結果含 logo 與條件式標籤 (LOGO-02)
@@ -117,6 +117,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. 輸入與預覽骨幹 | 2/2 | Complete   | 2026-05-22 |
 | 2. 框選與真正移除(向量)+ 下載 | 3/3 | Complete   | 2026-05-22 |
-| 3. 商標置入 | 0/2 | Not started | - |
+| 3. 商標置入 | 1/2 | In Progress|  |
 | 4. 點陣圖與圖片型檔案支援 | 0/2 | Not started | - |
 | 5. 部署與穩固化(Ubuntu) | 0/2 | Not started | - |
