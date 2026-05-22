@@ -47,15 +47,20 @@ async def get_page_image(
     ``[MIN_DPI, MAX_DPI]``. ``rotate`` (0/90/180/270) is the user's TRANSIENT rotation added to
     the page's intrinsic ``/Rotate`` for this render only — it is NOT persisted. A missing
     session or out-of-range page returns 404; a bad ``rotate`` returns 400.
+
+    This is the 原圖 (BEFORE) preview, so it renders the IMMUTABLE original — NOT the work copy
+    (which the pipeline redacts in place as the 移除結果 substrate). Rendering the work copy here
+    made 原圖 show the redacted result after an apply (UAT bug). Geometry is identical between
+    the two files, so the six coordinate-seam headers are unaffected.
     """
     _require_session(session_id)
-    work = storage.work_path(session_id)
+    source = storage.original_path(session_id)
 
     try:
         user_rotation = render.validate_rotation(rotate)
         result = await run_in_threadpool(
             render.render_page,
-            work,
+            source,
             page_no,
             dpi if dpi is not None else config.DEFAULT_DPI,
             user_rotation,
@@ -91,13 +96,15 @@ async def get_page_meta(
     endpoint). A bad value returns 400.
     """
     _require_session(session_id)
-    work = storage.work_path(session_id)
+    # Preview metadata comes from the immutable original (same geometry as the work copy), keeping
+    # the 原圖 image + /meta consistent and never reflecting in-place redactions.
+    source = storage.original_path(session_id)
 
     try:
         user_rotation = render.validate_rotation(rotate)
         meta = await run_in_threadpool(
             render.page_meta,
-            work,
+            source,
             page_no,
             dpi if dpi is not None else config.DEFAULT_DPI,
             user_rotation,

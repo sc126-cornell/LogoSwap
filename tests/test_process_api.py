@@ -55,6 +55,34 @@ def _exported_region_empty(out_bytes: bytes, px_rect, dpi: int, page_no: int = 0
 # --------------------------------------------------------------------------------------
 
 
+def test_preview_image_stays_original_after_process(client, valid_pdf_bytes):
+    """The 原圖 preview endpoint renders the IMMUTABLE original, not the redacted work copy.
+
+    Regression for the UAT bug: after an apply, /pages/{n}/image must still return the BEFORE
+    image (unchanged from pre-process) and must DIFFER from the 移除結果 result render — otherwise
+    '原圖' shows the redacted result and 清除全部 can't visibly return to the original.
+    """
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+
+    before = client.get(f"/sessions/{sid}/pages/0/image")
+    assert before.status_code == 200
+    before_png = before.content
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]},
+    )
+    assert proc.status_code == 200
+
+    after = client.get(f"/sessions/{sid}/pages/0/image")
+    result = client.get(f"/sessions/{sid}/result/pages/0/image")
+    assert after.status_code == 200 and result.status_code == 200
+    # 原圖 unchanged by the apply (renders the original), and distinct from the 移除結果.
+    assert after.content == before_png, "原圖 preview must not change after process"
+    assert after.content != result.content, "原圖 must differ from the 移除結果 result render"
+
+
 def test_process_then_render_then_download_full_slice(client, valid_pdf_bytes):
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]
     px_rect, dpi = _region_px_for(client, sid, 0)
