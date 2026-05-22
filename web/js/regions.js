@@ -354,9 +354,11 @@ function localPoint(e) {
 }
 
 function onPointerDown(e) {
-  // Drawing works in BOTH views: the user can frame the next region directly on the 移除結果
-  // after-image. A real drag commits in onPointerUp -> onRegionsEdited flips back to 原圖 and
-  // marks the result stale; a sub-threshold click creates nothing (no surprise view flip).
+  // Framing is LOCKED once a result is applied (resultFresh) or while viewing 移除結果. This is a
+  // deliberate safety model (UAT decision): the user may frame across MANY pages and apply; a
+  // stray drag must NOT silently invalidate that whole multi-page result. To frame again the user
+  // explicitly clears (清除全部 -> onRegionsEdited resets resultFresh), then drawing re-enables.
+  if (viewMode === "result" || resultFresh) return;
   if (e.button !== undefined && e.button !== 0) return;
   if (sessionId === null) return;
 
@@ -591,10 +593,9 @@ function setViewMode(mode) {
     showResultImage(
       api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
     );
-    // Keep the overlay PRESENT (interactive) so the user can draw the next region directly on
-    // the after-image. renderOverlay() below clears committed rects in result mode, so the
-    // before/after stays visually clean — the overlay is just a transparent draw-catcher.
-    if (overlay) overlay.hidden = false;
+    // Hide the overlay in result view: framing is locked after apply (see onPointerDown), so the
+    // after-image stays clean with no rects and no draw surface.
+    if (overlay) overlay.hidden = true;
   } else {
     showOriginalImage();
     if (overlay) overlay.hidden = false;
@@ -728,10 +729,7 @@ function onPageChanged(detail) {
     showResultImage(
       api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
     );
-    // Keep the overlay interactive in result view so the next region can be framed directly on
-    // the after-image (renderOverlay below clears committed rects -> clean before/after). This
-    // onload fires right after an apply's setViewMode("result"); hiding here would re-block draw.
-    if (overlay) overlay.hidden = false;
+    if (overlay) overlay.hidden = true;
   } else if (viewMode === "result" && !resultFresh) {
     setViewMode("original");
   }
