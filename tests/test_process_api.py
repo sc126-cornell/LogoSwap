@@ -111,6 +111,52 @@ def test_process_then_render_then_download_full_slice(client, valid_pdf_bytes):
     assert _exported_region_empty(dl.content, px_rect, dpi, 0)
 
 
+def test_process_without_logo_is_pure_removal(client, valid_pdf_bytes):
+    """D-01: a /process with no logo_id produces NO embedded image — Phase-2 behavior unchanged."""
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+    resp = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]},
+    )
+    assert resp.status_code == 200, resp.text
+
+    dl = client.get(f"/sessions/{sid}/result")
+    out_doc = pdf_engine.open_pdf(dl.content)
+    try:
+        for page_no in range(pdf_engine.page_count(out_doc)):
+            page = pdf_engine.get_page(out_doc, page_no)
+            assert page.get_images() == [], "no logo_id must mean no embedded image (D-01)"
+    finally:
+        pdf_engine.close(out_doc)
+
+
+def test_original_unchanged_across_remove_insert(client, valid_pdf_bytes, logo_library):
+    """D-05: the immutable original's SHA-256 is unchanged across a remove+INSERT run."""
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+
+    original = storage.original_path(sid)
+    before = hashlib.sha256(original.read_bytes()).hexdigest()
+
+    resp = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}], "logo_id": "placeholder"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    after = hashlib.sha256(original.read_bytes()).hexdigest()
+    assert before == after, "original must be unchanged after a remove+insert run (D-05)"
+
+    # The remove+insert result actually embedded the logo (sanity that this exercised insert).
+    dl = client.get(f"/sessions/{sid}/result")
+    out_doc = pdf_engine.open_pdf(dl.content)
+    try:
+        assert pdf_engine.get_page(out_doc, 0).get_images(), "logo must be present in the result"
+    finally:
+        pdf_engine.close(out_doc)
+
+
 def test_result_render_valid_before_processing(client, valid_pdf_bytes):
     # Before any process run the work copy equals the original, so the after-image endpoint
     # still renders (it just shows the unmodified page).

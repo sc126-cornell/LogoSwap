@@ -14,6 +14,128 @@ from __future__ import annotations
 import json
 from urllib.parse import quote
 
+import pytest
+
+from app import storage
+from app.models import JobSpec
+from app.services import coords, logo, pdf_engine, pipeline
+
+# Conftest page is 200x300pt; the same region constant as test_redact.py / test_process_api.py.
+# A logo placed into the pdf_rect derived from this region must land centered + aspect-preserved.
+_REGION_PT = (10.0, 40.0, 190.0, 120.0)
+# Geometry tolerances: 1pt for containment (rounding) and aspect within a small ratio epsilon.
+TOL = 1.0
+ASPECT_TOL = 0.05
+
+
+def _ingest(valid_pdf_bytes):
+    """Ingest the standard 2-page vector PDF and return its session id."""
+    from app.services import ingest
+
+    return ingest.ingest_upload("design.pdf", valid_pdf_bytes).session_id
+
+
+def _px_rect(page_no, dpi, page):
+    """Image-pixel rect for _REGION_PT at the page's effective render dpi."""
+    from app.services import render
+
+    dims = pdf_engine.page_dimensions(page.parent, page_no)
+    eff = render.fit_dpi_to_pixel_budget(render.clamp_dpi(dpi), dims["page_w_pt"], dims["page_h_pt"])
+    scale = eff / 72.0
+    return [v * scale for v in _REGION_PT], eff
+
+
+def _job_px_rect(dpi):
+    """Compute the image-pixel rect for _REGION_PT at the requested dpi (page geometry fixed)."""
+    scale = dpi / 72.0
+    return [v * scale for v in _REGION_PT]
+
+
+def test_inserted_logo_bbox_within_rect_and_aspect_preserved(
+    valid_pdf_bytes, logo_library, logo_png_bytes
+):
+    """LOGO-02 / D-02: the placed logo bbox is contained in the target rect, aspect ~= source."""
+    from PIL import Image
+    from io import BytesIO
+
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    px_rect = _job_px_rect(dpi)
+    spec = JobSpec(dpi=dpi, regions=[{"page": 0, "px_rect": px_rect}], logo_id="placeholder")
+    pipeline.process_job(sid, spec)
+
+    src = Image.open(BytesIO(logo_png_bytes))
+    source_aspect = src.width / src.height
+
+    out = pipeline.output_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        target = coords.pixels_to_pdf_rect(px_rect, dpi, page)
+        images = page.get_images()
+        assert images, "logo image must be embedded in the exported PDF"
+        xref = images[0][0]
+        placed = pdf_engine.get_image_rects(page, xref)
+        assert placed, "the embedded logo must have at least one placed rect"
+        for r in placed:
+            assert target.x0 - TOL <= r.x0 and r.y0 >= target.y0 - TOL
+            assert r.x1 <= target.x1 + TOL and r.y1 <= target.y1 + TOL
+            assert abs((r.width / r.height) - source_aspect) < ASPECT_TOL
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_logo_survives_redaction(valid_pdf_bytes, logo_library):
+    """Pitfall 1: logo inserted AFTER apply_redactions survives; text/vector stay removed."""
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    px_rect = _job_px_rect(dpi)
+    spec = JobSpec(dpi=dpi, regions=[{"page": 0, "px_rect": px_rect}], logo_id="placeholder")
+    pipeline.process_job(sid, spec)
+
+    out = pipeline.output_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        target = coords.pixels_to_pdf_rect(px_rect, dpi, page)
+        rt = (target.x0, target.y0, target.x1, target.y1)
+        # Truly removed: no extractable text words inside the user rect (REMOVE-01).
+        assert pdf_engine.get_text_words_in_rect(page, rt) == []
+        # Logo present: the embedded image survived the apply pass.
+        assert page.get_images(), "logo image must survive apply_redactions"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_global_logo_single_xref(valid_pdf_bytes, logo_library):
+    """D-01 / Pitfall 4: one global logo across N>=2 regions embeds ONE shared xref."""
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    px_rect = _job_px_rect(dpi)
+    # Two regions across two pages -> the same logo must be embedded only once.
+    spec = JobSpec(
+        dpi=dpi,
+        regions=[
+            {"page": 0, "px_rect": px_rect},
+            {"page": 1, "px_rect": px_rect},
+        ],
+        logo_id="placeholder",
+    )
+    pipeline.process_job(sid, spec)
+
+    out = pipeline.output_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(out)
+    try:
+        # Collect distinct image xrefs across all pages — the one global logo must dedup to 1.
+        xrefs = set()
+        for page_no in range(pdf_engine.page_count(doc)):
+            page = pdf_engine.get_page(doc, page_no)
+            for img in page.get_images():
+                xrefs.add(img[0])
+        assert len(xrefs) == 1, f"expected one shared logo xref, got {xrefs}"
+    finally:
+        pdf_engine.close(doc)
+
 
 def test_list_logos(client, logo_library):
     """GET /logos returns 200 {logos:[...]} with id+name and NO filesystem path leaked."""
