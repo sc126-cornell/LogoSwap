@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-05-22T12:45:17.063Z"
+last_updated: "2026-05-22T12:53:47.930Z"
 last_activity: 2026-05-22
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 7
-  completed_plans: 6
-  percent: 86
+  completed_plans: 7
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-22)
 
 Phase: 3 (logo-placement) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-22
 
-Progress: [█████████░] 86%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -57,6 +57,7 @@ Progress: [█████████░] 86%
 | Phase 02 P02 | ~8min | 2 tasks | 9 files |
 | Phase 02 P03 | ~9min | 3 tasks | 8 files |
 | Phase 03 P01 | ~25 min | 2 tasks | 14 files |
+| Phase 03 P02 | 15min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -85,6 +86,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2-03]: viewer.js overlay seam is additive — page:changed/page:zoomed CustomEvents + showOriginal/showResult helpers; api.js stays the sole server seam (regions.js never fetches)
 - [Phase ?]: [Phase 2-03]: Action group keeps exactly ONE accent button — 套用移除 until a fresh result, then 下載 PDF; editing invalidates the result (重新套用 + 框選已變更 stale notice, download disabled)
 - [Phase ?]: [Phase 3-01]: logo_id resolves only as a manifest dict key + is_relative_to(LOGOS_DIR) assert (T-03-01); logo.py/logos.py fitz-free; ONE shared stale machine
+- [Phase ?]: [Phase 3-02]: place_logo is the only new fitz call (pdf_engine.py); insert AFTER apply_redactions, keep_proportion=True center+contain (LOGO-02), one global logo dedups to a single xref (D-01); no logo_id = pure removal; original SHA-256 unchanged (D-05); pipeline stays fitz-free
 
 ### Pending Todos
 
@@ -106,6 +108,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T12:45:17.047Z
+Last session: 2026-05-22T12:53:02.617Z
 Stopped at: Completed 03-01-PLAN.md
 Resume file: None

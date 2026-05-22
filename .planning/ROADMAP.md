@@ -76,7 +76,7 @@ Plans:
 - [x] 03-01-PLAN.md — 固定商標庫(logos/ + manifest.json)、logo.py 服務(manifest 白名單防護)、GET /logos + /logos/{id}/image、側欄縮圖選擇器 (LOGO-01)
 
 **Wave 2** *(blocked on 03-01)*
-- [ ] 03-02-PLAN.md — place_logo(insert_image keep_proportion 置中貼合)、JobSpec.logo_id、整合進 process_job 匯出流程、結果含 logo 與條件式標籤 (LOGO-02)
+- [x] 03-02-PLAN.md — place_logo(insert_image keep_proportion 置中貼合)、JobSpec.logo_id、整合進 process_job 匯出流程、結果含 logo 與條件式標籤 (LOGO-02)
 
 ### Phase 4: 點陣圖與圖片型檔案支援
 **Goal**: 支援圖片型(點陣/掃描)PDF 與獨立影像檔(PNG/JPG/TIFF)。移除區域以白色填滿,並可同樣置入我司 logo。

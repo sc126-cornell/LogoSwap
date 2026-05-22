@@ -34,7 +34,7 @@
 ### 商標置入 (LOGO)
 
 - [x] **LOGO-01**: 系統提供固定的我司商標庫,使用者可瀏覽並挑選要使用的 logo
-- [ ] **LOGO-02**: 使用者可將選定的 logo 放到框選位置,並維持長寬比縮放貼合
+- [x] **LOGO-02**: 使用者可將選定的 logo 放到框選位置,並維持長寬比縮放貼合
 
 ### 輸出 (OUTPUT)
 
@@ -85,7 +85,7 @@
 | REMOVE-04 | Phase 2 | Complete |
 | OUTPUT-01 | Phase 2 | Complete |
 | LOGO-01 | Phase 3 | Complete |
-| LOGO-02 | Phase 3 | Pending |
+| LOGO-02 | Phase 3 | Complete |
 | UPLOAD-02 | Phase 4 | Pending |
 | UPLOAD-03 | Phase 4 | Pending |
 | REMOVE-02 | Phase 4 | Pending |
