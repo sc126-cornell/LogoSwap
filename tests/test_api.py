@@ -43,6 +43,19 @@ def test_post_sessions_oversize_returns_413_with_limit(client, monkeypatch):
     assert "50" in detail["message"]
 
 
+def test_post_sessions_size_guard_boundary(client, monkeypatch, valid_pdf_bytes):
+    # WR-04: the bytearray-accumulator guard must keep the exact accept/reject boundary.
+    # Set the cap to the valid PDF's size: equal is accepted, one byte over is rejected.
+    size = len(valid_pdf_bytes)
+    monkeypatch.setattr(config, "MAX_UPLOAD_BYTES", size)
+    monkeypatch.setattr(config, "MAX_UPLOAD_MB", 50)
+    assert _upload(client, valid_pdf_bytes).status_code == 201
+    over = valid_pdf_bytes + b"\x00"
+    resp = _upload(client, over)
+    assert resp.status_code == 413
+    assert resp.json()["detail"]["code"] == "file_too_large"
+
+
 def test_post_sessions_too_many_pages_returns_413_with_limit(client, over_page_pdf_bytes):
     resp = _upload(client, over_page_pdf_bytes, filename="many.pdf")
     assert resp.status_code == 413

@@ -44,16 +44,16 @@ async def create_session(file: UploadFile = File(...)) -> SessionInfo:
     buffering the whole oversize file.
     """
     # Stream-read with an early cap so an oversize upload is rejected before fully
-    # buffering it. We read one extra byte past the limit to detect "over".
+    # buffering it. Accumulate into a single bytearray (extend in place) rather than a
+    # list[bytes] + b"".join(): the old form transiently held ~2x the payload (the chunk
+    # list AND the joined bytes) on the heap for an accepted upload (WR-04).
     limit = config.MAX_UPLOAD_BYTES
-    chunks: list[bytes] = []
-    total = 0
+    buf = bytearray()
     while True:
         chunk = await file.read(1024 * 1024)  # 1 MB
         if not chunk:
             break
-        total += len(chunk)
-        if total > limit:
+        if len(buf) + len(chunk) > limit:
             raise HTTPException(
                 status_code=413,
                 detail={
@@ -61,9 +61,9 @@ async def create_session(file: UploadFile = File(...)) -> SessionInfo:
                     "message": f"檔案過大,超過大小上限 {config.MAX_UPLOAD_MB} MB。",
                 },
             )
-        chunks.append(chunk)
+        buf.extend(chunk)
 
-    data = b"".join(chunks)
+    data = bytes(buf)
 
     try:
         return ingest.ingest_upload(file.filename or "upload.pdf", data)
