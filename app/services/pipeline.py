@@ -24,7 +24,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from .. import storage
-from . import coords, pdf_engine, redact
+from . import coords, pdf_engine, redact, render
 
 
 class PipelineError(Exception):
@@ -88,7 +88,14 @@ def process_job(session_id: str, job_spec) -> dict:
             "內部錯誤:工作副本路徑與原始檔相同,已中止以保護原始檔。",
         )
 
-    dpi = job_spec.dpi
+    # The client's ``dpi`` is the REQUESTED render DPI (the ceiling the overlay measured
+    # against). It is NOT trusted as the per-page scale: render may have reduced the
+    # *effective* DPI below it for a large-MediaBox page via fit_dpi_to_pixel_budget
+    # (CR-01). We re-derive the effective DPI PER PAGE here, by construction identical to
+    # what render.page_meta / render.render_page produced, so the client overlay (which
+    # measured px against those reduced dims) and the server mapping cannot disagree on
+    # scale. This closes the silent "wrong area redacted" pitfall the phase guards against.
+    requested_dpi = render.clamp_dpi(job_spec.dpi)
     doc = pdf_engine.open_pdf(work)
     try:
         n_pages = pdf_engine.page_count(doc)
@@ -104,19 +111,28 @@ def process_job(session_id: str, job_spec) -> dict:
 
             page = pdf_engine.get_page(doc, page_no)
 
-            # Compute the page's rendered pixel box at this dpi so we can clamp the
-            # untrusted client rect to it (T-02-01). unrotated_content_box derotates the
-            # displayed image box; we need the DISPLAYED pixel dims for clamp_px_rect, which
-            # are (page_w_pt, page_h_pt) of the DISPLAYED rect scaled by dpi/72.
+            # Re-derive the page's EFFECTIVE render DPI exactly as the render endpoints do
+            # (clamp -> fit to the pixel budget). On a normal page this equals requested_dpi;
+            # on an oversized MediaBox it is the same reduced value /meta reported and the
+            # overlay measured against — so px_rect, the projection, and this mapping all
+            # agree on ONE effective DPI for this page (CR-01).
             dims = pdf_engine.page_dimensions(doc, page_no)
-            scale = dpi / 72.0
+            effective_dpi = render.fit_dpi_to_pixel_budget(
+                requested_dpi, dims["page_w_pt"], dims["page_h_pt"]
+            )
+
+            # Compute the page's rendered pixel box at the EFFECTIVE dpi so we can clamp the
+            # untrusted client rect to it (T-02-01). We need the DISPLAYED pixel dims for
+            # clamp_px_rect, which are (page_w_pt, page_h_pt) of the DISPLAYED rect scaled by
+            # effective_dpi/72 — identical to the img_w/img_h /meta returned for this page.
+            scale = effective_dpi / 72.0
             img_w = dims["page_w_pt"] * scale
             img_h = dims["page_h_pt"] * scale
 
             clamped_px, was_clamped = coords.clamp_px_rect(
                 region.px_rect, img_w, img_h
             )
-            pdf_rect = coords.pixels_to_pdf_rect(clamped_px, dpi, page)
+            pdf_rect = coords.pixels_to_pdf_rect(clamped_px, effective_dpi, page)
             removed = redact.remove_region(page, pdf_rect)
 
             results.append(

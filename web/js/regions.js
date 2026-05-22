@@ -4,15 +4,21 @@
  * apply / download action group. Vanilla JS, no build (SKELETON.md).
  *
  * Coordinate fidelity (the load-bearing seam, ARCHITECTURE Pattern 2 / PITFALLS 1-2):
- *   - Rectangles are stored in IMAGE-PIXEL space at the render DPI (200) — deferred-mutation D-05.
- *     The browser holds image-pixel rects; the SERVER (Plan 02-02) is the only place that converts
- *     to PDF points and mutates documents.
+ *   - Rectangles are stored in IMAGE-PIXEL space at the page's EFFECTIVE render DPI — deferred-
+ *     mutation D-05. The browser holds image-pixel rects; the SERVER (Plan 02-02) is the only place
+ *     that converts to PDF points and mutates documents.
+ *   - CR-01: the effective render DPI can be REDUCED below the requested 200 by the server's
+ *     pixel-budget guard (render.fit_dpi_to_pixel_budget) for a large-MediaBox page. So we NEVER
+ *     hardcode dpi=200 for measurement: the overlay measures px against the img_w/img_h /meta
+ *     reported for THAT page (which are already at the effective DPI), and we record meta.dpi per
+ *     page. The JobSpec carries the requested render DPI as the ceiling; the server re-derives the
+ *     effective DPI PER PAGE (identical fit) so client and server agree on scale by construction.
  *   - The overlay is a child of #page-frame (position:absolute inset:0). The frame is sized by
  *     viewer.js to the displayed render box (renderBox × zoom). We map overlay-local CSS pixels to
  *     image pixels via the per-page image dimensions (img_w/img_h from api.pageMeta) divided by the
  *     frame's displayed size: imageX = localX × (img_w / frameW). Inverse for projecting committed
  *     rects back to the displayed box. This stays correct across CSS-scale zoom (frameW changes;
- *     img_w is the constant 200-DPI pixel width) and matches the server's px_rect at dpi=200.
+ *     img_w is the constant effective-DPI pixel width).
  *
  * Security:
  *   - All dynamic strings are written via textContent / createElement — never innerHTML (T-02-11).
@@ -53,7 +59,11 @@ const COPY = {
   downloadFailed: "下載失敗,請檢查網路連線後再試一次。",
 };
 
-const DEFAULT_DPI = 200; // matches the server render DPI; px_rect is measured in 200-DPI pixels.
+// The REQUESTED render DPI (the ceiling). The server clamps this and may reduce the EFFECTIVE
+// DPI per page to fit the pixel budget (CR-01); px_rect is always measured against the per-page
+// effective-DPI image dims from /meta, never assumed to be this value. Kept in sync with the
+// server default (config.DEFAULT_DPI) so a job posts the same ceiling the viewer renders at.
+const REQUESTED_DPI = 200;
 const DRAG_THRESHOLD = 4; // px — sub-threshold drags create no region (no accidental zero-area).
 
 // ---- DOM refs ---------------------------------------------------------------------
@@ -89,8 +99,10 @@ const clearConfirmBtn = document.getElementById("clear-confirm-btn");
 // ---- Model -------------------------------------------------------------------------
 // Per-page region map: pageIndex -> [{ id, pxRect:[x0,y0,x1,y1] }] in IMAGE-PIXEL space (dpi 200).
 const regionsByPage = new Map();
-// Per-page image dimensions (image pixels) from api.pageMeta — the projection denominator.
-const imageDimsByPage = new Map(); // pageIndex -> { imgW, imgH }
+// Per-page image dimensions (image pixels) + effective DPI from api.pageMeta — the projection
+// denominator. dpi is the EFFECTIVE per-page render DPI (CR-01), recorded so px measurements and
+// any per-page scale stay attached to the exact image the server produced for that page.
+const imageDimsByPage = new Map(); // pageIndex -> { imgW, imgH, dpi }
 
 let sessionId = null;
 let pageCount = 0;
@@ -548,7 +560,10 @@ async function applyRemoval() {
 
   try {
     const result = await api.processJob(sessionId, {
-      dpi: DEFAULT_DPI,
+      // The requested render DPI (ceiling). The server re-derives the EFFECTIVE DPI per page
+      // and maps px_rect — which the overlay measured against the per-page effective dims — so
+      // a page whose effective DPI was reduced below this still redacts the correct area (CR-01).
+      dpi: REQUESTED_DPI,
       regions: getJobRegions(),
     });
 
@@ -637,7 +652,9 @@ async function ensureDims(index) {
   if (imageDimsByPage.has(index) || sessionId === null) return;
   try {
     const meta = await api.pageMeta(sessionId, index);
-    imageDimsByPage.set(index, { imgW: meta.img_w, imgH: meta.img_h });
+    // Record the EFFECTIVE per-page DPI alongside the dims (CR-01): img_w/img_h are already
+    // measured at meta.dpi, which may be < the requested 200 for a large page.
+    imageDimsByPage.set(index, { imgW: meta.img_w, imgH: meta.img_h, dpi: meta.dpi });
     if (index === currentPage) renderOverlay();
   } catch {
     /* /meta failed — projection() falls back to the image's natural pixels. */

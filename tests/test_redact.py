@@ -239,6 +239,127 @@ def test_process_job_rejects_page_out_of_range(ingested_session):
 
 
 # --------------------------------------------------------------------------------------
+# CR-01 regression: a large-MediaBox page whose effective render DPI < the requested 200.
+# The client measures px_rect against the REDUCED-DPI image dims /meta reports; the server
+# must re-derive that same effective DPI per page so the region maps to the CORRECT PDF
+# rect. Before the fix the server scaled by the requested 200 -> the framed content was NOT
+# removed (the rect landed shifted/shrunk), which this test would catch.
+# --------------------------------------------------------------------------------------
+
+# An E-size-class CAD sheet: large enough that 200 DPI exceeds MAX_RENDER_PIXELS (40 MP),
+# forcing fit_dpi_to_pixel_budget to scale the effective DPI below 200.
+_BIG_W_PT = 2600.0
+_BIG_H_PT = 3400.0
+# Where the supplier mark sits in UNROTATED page points (top-left origin) — comfortably
+# inside the page, away from edges so padding/clamping never interferes.
+_BIG_MARK_PT = (400.0, 500.0, 1200.0, 900.0)
+
+
+def _ingest_big_page(filename: str = "bigcad.pdf"):
+    """Ingest a single large-MediaBox page carrying text + a line inside _BIG_MARK_PT."""
+    import fitz  # test harness may import fitz directly to BUILD fixtures
+
+    from app.services import ingest
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=_BIG_W_PT, height=_BIG_H_PT)
+        # Content placed firmly inside the framed mark rect.
+        page.insert_text((450, 560), "SUPPLIER MARK")
+        page.draw_line(fitz.Point(420, 700), fitz.Point(1180, 700))
+        pdf_bytes = doc.tobytes()
+    finally:
+        doc.close()
+    return ingest.ingest_upload(filename, pdf_bytes)
+
+
+def test_process_job_uses_effective_dpi_on_reduced_dpi_page(monkeypatch):
+    # Force the effective DPI strictly below the requested 200 for this page.
+    from app import config as cfg
+    from app.services import render
+
+    sess = _ingest_big_page()
+    sid = sess.session_id
+
+    # The page must actually trip the pixel budget, else the test proves nothing.
+    effective = render.fit_dpi_to_pixel_budget(_DPI, _BIG_W_PT, _BIG_H_PT)
+    assert effective < _DPI, (
+        f"fixture not large enough: effective_dpi {effective} not < {_DPI} "
+        f"(MAX_RENDER_PIXELS={cfg.MAX_RENDER_PIXELS})"
+    )
+
+    # The client reads /meta (effective DPI + reduced dims) and measures px_rect against
+    # THOSE dims. Reproduce that: px = pt * effective_dpi / 72.
+    eff_scale = effective / 72.0
+    px_rect = [v * eff_scale for v in _BIG_MARK_PT]
+
+    # The JobSpec carries the REQUESTED dpi (200) — exactly the value a client that measures
+    # at the reduced DPI but posts the request ceiling would send. The server must re-derive
+    # the effective DPI per page and map correctly regardless.
+    spec = JobSpec(dpi=_DPI, regions=[RegionMark(page=0, px_rect=px_rect)])
+    result = pipeline.process_job(sid, spec)
+    assert result["regions"][0]["removed"] is True, (
+        "framed content must be removed when the server uses the effective per-page DPI"
+    )
+
+    # Prove the framed content is gone in the EXPORTED PDF, mapping the same px_rect at the
+    # effective DPI (the contract the client/server now share).
+    out = storage.outputs_dir(sid) / result["output_filename"]
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        rect = coords.pixels_to_pdf_rect(px_rect, effective, page)
+        rt = (rect.x0, rect.y0, rect.x1, rect.y1)
+        assert pdf_engine.get_text_words_in_rect(page, rt) == [], "text survived"
+        assert pdf_engine.get_drawings_intersecting(page, rt) == [], "vector survived"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_process_job_wrong_dpi_maps_to_wrong_rect_proving_cr01(monkeypatch):
+    # Lock the failure mode: if the server had used the REQUESTED 200 (the old behaviour),
+    # the px_rect the client measured at the effective DPI maps to a SHIFTED/SHRUNK PDF rect.
+    # Because effective < 200, the wrong scale (72/200) shrinks the rect toward the origin, so
+    # it neither matches the correctly-mapped rect nor fully covers what the user framed. This
+    # proves the two mappings genuinely diverge on this page, so the fix is load-bearing.
+    from app.services import render
+
+    sess = _ingest_big_page()
+    sid = sess.session_id
+    effective = render.fit_dpi_to_pixel_budget(_DPI, _BIG_W_PT, _BIG_H_PT)
+    eff_scale = effective / 72.0
+    px_rect = [v * eff_scale for v in _BIG_MARK_PT]
+
+    work = storage.work_path(sid)
+    doc = pdf_engine.open_pdf(work)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        correct = coords.pixels_to_pdf_rect(px_rect, effective, page)
+        wrong = coords.pixels_to_pdf_rect(px_rect, _DPI, page)
+
+        # The correct mapping reproduces the framed mark rect (within a sub-pt rounding tol).
+        for got, exp in zip((correct.x0, correct.y0, correct.x1, correct.y1), _BIG_MARK_PT):
+            assert abs(got - exp) < 1.0, f"correct mapping off: {got} vs {exp}"
+
+        # The wrong mapping is materially different — every edge is pulled toward the origin
+        # by the ratio (effective/200), a >> 1pt error on a sheet this large.
+        ratio = effective / _DPI
+        for w_edge, exp in zip((wrong.x0, wrong.y0, wrong.x1, wrong.y1), _BIG_MARK_PT):
+            assert abs(w_edge - exp) > 10.0, (
+                f"wrong mapping unexpectedly close to correct: {w_edge} vs {exp}"
+            )
+            assert abs(w_edge - exp * ratio) < 1.0, "wrong rect = framed rect * (eff/200)"
+
+        # Concretely: the wrong rect fails to fully cover the framed mark — its bottom/right
+        # edges fall short of the mark's extent, so it would leave residual or clear the wrong
+        # area. (correct.x1 covers the mark to 1200pt; wrong.x1 stops near 1200*ratio.)
+        assert wrong.x1 < correct.x1 - 10.0
+        assert wrong.y1 < correct.y1 - 10.0
+    finally:
+        pdf_engine.close(doc)
+
+
+# --------------------------------------------------------------------------------------
 # Structural acceptance: forbidden constant absent, fitz confined to the seam
 # --------------------------------------------------------------------------------------
 
