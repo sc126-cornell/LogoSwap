@@ -49,9 +49,15 @@ Plans:
 **Plans**: 3 plans
 
 Plans:
-- [ ] 02-01: 座標對應模組(coords.py,純函式)+ 0/90/180/270 度往返測試харness — 先做且測試通過才寫移除邏輯
-- [ ] 02-02: 前端矩形框選 UI(canvas overlay)、區域清單、跨頁框選、deferred-mutation 資料模型
-- [ ] 02-03: 向量移除管線(add_redact_annot + apply_redactions、~5pt padding、移除後抽取斷言)、前後對照、匯出與下載
+
+**Wave 1**
+- [ ] 02-01-PLAN.md — 座標對應模組(coords.py,純函式)+ 0/90/180/270 度與偏移 MediaBox 往返測試 harness(往返誤差 < 1px);先做且測試通過才寫移除邏輯(REMOVE-03 基礎)
+
+**Wave 2** *(blocked on 02-01)*
+- [ ] 02-02-PLAN.md — 向量/文字真正移除管線(add_redact_annot + apply_redactions、~5pt padding、移除後抽取斷言)、JobSpec 模型、結果預覽渲染與匯出/下載端點;對 work 副本套用、原始檔永不變(deferred-mutation D-05)
+
+**Wave 3** *(blocked on 02-02)*
+- [ ] 02-03-PLAN.md — 前端矩形框選 overlay、區域清單(跨頁、刪除/清除、可重疊、無控制點)、前後對照切換、套用移除/下載串接(沿用 Phase 1 token、雙主題、繁中文案)
 
 ### Phase 3: 商標置入
 **Goal**: 在移除後的區域放上我司商標。建立固定商標庫供瀏覽挑選,選定的 logo 以維持長寬比的方式置入框選位置。
