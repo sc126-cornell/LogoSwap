@@ -13,6 +13,7 @@ basename.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -58,6 +59,10 @@ def validate_session_id(session_id: str) -> str:
 # client filename is stored in SessionInfo, not used on disk.
 _ORIGINAL_NAME = "source.pdf"
 _WORK_NAME = "doc.pdf"
+# Tiny per-session sidecar holding metadata determined ONCE at ingest (page count,
+# original display filename) so the hot GET /sessions/{id} lookup never re-parses the
+# PDF and never mislabels a storage/read failure as a client "corrupt_pdf" (WR-03).
+_META_NAME = "meta.json"
 
 
 def _data_dir() -> Path:
@@ -127,6 +132,42 @@ def work_path(session_id: str) -> Path:
 def outputs_dir(session_id: str) -> Path:
     """Directory reserved for generated output PDFs (Phase 2+)."""
     return subdir("outputs", session_id)
+
+
+def meta_path(session_id: str) -> Path:
+    """Path to the per-session metadata sidecar (under ``work/``)."""
+    return subdir("work", session_id) / _META_NAME
+
+
+def write_session_meta(session_id: str, *, page_count: int, filename: str) -> Path:
+    """Persist ingest-time metadata (page count + display filename) as ``work/{sid}/meta.json``.
+
+    Written once at ingest so :func:`read_session_meta` can serve GET /sessions/{id}
+    without re-opening the PDF (WR-03). The work dir already exists from ``new_session``.
+    """
+    dest = meta_path(session_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"page_count": int(page_count), "filename": str(filename)}
+    with open(dest, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+    return dest
+
+
+def read_session_meta(session_id: str) -> dict | None:
+    """Return the per-session metadata sidecar, or ``None`` if missing/unreadable.
+
+    Callers treat ``None`` as "sidecar unavailable" and may fall back (e.g. a one-time
+    re-parse) — but a parse there must NOT be reported as the client-facing ``corrupt_pdf``.
+    """
+    path = meta_path(session_id)
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (FileNotFoundError, ValueError, OSError):
+        return None
+    if not isinstance(data, dict) or "page_count" not in data:
+        return None
+    return data
 
 
 def write_original(session_id: str, filename: str, data: bytes) -> Path:

@@ -75,7 +75,12 @@ async def create_session(file: UploadFile = File(...)) -> SessionInfo:
 async def get_session(session_id: str) -> SessionInfo:
     """Return session info; 404 with code "session_not_found" if absent.
 
-    page_count is recovered by opening the work copy through the engine seam.
+    page_count + filename are read from the per-session sidecar written at ingest, so this
+    hot path does NOT re-parse the PDF (WR-03). If the sidecar is missing (e.g. a session
+    created before sidecars existed), fall back to a one-time re-parse — but a parse failure
+    here is an internal/storage problem, surfaced as ``session_unreadable`` (500), never the
+    client-facing ``corrupt_pdf`` (which would wrongly blame a file that already passed
+    ingest validation).
     """
     if not storage.session_exists(session_id):
         raise HTTPException(
@@ -83,15 +88,31 @@ async def get_session(session_id: str) -> SessionInfo:
             detail={"code": "session_not_found", "message": "找不到此工作階段。"},
         )
 
-    doc = pdf_engine.open_pdf(storage.work_path(session_id))
-    try:
-        n_pages = pdf_engine.page_count(doc)
-    finally:
-        pdf_engine.close(doc)
+    meta = storage.read_session_meta(session_id)
+    if meta is not None:
+        return SessionInfo(
+            session_id=session_id,
+            page_count=int(meta["page_count"]),
+            filename=meta.get("filename") or "source.pdf",
+        )
 
-    # The original filename is not persisted as metadata in Phase 1; report the
-    # canonical work filename. (A session-meta sidecar can carry the original name
-    # in a later phase if the UI needs it.)
+    # No sidecar — recover page_count by re-parsing once. Map a parse failure to a
+    # distinct internal code, NOT corrupt_pdf.
+    try:
+        doc = pdf_engine.open_pdf(storage.work_path(session_id))
+        try:
+            n_pages = pdf_engine.page_count(doc)
+        finally:
+            pdf_engine.close(doc)
+    except pdf_engine.PdfEngineError as err:
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "session_unreadable",
+                "message": "工作階段資料無法讀取,請重新上傳檔案。",
+            },
+        ) from err
+
     return SessionInfo(
         session_id=session_id,
         page_count=n_pages,

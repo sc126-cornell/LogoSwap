@@ -64,6 +64,53 @@ def test_get_unknown_session_returns_404(client):
     assert resp.json()["detail"]["code"] == "session_not_found"
 
 
+def test_get_session_uses_sidecar_and_does_not_reparse(client, valid_pdf_bytes, monkeypatch):
+    # WR-03: the lookup must read the ingest-written sidecar, not re-open the PDF. If the
+    # engine is touched on the hot path, fail loudly.
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    assert storage.read_session_meta(sid)["page_count"] == 2
+
+    from app.api import sessions as sessions_api
+
+    def _boom(*_a, **_k):
+        raise AssertionError("get_session must not re-parse the PDF when a sidecar exists")
+
+    monkeypatch.setattr(sessions_api.pdf_engine, "open_pdf", _boom)
+    resp = client.get(f"/sessions/{sid}")
+    assert resp.status_code == 200
+    assert resp.json()["page_count"] == 2
+
+
+def test_get_session_without_sidecar_falls_back_to_reparse(client, valid_pdf_bytes):
+    # Back-compat: a session with no sidecar (older session) still resolves via re-parse.
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    storage.meta_path(sid).unlink()  # simulate a pre-sidecar session
+    resp = client.get(f"/sessions/{sid}")
+    assert resp.status_code == 200
+    assert resp.json()["page_count"] == 2
+
+
+def test_get_session_reparse_failure_is_internal_not_corrupt_pdf(client, valid_pdf_bytes, monkeypatch):
+    # WR-03: when the fallback re-parse fails, the code must be a distinct internal
+    # 'session_unreadable' (500), NOT the client-facing 'corrupt_pdf' (422) — the session
+    # already passed ingest validation, so blaming the upload would be misleading.
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    storage.meta_path(sid).unlink()  # force the fallback path
+
+    from app.api import sessions as sessions_api
+    from app.services.pdf_engine import PdfEngineError
+
+    def _raise(*_a, **_k):
+        raise PdfEngineError("simulated storage/parse failure")
+
+    monkeypatch.setattr(sessions_api.pdf_engine, "open_pdf", _raise)
+    resp = client.get(f"/sessions/{sid}")
+    assert resp.status_code == 500
+    detail = resp.json()["detail"]
+    assert detail["code"] == "session_unreadable"
+    assert detail["code"] != "corrupt_pdf"
+
+
 def test_get_page_image_returns_png_with_all_headers(client, valid_pdf_bytes):
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]
     resp = client.get(f"/sessions/{sid}/pages/0/image")  # no dpi query

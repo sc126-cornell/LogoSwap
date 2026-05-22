@@ -96,6 +96,9 @@ def ingest_upload(filename: str, data: bytes) -> SessionInfo:
     safe_name = storage.sanitize_filename(filename)
     storage.write_original(session_id, safe_name, data)
     storage.write_work_copy(session_id, data)
+    # Persist page_count + display filename once so GET /sessions/{id} need not re-parse
+    # the PDF on the hot path (WR-03).
+    storage.write_session_meta(session_id, page_count=n_pages, filename=safe_name)
 
     return SessionInfo(
         session_id=session_id,
