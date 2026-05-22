@@ -86,7 +86,16 @@ def clamp_px_rect(px_rect, img_w: int, img_h: int):
 
     Returns ``(clamped_rect, was_clamped)`` where ``clamped_rect`` is a normalized
     ``(x0, y0, x1, y1)`` tuple guaranteed inside the image box, and ``was_clamped`` is
-    ``True`` if any edge (or drag direction) had to be corrected.
+    ``True`` ONLY when an edge actually had to be moved to a page boundary (0/img_w/img_h)
+    or a NaN coordinate was seen — i.e. the selection genuinely exceeded the page.
+
+    WR-06: ``was_clamped`` is the BOUNDARY-clamp flag, NOT a "we changed something" flag.
+    Correcting a reversed drag (bottom-right -> top-left) is mere normalization and must
+    NOT set it, because the frontend surfaces this flag as the user-facing notice
+    "框選超出頁面範圍,已自動調整到頁面邊界" — which is wrong for an in-bounds reversed
+    drag (nothing exceeded the page). So we compare the NORMALIZED input against the
+    clamped output (not the raw, un-normalized tuple): the flag fires only when clamping
+    moved an edge, never for a pure direction flip.
 
     This is the boundary guard for threat T-02-01: the HTTP layer in Plan 02-02 calls it
     on untrusted client rects so an out-of-bounds, inverted, or NaN rect can never
@@ -109,5 +118,8 @@ def clamp_px_rect(px_rect, img_w: int, img_h: int):
     cx1 = min(max(norm[2], 0.0), float(img_w))
     cy1 = min(max(norm[3], 0.0), float(img_h))
     clamped_rect = (cx0, cy0, cx1, cy1)
-    was_clamped = nan_seen or clamped_rect != raw
+    # Compare against the NORMALIZED input (WR-06): a reversed-but-in-bounds drag yields
+    # clamped_rect == norm and is therefore NOT flagged; only a real boundary move (or NaN)
+    # sets was_clamped.
+    was_clamped = nan_seen or clamped_rect != norm
     return clamped_rect, was_clamped

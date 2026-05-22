@@ -234,7 +234,12 @@ def test_drag_direction_independence(tmp_path):
 
 
 def test_clamp_px_rect_clamps_and_flags():
-    """clamp_px_rect clamps out-of-bounds / inverted / NaN rects to the box and flags them."""
+    """clamp_px_rect clamps out-of-bounds / NaN rects to the box and flags ONLY those.
+
+    WR-06: ``was_clamped`` is the BOUNDARY-clamp flag. A reversed-but-in-bounds drag is mere
+    normalization and must NOT be flagged (else the frontend wrongly says the box exceeded the
+    page); only an actual edge move to 0/img_w/img_h (or a NaN) sets the flag.
+    """
     img_w, img_h = 800, 1200
     # in-bounds, forward -> unchanged, not flagged
     r, flagged = coords.clamp_px_rect((10, 20, 100, 200), img_w, img_h)
@@ -246,9 +251,14 @@ def test_clamp_px_rect_clamps_and_flags():
     assert r == (0.0, 0.0, float(img_w), float(img_h))
     assert flagged is True
 
-    # inverted drag -> normalized (and flagged because direction changed)
+    # inverted drag, fully IN bounds -> normalized but NOT flagged (direction-only correction).
     r, flagged = coords.clamp_px_rect((300, 400, 100, 200), img_w, img_h)
     assert r == (100.0, 200.0, 300.0, 400.0)
+    assert flagged is False, "a reversed in-bounds drag is normalization, not a boundary clamp"
+
+    # inverted drag that ALSO exceeds a boundary -> normalized AND flagged (an edge was moved).
+    r, flagged = coords.clamp_px_rect((300, 400, 100, -50), img_w, img_h)
+    assert r == (100.0, 0.0, 300.0, 400.0)
     assert flagged is True
 
     # NaN -> safe (no crash), flagged, inside box
