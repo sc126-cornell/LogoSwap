@@ -202,6 +202,36 @@ def test_logo_id_path_traversal_rejected(client, logo_library):
         assert r.json()["detail"]["code"] == "logo_not_found", bad_id
 
 
+def test_non_png_asset_rejected(client, logo_library):
+    """WR-04: a Pillow-decodable non-PNG (JPEG) is rejected as logo_invalid, not served as PNG.
+
+    The endpoint hardcodes media_type=image/png and place_logo embeds the bytes as PNG, so
+    validation must enforce PNG (D-03) rather than accepting any decodable format. A JPEG that
+    decodes fine must NOT pass: it is skipped from list_logos and a direct /image fetch is 422.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGB", (40, 20), (0, 128, 0)).save(buf, format="JPEG")
+    (logo_library / "shot.jpg").write_bytes(buf.getvalue())
+    manifest = [
+        {"id": "placeholder", "file": "placeholder.png", "name": "預設商標", "tags": []},
+        {"id": "jpeg", "file": "shot.jpg", "name": "JPEG", "tags": []},
+    ]
+    (logo_library / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    # Skipped from the catalog: only the genuine PNG survives.
+    ids = [e["id"] for e in client.get("/logos").json()["logos"]]
+    assert ids == ["placeholder"]
+
+    # Direct resolve of the non-PNG id is a structured 422 logo_invalid (not served as PNG).
+    r = client.get("/logos/jpeg/image")
+    assert r.status_code == 422
+    assert r.json()["detail"]["code"] == "logo_invalid"
+
+
 def test_bad_asset_skipped_from_list(client, logo_library, logo_png_bytes):
     """A manifest entry whose file is missing/corrupt is SKIPPED from list_logos, not fatal."""
     # Append a second entry pointing at a missing file + a corrupt file.

@@ -89,9 +89,16 @@ def _resolve_path(entry: dict) -> Path:
 def _validate_png(path: Path) -> None:
     """Confirm ``path`` is a decodable PNG within the size cap; else raise LogoError.
 
-    File-size cap (T-03-02) is checked BEFORE decode. Pillow ``verify()`` rejects a corrupt
-    file and (via ``Image.MAX_IMAGE_PIXELS``) a decompression bomb. Raises ``logo_unreadable``
-    on any decode failure so the caller can skip (list) or surface a 422 (resolve).
+    File-size cap (T-03-02) is checked BEFORE decode. The decoded format MUST be PNG (WR-04 /
+    D-03 "PNG 去背 with alpha"): the image endpoint serves the bytes with a hardcoded
+    ``media_type="image/png"`` and ``place_logo`` embeds them as PNG, so a JPEG/GIF/TIFF that
+    merely happens to decode would make the served Content-Type a lie and feed the wrong
+    assumptions into placement. We therefore reject any non-PNG with ``logo_invalid``. Pillow
+    ``verify()`` rejects a corrupt file and (via ``Image.MAX_IMAGE_PIXELS``) a decompression
+    bomb. Raises ``logo_unreadable`` on any decode failure so the caller can skip (list) or
+    surface a 422 (resolve).
+
+    Note: ``verify()`` invalidates the image object, so we read ``.format`` BEFORE calling it.
     """
     try:
         size = path.stat().st_size
@@ -101,7 +108,12 @@ def _validate_png(path: Path) -> None:
         raise LogoError("logo_invalid", "商標檔案過大。")
     try:
         with Image.open(path) as img:
+            fmt = img.format
+            if fmt != "PNG":
+                raise LogoError("logo_invalid", "商標檔案必須為 PNG 格式。")
             img.verify()
+    except LogoError:
+        raise
     except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError) as err:
         raise LogoError("logo_unreadable", "商標檔案無法讀取。") from err
 
