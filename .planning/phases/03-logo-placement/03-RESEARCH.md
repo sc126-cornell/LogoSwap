@@ -406,16 +406,16 @@ export async function listLogos() {
 | A2 | An absent or empty `logos/`/`manifest.json` should yield `GET /logos → {"logos": []}` and a picker empty-state, not an error; with no logo selectable the flow degrades to pure removal (Phase 2). | §Code Examples, §Runtime State | If the team wants a hard "library required" failure instead, the empty-state behavior differs. Discretion item per CONTEXT ("未選 logo 時的行為"). |
 | A3 | The logo picker lives as a **new section within the existing `aside#side-panel`** alongside the region list (the UI-SPEC reserved this column for "Phase 3's logo picker"). Exact placement (above/below the region list, or a tab) is Claude's discretion. | §Architecture, §Validation | Layout-only; no functional risk. Confirmed-compatible with the reserved-column contract. |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **Thumbnail source for the grid (D-05)**
    - What we know: the picker is a thumbnail grid; logos are PNGs in `logos/`.
    - What's unclear: whether thumbnails are (a) the full PNG served via a `GET /logos/{id}/thumb` (or static) and CSS-scaled, or (b) pre-generated. For a small fixed library, serving the full PNG and CSS-scaling is simplest.
-   - Recommendation: serve the logo image via a dedicated `GET /logos/{id}/image` endpoint (same allowlist resolution) and CSS-scale into the grid; defer pre-generated thumbnails unless the library grows large. Keep the seam in `api.js` (a `logoImageURL(id)` builder, like `pageImageURL`).
+   - **RESOLVED:** serve the full PNG via a dedicated `GET /logos/{id}/image` endpoint (same manifest-allowlist resolution) and CSS-scale it into the grid; defer pre-generated thumbnails unless the library grows large. The seam lives in `api.js` as a `logoImageURL(id)` builder (like `pageImageURL`). Implemented in plan 03-01.
 
 2. **Manifest schema exactness (Claude's discretion)**
    - What we know: each entry needs at least `id`, `file`, display `name`; optional size/variant tags.
-   - Recommendation: `{ "id": "acme-horizontal", "file": "acme-horizontal.png", "name": "ACME 橫式", "native_w": 0, "native_h": 0, "tags": [] }`. Validate `id` is unique and matches a safe charset; `file` is a bare basename that exists and is a valid PNG (Pillow).
+   - **RESOLVED:** schema `{ "id": "acme-horizontal", "file": "acme-horizontal.png", "name": "ACME 橫式", "native_w": 0, "native_h": 0, "tags": [] }`; `id` is unique and matches a safe charset, `file` is a bare basename that exists and is a valid PNG (Pillow). Locked by the plan 03-01 manifest fixture.
 
 ## Environment Availability
 
