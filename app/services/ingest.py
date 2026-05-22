@@ -22,9 +22,14 @@ from .. import config, storage
 from ..models import SessionInfo
 from . import pdf_engine
 
-# PDF magic header. Real PDFs start with "%PDF-" (optionally after a few junk bytes,
-# but we accept it appearing within the first small window to be lenient about BOMs).
+# PDF magic header. Real PDFs start with "%PDF-" at the very start, though the spec
+# tolerates a few junk/BOM bytes before it. We therefore require the header to appear
+# at a SMALL leading offset, not merely "somewhere in the first 1 KB" (WR-05) — the
+# latter let a non-PDF polyglot whose first kilobyte merely contained the bytes "%PDF-"
+# pass the type sniff.
 _PDF_MAGIC = b"%PDF-"
+# Max bytes of leading junk tolerated before the header (covers a UTF-8/UTF-16 BOM).
+_PDF_MAGIC_MAX_OFFSET = 8
 
 
 class IngestError(Exception):
@@ -37,9 +42,15 @@ class IngestError(Exception):
 
 
 def _looks_like_pdf(data: bytes) -> bool:
-    """Content-sniff a PDF header; do NOT trust the filename extension (T-01-06)."""
-    head = data[:1024]
-    return _PDF_MAGIC in head
+    """Content-sniff a PDF header; do NOT trust the filename extension (T-01-06).
+
+    The header must appear at a small leading offset (allowing a BOM/few junk bytes),
+    not anywhere in the first kilobyte — otherwise an unrelated payload that merely
+    contains "%PDF-" early on would falsely sniff as a PDF (WR-05). The real parse step
+    (:func:`pdf_engine.open_pdf`) remains the authoritative backstop.
+    """
+    offset = data[: 1024].find(_PDF_MAGIC)
+    return 0 <= offset <= _PDF_MAGIC_MAX_OFFSET
 
 
 def ingest_upload(filename: str, data: bytes) -> SessionInfo:

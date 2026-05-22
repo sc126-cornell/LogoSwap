@@ -56,6 +56,32 @@ def test_ingest_empty_bytes_rejected():
     assert exc.value.code == "empty_file"
 
 
+def test_ingest_pdf_magic_buried_past_offset_is_unsupported(monkeypatch):
+    # WR-05: a non-PDF whose first KB merely CONTAINS "%PDF-" (well past the leading
+    # window) must be rejected at the type sniff, not passed to the parser.
+    payload = b"X" * 64 + b"%PDF-1.7\n%%EOF"  # %PDF- at offset 64, beyond the 8-byte window
+    with pytest.raises(IngestError) as exc:
+        ingest.ingest_upload("polyglot.pdf", payload)
+    assert exc.value.code == "unsupported_type"
+
+
+def test_ingest_pdf_magic_after_small_bom_still_sniffs_as_pdf():
+    # A 3-byte UTF-8 BOM before the header is within tolerance: sniff must accept it and
+    # let the parser decide (here it is unparseable, so corrupt_pdf — proving it got past sniff).
+    payload = b"\xef\xbb\xbf%PDF-1.7 then garbage \x00\x01 no xref"
+    with pytest.raises(IngestError) as exc:
+        ingest.ingest_upload("bom.pdf", payload)
+    assert exc.value.code == "corrupt_pdf"  # passed the sniff, failed the real parse
+
+
+def test_looks_like_pdf_offset_boundaries():
+    # Direct unit check on the sniff helper's leading-offset rule.
+    assert ingest._looks_like_pdf(b"%PDF-1.7 ...") is True  # offset 0
+    assert ingest._looks_like_pdf(b"12345678%PDF-") is True  # offset 8 (inclusive bound)
+    assert ingest._looks_like_pdf(b"123456789%PDF-") is False  # offset 9 (just over)
+    assert ingest._looks_like_pdf(b"no header here at all") is False
+
+
 def test_ingest_oversize_rejected_with_limit_in_message(monkeypatch):
     # Shrink the limit so we don't have to build a 50 MB payload.
     monkeypatch.setattr(config, "MAX_UPLOAD_BYTES", 10)
