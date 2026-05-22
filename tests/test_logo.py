@@ -202,6 +202,52 @@ def test_logo_id_path_traversal_rejected(client, logo_library):
         assert r.json()["detail"]["code"] == "logo_not_found", bad_id
 
 
+def test_corrupt_logo_degrades_to_pure_removal(valid_pdf_bytes, logo_library):
+    """WR-02: a logo that fails to resolve at process time degrades to pure removal, not abort.
+
+    The picker only surfaces ids that passed list-time validation, but the asset can be
+    corrupted/replaced on disk between list and process. The redaction + export must still
+    complete (D-04 / A2 philosophy) and the result reports logo_skipped=True so the frontend
+    can notify the user the logo was not placed — WITHOUT losing the run.
+    """
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    px_rect = _job_px_rect(dpi)
+    # Corrupt the asset on disk AFTER it was (notionally) listed as valid.
+    (logo_library / "placeholder.png").write_bytes(b"not a real png")
+
+    spec = JobSpec(dpi=dpi, regions=[{"page": 0, "px_rect": px_rect}], logo_id="placeholder")
+    result = pipeline.process_job(sid, spec)
+
+    # The job completed (pure removal) and flagged the skipped logo.
+    assert result["logo_skipped"] is True
+    out = pipeline.output_path(sid)
+    assert out.is_file(), "redaction + export must still produce the output PDF"
+
+    doc = pdf_engine.open_pdf(out.read_bytes())
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        target = coords.pixels_to_pdf_rect(px_rect, dpi, page)
+        rt = (target.x0, target.y0, target.x1, target.y1)
+        # True removal still happened; no logo embedded (pure removal).
+        assert pdf_engine.get_text_words_in_rect(page, rt) == []
+        assert page.get_images() == [], "no logo placed when the asset could not be resolved"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_logo_skipped_false_on_clean_placement(valid_pdf_bytes, logo_library):
+    """WR-02: a successful placement reports logo_skipped=False (and a no-logo job too)."""
+    sid = _ingest(valid_pdf_bytes)
+    px_rect = _job_px_rect(200)
+    spec = JobSpec(dpi=200, regions=[{"page": 0, "px_rect": px_rect}], logo_id="placeholder")
+    assert pipeline.process_job(sid, spec)["logo_skipped"] is False
+
+    sid2 = _ingest(valid_pdf_bytes)
+    spec2 = JobSpec(dpi=200, regions=[{"page": 0, "px_rect": px_rect}])
+    assert pipeline.process_job(sid2, spec2)["logo_skipped"] is False
+
+
 def test_non_png_asset_rejected(client, logo_library):
     """WR-04: a Pillow-decodable non-PNG (JPEG) is rejected as logo_invalid, not served as PNG.
 

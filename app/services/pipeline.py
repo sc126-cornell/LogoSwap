@@ -94,6 +94,7 @@ def process_job(session_id: str, job_spec) -> dict:
           "output_filename": "原名_logoswap.pdf",
           "page_count": <unchanged>,
           "regions": [{"page": int, "removed": bool, "clamped": bool}, ...],
+          "logo_skipped": bool,  # WR-02: a requested logo could not be placed (pure removal)
         }
 
     Raises :class:`PipelineError` for an out-of-range page index, and propagates
@@ -141,14 +142,23 @@ def process_job(session_id: str, job_spec) -> dict:
         results: list[dict] = []
 
         # Resolve the OPTIONAL global logo ONCE outside the loop (D-01): a manifest-allowlist
-        # lookup yielding validated PNG bytes (logo.resolve raises LogoError -> 4xx via main.py,
-        # mirroring the RedactError propagation; we do NOT catch it here). logo_xref tracks the
-        # embedded image so the 2nd+ placements reuse it instead of re-embedding (Pitfall 4).
-        logo_bytes = (
-            logo.resolve(job_spec.logo_id)
-            if getattr(job_spec, "logo_id", None)
-            else None
-        )
+        # lookup yielding validated PNG bytes. WR-02: placement is BEST-EFFORT and degrades
+        # gracefully to pure removal — consistent with the catalog's "empty/missing library ->
+        # pure removal" philosophy (A2 / D-04). The picker only ever surfaces ids that passed
+        # validation at list time, but an asset can be replaced/corrupted on disk (or
+        # MAX_LOGO_BYTES lowered) between the list call and this process call. Rather than abort
+        # an otherwise-valid redaction job (losing ALL the user's framing work over a
+        # logo-library problem unrelated to it), we catch LogoError here, skip placement, and
+        # surface a per-job ``logo_skipped`` flag the frontend can act on. The redaction + export
+        # still complete (pure removal). A logo_not_found from a stale/cleared selection likewise
+        # degrades rather than failing the whole run.
+        logo_bytes = None
+        logo_skipped = False
+        if getattr(job_spec, "logo_id", None):
+            try:
+                logo_bytes = logo.resolve(job_spec.logo_id)
+            except logo.LogoError:
+                logo_skipped = True
         logo_xref = 0
 
         for region in job_spec.regions:
@@ -224,4 +234,8 @@ def process_job(session_id: str, job_spec) -> dict:
         "output_filename": out_name,
         "page_count": n_pages,
         "regions": results,
+        # WR-02: true only when a logo was REQUESTED but could not be resolved/placed; the
+        # redaction + export still completed (pure removal). The frontend surfaces a notice so
+        # the user knows the logo was not placed without losing the run.
+        "logo_skipped": logo_skipped,
     }
