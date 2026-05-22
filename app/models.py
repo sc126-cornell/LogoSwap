@@ -81,10 +81,21 @@ class JobSpec(BaseModel):
     contract's ``X-Render-Dpi`` header) so server and client cannot disagree on scale.
     Validated into ``[MIN_DPI, MAX_DPI]`` and ``len(regions) <= MAX_REGIONS`` to bound
     redaction cost (DoS T-02-04). An empty ``regions`` list is allowed (a no-op export).
+
+    ``logo_id`` is the OPTIONAL global logo (Phase 3, D-01): when present, the same logo is
+    placed into every removed region; when null/absent the job is pure removal (Phase-2
+    behavior). It is resolved server-side via the ``logo.py`` manifest allowlist (a dict key,
+    never a path — T-03-01), so no charset validator is needed for safety; the ``max_length``
+    is cheap defense-in-depth against absurd inputs (V5).
     """
 
     dpi: int = Field(..., ge=config.MIN_DPI, le=config.MAX_DPI)
     regions: List[RegionMark] = Field(default_factory=list)
+    logo_id: str | None = Field(
+        default=None,
+        max_length=128,
+        description="optional global logo id (D-01); resolved via manifest allowlist",
+    )
 
     @field_validator("regions")
     @classmethod

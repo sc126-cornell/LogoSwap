@@ -230,6 +230,44 @@ def apply_redactions(
     page.apply_redactions(text=text, graphics=graphics, images=images)
 
 
+def place_logo(
+    page: "fitz.Page",
+    rect: "fitz.Rect",
+    *,
+    stream: bytes | None = None,
+    xref: int = 0,
+) -> int:
+    """Place a logo into ``rect`` (the SAME unrotated-page Rect the removal used).
+
+    Centered + aspect-preserved (``keep_proportion=True`` → contain + center, D-02 / LOGO-02,
+    live-verified default) and painted ON TOP of the cleaned content (``overlay=True``). MUST
+    be called AFTER :func:`apply_redactions` (i.e. after ``redact.remove_region`` returns) so
+    the logo is not itself redacted away (Pitfall 1).
+
+    First placement: pass ``stream=<png bytes>`` (validated by ``logo.py``); returns the
+    embedded image ``xref``. Subsequent placements of the SAME global logo (D-01): pass
+    ``xref=<that value>`` and omit ``stream`` so PyMuPDF references the already-embedded object
+    instead of re-embedding the PNG per region — avoids file bloat (Pitfall 4 / verified dedup).
+    """
+    return page.insert_image(
+        rect,
+        stream=stream,
+        xref=xref,
+        keep_proportion=True,   # contain + center (LOGO-02) — verified
+        overlay=True,           # paint ON TOP of the cleaned content — verified default
+    )
+
+
+def get_image_rects(page: "fitz.Page", xref: int) -> list:
+    """Return the placed bbox(es) of the embedded image ``xref`` on ``page``.
+
+    Thin wrapper over ``page.get_image_rects(xref)`` (mirrors :func:`get_text_words_in_rect`)
+    so the LOGO-02 placement test can assert the inserted logo's bbox is contained in the
+    target rect and aspect-preserved WITHOUT importing fitz (AGPL seam, threat T-02-03).
+    """
+    return page.get_image_rects(xref)
+
+
 def get_text_words_in_rect(
     page: "fitz.Page", rect: tuple[float, float, float, float]
 ) -> list:

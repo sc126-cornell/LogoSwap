@@ -54,6 +54,12 @@ async def process_session(session_id: str, job: JobSpec) -> dict:
     session -> 404; a malformed ``JobSpec`` -> 422 (Pydantic) shaped via the validation
     handler; a residual-content / pipeline failure -> typed 4xx (handled in main.py), never
     a bare 500.
+
+    ``job`` may carry an optional global ``logo_id`` (Phase 3, D-01): when present the same
+    logo is placed into every removed region (resolved via the ``logo.py`` manifest allowlist;
+    an unknown id surfaces as a typed ``LogoError`` -> 4xx via the main.py handler); when
+    null/absent the job is pure removal (Phase-2 behavior). The handler is otherwise unchanged
+    — it passes the whole validated ``JobSpec`` through to ``pipeline.process_job``.
     """
     _require_session(session_id)
     # process_job opens the work copy, maps+clamps, redacts, saves work + outputs. It is

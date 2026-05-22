@@ -29,7 +29,7 @@ import unicodedata
 from pathlib import Path
 
 from .. import storage
-from . import coords, pdf_engine, redact, render
+from . import coords, logo, pdf_engine, redact, render
 
 # WR-05: the export stem is the (possibly CJK) display name and is reflected into the
 # Content-Disposition header. Bound it so a 10 KB name cannot reach the header, and below we
@@ -140,6 +140,17 @@ def process_job(session_id: str, job_spec) -> dict:
         n_pages = pdf_engine.page_count(doc)
         results: list[dict] = []
 
+        # Resolve the OPTIONAL global logo ONCE outside the loop (D-01): a manifest-allowlist
+        # lookup yielding validated PNG bytes (logo.resolve raises LogoError -> 4xx via main.py,
+        # mirroring the RedactError propagation; we do NOT catch it here). logo_xref tracks the
+        # embedded image so the 2nd+ placements reuse it instead of re-embedding (Pitfall 4).
+        logo_bytes = (
+            logo.resolve(job_spec.logo_id)
+            if getattr(job_spec, "logo_id", None)
+            else None
+        )
+        logo_xref = 0
+
         for region in job_spec.regions:
             page_no = region.page
             if page_no < 0 or page_no >= n_pages:
@@ -173,6 +184,19 @@ def process_job(session_id: str, job_spec) -> dict:
             )
             pdf_rect = coords.pixels_to_pdf_rect(clamped_px, effective_dpi, page)
             removed = redact.remove_region(page, pdf_rect)
+
+            # Place the logo STRICTLY AFTER remove_region (which runs apply_redactions
+            # internally) so it is not redacted away (Pitfall 1), on the SAME pdf_rect, and
+            # REGARDLESS of `removed` (the user framed it as a replacement target — A1).
+            # First placement embeds (stream=bytes) and returns the xref; subsequent regions
+            # reuse that xref (stream=None) to dedup the one global logo (D-01 / Pitfall 4).
+            if logo_bytes is not None:
+                logo_xref = pdf_engine.place_logo(
+                    page,
+                    pdf_rect,
+                    stream=(logo_bytes if logo_xref == 0 else None),
+                    xref=logo_xref,
+                )
 
             results.append(
                 {"page": page_no, "removed": removed, "clamped": was_clamped}
