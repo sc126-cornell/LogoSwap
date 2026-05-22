@@ -31,7 +31,7 @@
 
 Plans:
 **Wave 1**
-- [ ] 01-01: 後端骨架(FastAPI)、檔案上傳與儲存、三目錄隔離、PyMuPDF 頁面渲染 API(get_pixmap + 頁面 metadata)
+- [x] 01-01: 後端骨架(FastAPI)、檔案上傳與儲存、三目錄隔離、PyMuPDF 頁面渲染 API(get_pixmap + 頁面 metadata)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02: 前端預覽介面 — 顯示伺服器渲染頁面、多頁切換、縮放
@@ -105,7 +105,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. 輸入與預覽骨幹 | 0/2 | Not started | - |
+| 1. 輸入與預覽骨幹 | 1/2 | In Progress|  |
 | 2. 框選與真正移除(向量)+ 下載 | 0/3 | Not started | - |
 | 3. 商標置入 | 0/2 | Not started | - |
 | 4. 點陣圖與圖片型檔案支援 | 0/2 | Not started | - |

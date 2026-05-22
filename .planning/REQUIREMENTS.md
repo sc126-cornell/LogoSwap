@@ -9,15 +9,15 @@
 
 ### 上傳與輸入 (UPLOAD)
 
-- [ ] **UPLOAD-01**: 使用者可上傳單一向量 PDF 進行處理
+- [x] **UPLOAD-01**: 使用者可上傳單一向量 PDF 進行處理
 - [ ] **UPLOAD-02**: 使用者可上傳圖片型(點陣/掃描)PDF 進行處理
 - [ ] **UPLOAD-03**: 使用者可上傳獨立影像檔(PNG/JPG/TIFF),系統將其正規化為可處理的單頁文件
-- [ ] **UPLOAD-04**: 系統保留原始檔案不被修改,所有結果輸出為新檔
+- [x] **UPLOAD-04**: 系統保留原始檔案不被修改,所有結果輸出為新檔
 
 ### 預覽 (PREVIEW)
 
-- [ ] **PREVIEW-01**: 使用者可在瀏覽器中預覽上傳的檔案內容
-- [ ] **PREVIEW-02**: 使用者可在多頁文件之間切換瀏覽
+- [x] **PREVIEW-01**: 使用者可在瀏覽器中預覽上傳的檔案內容
+- [x] **PREVIEW-02**: 使用者可在多頁文件之間切換瀏覽
 
 ### 框選 (REGION)
 
@@ -74,10 +74,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| UPLOAD-01 | Phase 1 | Pending |
-| UPLOAD-04 | Phase 1 | Pending |
-| PREVIEW-01 | Phase 1 | Pending |
-| PREVIEW-02 | Phase 1 | Pending |
+| UPLOAD-01 | Phase 1 | Complete |
+| UPLOAD-04 | Phase 1 | Complete |
+| PREVIEW-01 | Phase 1 | Complete |
+| PREVIEW-02 | Phase 1 | Complete |
 | REGION-01 | Phase 2 | Pending |
 | REGION-02 | Phase 2 | Pending |
 | REMOVE-01 | Phase 2 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 1 context gathered (post-plan discuss; plans need revision)
-last_updated: "2026-05-22T06:10:45.272Z"
-last_activity: 2026-05-22 -- Phase 1 planning complete
+stopped_at: Completed 01-01-PLAN.md (backend skeleton)
+last_updated: "2026-05-22T06:37:06.485Z"
+last_activity: 2026-05-22
 progress:
   total_phases: 5
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -26,29 +26,29 @@ See: .planning/PROJECT.md (updated 2026-05-22)
 ## Current Position
 
 Phase: 1 of 5 (輸入與預覽骨幹)
-Plan: 0 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-05-22 -- Phase 1 planning complete
+Plan: 1 of 2 in current phase
+Status: 01-01 backend complete; 01-02 (frontend preview) next
+Last activity: 2026-05-22 -- executed 01-01 (FastAPI backend skeleton)
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█████░░░░░] 50%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
-- Average duration: —
-- Total execution time: 0 hours
+- Total plans completed: 1
+- Average duration: ~30 min
+- Total execution time: ~0.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| Phase 1 P01 | 1 | 30 min (2 tasks, 21 files) | 30 min |
 
 **Recent Trend:**
 
-- Last 5 plans: —
+- Last 5 plans: 01-01 (30 min)
 - Trend: —
 
 *Updated after each plan completion*
@@ -65,6 +65,8 @@ Recent decisions affecting current work:
 - 移除後置入固定商標庫中的我司 logo 圖檔
 - 以 PyMuPDF 為核心(redaction 做真正移除)
 - v1 獨立工具、內網免登入
+- [Phase 1]: Python 3.14.4 viable: PyMuPDF 1.27.2.3 installs via cp310-abi3 wheel (no source build needed)
+- [Phase 1]: Backend exposes server-authoritative render metadata (DPI + page_w/h_pt + rotation + img_w/h) via headers and /meta for the Phase 2 coordinate seam
 
 ### Pending Todos
 
@@ -86,6 +88,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T06:10:45.258Z
-Stopped at: Phase 1 context gathered (post-plan discuss; plans need revision)
-Resume file: .planning/phases/01-input-preview/01-CONTEXT.md
+Last session: 2026-05-22T06:36:48.821Z
+Stopped at: Completed 01-01-PLAN.md (backend skeleton)
+Resume file: None
