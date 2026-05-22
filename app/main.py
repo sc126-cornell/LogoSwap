@@ -17,13 +17,16 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config
-from .api import pages, sessions
+from .api import pages, process, sessions
 from .services.ingest import IngestError
 from .services.pdf_engine import PdfEngineError
+from .services.pipeline import PipelineError
+from .services.redact import RedactError
 from .services.render import RenderError
 from .storage import InvalidSessionId
 
@@ -32,6 +35,7 @@ app = FastAPI(title=config.API_TITLE)
 # Routers (thin handlers; logic in services/).
 app.include_router(sessions.router)
 app.include_router(pages.router)
+app.include_router(process.router)
 
 # Ingest error code -> HTTP status (mirrors api/sessions.py table).
 _INGEST_STATUS: dict[str, int] = {
@@ -73,6 +77,35 @@ async def _handle_invalid_session_id(_request: Request, exc: InvalidSessionId) -
     )
 
 
+# Phase-2 pipeline/redact error code -> HTTP status. A residual-content failure means the
+# true-removal guarantee could not be met for a region; a bad page index in the JobSpec is a
+# client request error. Both are 4xx (input/processing problems), never a bare 500 that would
+# leak internals or kill a worker (threat T-02-08).
+_PROCESS_STATUS: dict[str, int] = {
+    "residual_content": 422,
+    "page_out_of_range": 422,
+    "work_copy_misconfigured": 500,  # internal invariant breach (should never happen)
+}
+
+
+@app.exception_handler(RedactError)
+async def _handle_redact_error(_request: Request, exc: RedactError) -> JSONResponse:
+    status = _PROCESS_STATUS.get(exc.code, 422)
+    return JSONResponse(
+        status_code=status,
+        content={"detail": {"code": exc.code, "message": exc.message}},
+    )
+
+
+@app.exception_handler(PipelineError)
+async def _handle_pipeline_error(_request: Request, exc: PipelineError) -> JSONResponse:
+    status = _PROCESS_STATUS.get(exc.code, 422)
+    return JSONResponse(
+        status_code=status,
+        content={"detail": {"code": exc.code, "message": exc.message}},
+    )
+
+
 @app.exception_handler(PdfEngineError)
 async def _handle_engine_error(_request: Request, exc: PdfEngineError) -> JSONResponse:
     # A parser failure that reached the handler means we treat the input as corrupt
@@ -80,6 +113,25 @@ async def _handle_engine_error(_request: Request, exc: PdfEngineError) -> JSONRe
     return JSONResponse(
         status_code=422,
         content={"detail": {"code": "corrupt_pdf", "message": "PDF 檔案損壞或無法解析。"}},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def _handle_validation_error(
+    _request: Request, exc: RequestValidationError
+) -> JSONResponse:
+    # FastAPI's default 422 body is ``{"detail": [<error list>]}``; reshape it to the
+    # project-wide ``{"detail": {"code", "message"}}`` so every error the frontend sees has
+    # a stable ``detail.code`` (here ``invalid_request``). The first error's location +
+    # message is summarized for the human-readable field; the full list never leaks as a 500.
+    errors = exc.errors()
+    first = errors[0] if errors else {}
+    loc = ".".join(str(p) for p in first.get("loc", []) if p != "body")
+    msg = first.get("msg", "請求內容格式不正確。")
+    detail_msg = f"{loc}: {msg}" if loc else msg
+    return JSONResponse(
+        status_code=422,
+        content={"detail": {"code": "invalid_request", "message": detail_msg}},
     )
 
 
