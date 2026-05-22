@@ -57,11 +57,6 @@ const COPY = {
   apply: "套用移除",
   // before/after
   noResultYet: "尚無移除結果,請先套用移除",
-  // Conditional after-label (D-06): with a logo selected the result is remove+place, else
-  // pure removal. Set via textContent on #view-result — never hardcoded in HTML.
-  resultLabelWithLogo: "移除+置入結果",
-  resultLabelNoLogo: "移除結果",
-  beforeafterAria: "切換處理前後對照",
   // notices / errors
   nothingRemoved:
     "框選區域內沒有可移除的內容。請確認框選位置,或此頁可能為圖片型(將於後續版本支援)。",
@@ -100,9 +95,6 @@ const noticeEl = document.getElementById("region-notice");
 const noticeBodyEl = document.getElementById("region-notice-body");
 const noticeRetryBtn = document.getElementById("region-notice-retry");
 
-const beforeafterToggle = document.getElementById("beforeafter-toggle");
-const viewOriginalBtn = document.getElementById("view-original");
-const viewResultBtn = document.getElementById("view-result");
 
 const actionGroup = document.getElementById("action-group");
 const actionStatusEl = document.getElementById("action-status");
@@ -528,25 +520,10 @@ function updateActionGroup() {
     downloadBtn.hidden = total === 0; // only meaningful once the user is in the flow
   }
 
-  // The result segment is only selectable when a fresh result exists.
-  viewResultBtn.disabled = !resultFresh && viewMode !== "result";
-  // Keep its label in sync with the current logo selection (D-06).
-  refreshResultLabel();
 }
 
 function setActionStatus(text) {
   actionStatusEl.textContent = text || "";
-}
-
-// Conditional after-label (D-06 / UI-SPEC default #6): the #view-result segment reads
-// "移除+置入結果" when a logo is selected, else "移除結果". Set via textContent in JS so the
-// HTML default ("移除結果") is never the source of truth. The toggle mechanics are unchanged —
-// the work-copy render already contains the placed logo (zero new rendering).
-function refreshResultLabel() {
-  const hasLogo = Boolean(getSelectedLogoId()) || isAutoLogo();
-  viewResultBtn.textContent = hasLogo
-    ? COPY.resultLabelWithLogo
-    : COPY.resultLabelNoLogo;
 }
 
 // ---- Inline notice / error ---------------------------------------------------------
@@ -571,7 +548,10 @@ function hideNotice() {
   noticeRetryBtn.onclick = null;
 }
 
-// ---- Before/after toggle -----------------------------------------------------------
+// ---- View swap (internal) ----------------------------------------------------------
+// The before/after toggle BUTTONS were removed (UAT) — but viewMode still drives which image is
+// shown: apply -> "result" (the after-image), any edit/clear -> back to "original". No manual
+// toggle; the framing lock (onPointerDown) keeps a fresh result safe.
 function setViewMode(mode) {
   // Guard: can't show the result without a fresh one.
   if (mode === "result" && !resultFresh) {
@@ -581,11 +561,6 @@ function setViewMode(mode) {
   viewMode = mode;
 
   const showingResult = mode === "result";
-  viewOriginalBtn.classList.toggle("is-selected", !showingResult);
-  viewOriginalBtn.setAttribute("aria-pressed", String(!showingResult));
-  viewResultBtn.classList.toggle("is-selected", showingResult);
-  viewResultBtn.setAttribute("aria-pressed", String(showingResult));
-
   if (showingResult) {
     // Swap the page image to the result render (via the viewer helper + api URL).
     // Pass the current page's rotation so the after-image matches the rotated orientation the
@@ -825,16 +800,6 @@ export function initRegions({ session_id }) {
   ensureOverlay();
   overlay.hidden = false;
 
-  // Reset toggle to 原圖.
-  viewOriginalBtn.classList.add("is-selected");
-  viewOriginalBtn.setAttribute("aria-pressed", "true");
-  viewResultBtn.classList.remove("is-selected");
-  viewResultBtn.setAttribute("aria-pressed", "false");
-  // Broaden the toggle's accessible label so it reads correctly whether or not a logo is
-  // placed (D-06): "切換處理前後對照" covers both pure removal and remove+place.
-  beforeafterToggle.setAttribute("aria-label", COPY.beforeafterAria);
-  refreshResultLabel();
-
   hideNotice();
   setActionStatus("");
   ensureDims(0);
@@ -888,9 +853,6 @@ clearConfirmBtn.addEventListener("click", () => {
   closeClearConfirm();
   clearAllCurrentPage();
 });
-
-viewOriginalBtn.addEventListener("click", () => setViewMode("original"));
-viewResultBtn.addEventListener("click", () => setViewMode("result"));
 
 applyBtn.addEventListener("click", applyRemoval);
 downloadBtn.addEventListener("click", downloadResult);
