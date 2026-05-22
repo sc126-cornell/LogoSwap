@@ -4,8 +4,18 @@ Given an open page and the unrotated-page ``Rect`` the coordinate mapper produce
 :func:`remove_region` TRULY removes the text and vector objects inside it (not a cover):
 it marks the rect (grown ~5pt to catch stroke-wrapper survivors), applies redactions with
 ``text=PDF_REDACT_TEXT_REMOVE`` + ``graphics=PDF_REDACT_LINE_ART_REMOVE_IF_COVERED``, then
-ASSERTS the (unpadded) user rect is empty afterward — raising :class:`RedactError` if any
-extractable content survived.
+ASSERTS the (unpadded) user rect is clean afterward — raising :class:`RedactError` if any
+content that SHOULD have been removed survived.
+
+Vector semantics (CR-02, decided explicitly): ``LINE_ART_REMOVE_IF_COVERED`` removes only
+vector paths whose bbox is FULLY COVERED by the (padded) redaction rect. A CAD line/polyline
+that merely CROSSES the region boundary — extending outside it — is *not* covered and is
+intentionally KEPT (the project's primary use case is a logo sitting on top of CAD linework;
+clipping the through-line would damage wanted geometry). The post-redaction assertion is
+aligned with that contract: it fails only for a vector that remains WHOLLY INSIDE the user
+rect (a genuine survivor of something that should have gone), never for a boundary-crossing
+line that legitimately survives. Text is asserted separately (any extractable word clipped to
+the user rect is the recoverable-supplier-content risk and must be gone).
 
 PURITY (threat T-02-03): this module does NOT import the engine library. Every redaction,
 extraction, and constant is reached through :mod:`app.services.pdf_engine` wrappers, so the
@@ -67,8 +77,11 @@ def remove_region(page, rect) -> bool:
          NOT an error.
       3. Otherwise pad the rect ~5pt, ``add_redact_annot`` (white fill), then
          ``apply_redactions`` with the true-removal flags.
-      4. ASSERT the unpadded rect is now empty of text words AND of intersecting drawings;
-         raise :class:`RedactError("residual_content")` if anything survived.
+      4. ASSERT the unpadded rect now has no extractable text words AND no vector drawing
+         lying WHOLLY INSIDE it; raise :class:`RedactError("residual_content")` only if
+         something that should have been removed survived. A line that merely crosses the
+         region boundary is *expected* to survive (REMOVE_IF_COVERED) and does NOT raise
+         (CR-02).
 
     Returns ``True`` when content was removed, ``False`` when the region was empty to begin
     with.
@@ -108,10 +121,17 @@ def remove_region(page, rect) -> bool:
         images=pdf_engine.IMAGE_NONE,
     )
 
-    # Post-redaction emptiness assertion over the UNPADDED user rect (REMOVE-01).
+    # Post-redaction assertion over the UNPADDED user rect (REMOVE-01), aligned with the
+    # REMOVE_IF_COVERED contract (CR-02):
+    #   - TEXT: any extractable word clipped to the user rect is the recoverable-supplier-
+    #     content risk and must be gone.
+    #   - VECTORS: only a drawing lying WHOLLY INSIDE the user rect is a genuine survivor of
+    #     something that should have been removed. A boundary-crossing line is intentionally
+    #     kept by REMOVE_IF_COVERED (it was never fully covered) and must NOT raise — that is
+    #     the project's primary "logo on CAD linework" case.
     residual_words = pdf_engine.get_text_words_in_rect(page, user_rect)
-    residual_drawings = pdf_engine.get_drawings_intersecting(page, user_rect)
-    if residual_words or residual_drawings:
+    residual_covered_drawings = pdf_engine.get_drawings_fully_inside(page, user_rect)
+    if residual_words or residual_covered_drawings:
         raise RedactError(
             "residual_content",
             "移除後仍偵測到殘留內容(文字或向量),無法保證真正移除。",

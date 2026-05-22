@@ -267,11 +267,17 @@ def get_drawings_intersecting(
 ) -> list:
     """Return vector drawings whose bounding rect intersects ``rect`` (unrotated points).
 
-    Used by the post-redaction emptiness assertion (Pitfall 4): a stroked path that
-    survived redaction would still report a drawing intersecting the (unpadded) user rect.
-    Each drawing dict carries a ``rect`` key (its bbox); we keep only those that overlap the
-    query rect (``get_drawings`` returns ALL paths on the page). The overlap test is
-    inclusive and degenerate-aware so a flat-bbox stroke survivor is NOT missed.
+    A stroked path that survived redaction would still report a drawing intersecting the
+    (unpadded) user rect. Each drawing dict carries a ``rect`` key (its bbox); we keep only
+    those that overlap the query rect (``get_drawings`` returns ALL paths on the page). The
+    overlap test is inclusive and degenerate-aware so a flat-bbox stroke survivor is NOT
+    missed.
+
+    NOTE (CR-02): "intersects" is the wrong test for the post-redaction REMOVAL assertion
+    because ``LINE_ART_REMOVE_IF_COVERED`` intentionally KEEPS a path that merely crosses the
+    rect boundary (it is not fully covered). Use :func:`get_drawings_fully_inside` for that
+    assertion; this inclusive-overlap query remains the right tool for "does any drawing touch
+    the region" UI/diagnostic checks and for the test suite's survivor probes.
     """
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
@@ -284,6 +290,47 @@ def get_drawings_intersecting(
         dr = fitz.Rect(d_rect)
         dr.normalize()
         if _rects_overlap(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            hits.append(drawing)
+    return hits
+
+
+def _rect_contains(
+    outer: tuple[float, float, float, float], inner: tuple[float, float, float, float]
+) -> bool:
+    """True when ``inner``'s bbox lies WHOLLY within ``outer`` (inclusive edges).
+
+    Degenerate-aware: a flat (zero-width/height) stroke bbox still counts as contained when
+    its single line/point falls inside ``outer``. Both are normalized ``(x0,y0,x1,y1)``.
+    """
+    ox0, oy0, ox1, oy1 = outer
+    ix0, iy0, ix1, iy1 = inner
+    return ox0 <= ix0 and oy0 <= iy0 and ix1 <= ox1 and iy1 <= oy1
+
+
+def get_drawings_fully_inside(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> list:
+    """Return vector drawings whose bounding rect lies WHOLLY inside ``rect`` (unrotated pts).
+
+    This is the correct post-redaction REMOVAL assertion for vectors (CR-02): redaction with
+    ``LINE_ART_REMOVE_IF_COVERED`` removes exactly the paths fully covered by the (padded)
+    redaction rect, and intentionally leaves a path that only crosses the boundary. So a path
+    that is still fully inside the user rect AFTER apply_redactions is a genuine survivor (a
+    real failure), whereas a boundary-crossing line is an expected, legitimate survivor and
+    must NOT trip the assertion. The check is degenerate-aware so a flat-bbox stroke fully
+    within the rect is still counted.
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    query = (q.x0, q.y0, q.x1, q.y1)
+    hits = []
+    for drawing in page.get_drawings():
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             hits.append(drawing)
     return hits
 

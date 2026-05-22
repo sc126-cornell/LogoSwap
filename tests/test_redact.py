@@ -113,6 +113,81 @@ def test_remove_region_empty_area_returns_false_not_error(ingested_session):
         pdf_engine.close(doc)
 
 
+def test_remove_region_fully_covered_vector_is_removed(ingested_session):
+    # A vector whose bbox lies WHOLLY inside the user rect must be truly removed (the real
+    # failure mode the residual assertion guards). The conftest line spans x=20..180 at y=100;
+    # a rect covering x=10..190 fully covers it -> removed, no RedactError.
+    work = storage.work_path(ingested_session.session_id)
+    doc, page = _open_page0(work)
+    try:
+        full_px = tuple(v * _SCALE for v in (10.0, 90.0, 190.0, 110.0))
+        rect = coords.pixels_to_pdf_rect(full_px, _DPI, page)
+        rt = (rect.x0, rect.y0, rect.x1, rect.y1)
+        # Pre: a drawing lies fully inside the rect.
+        assert pdf_engine.get_drawings_fully_inside(page, rt), "fixture line not fully inside"
+        assert redact.remove_region(page, rect) is True
+        # Post: no drawing remains fully inside the rect (the covered line is gone).
+        assert pdf_engine.get_drawings_fully_inside(page, rt) == [], "fully-covered vector survived"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_remove_region_boundary_crossing_line_survives_job_succeeds():
+    # CR-02: a CAD line that CROSSES the region boundary (extends beyond it on both sides) is
+    # only partially covered, so REMOVE_IF_COVERED correctly leaves it. The post-redaction
+    # assertion must NOT raise for that legitimate survivor — the job succeeds, removed=True
+    # (the text inside was removed), and the crossing line still intersects the rect.
+    import fitz  # test harness builds the crossing-line fixture
+
+    from app.services import ingest
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # A logo wordmark fully inside the framed region...
+        page.insert_text((90, 150), "LOGO")
+        # ...sitting on a CAD line that runs the full page width, crossing the region on
+        # BOTH sides (x=10..190 through a region we will frame at x≈80..120).
+        page.draw_line(fitz.Point(10, 160), fitz.Point(190, 160))
+        pdf_bytes = doc.tobytes()
+    finally:
+        doc.close()
+
+    sess = ingest.ingest_upload("cadlogo.pdf", pdf_bytes)
+    sid = sess.session_id
+
+    # Frame a narrow region the line crosses: x=80..120pt, y=140..175pt (covers "LOGO" + the
+    # line segment, but the line extends well beyond on both sides).
+    region_px = [v * _SCALE for v in (80.0, 140.0, 120.0, 175.0)]
+    spec = JobSpec(dpi=_DPI, regions=[RegionMark(page=0, px_rect=region_px)])
+
+    # Must NOT raise RedactError("residual_content"); the job succeeds.
+    result = pipeline.process_job(sid, spec)
+    assert result["regions"][0]["removed"] is True
+    assert result["page_count"] == 1
+
+    # The crossing line legitimately survives (it was never fully covered) AND the logo text is
+    # gone. Verify on the exported PDF.
+    out = storage.outputs_dir(sid) / result["output_filename"]
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        rect = coords.pixels_to_pdf_rect(region_px, _DPI, page)
+        rt = (rect.x0, rect.y0, rect.x1, rect.y1)
+        # Text removed (recoverable-supplier-content risk eliminated).
+        assert pdf_engine.get_text_words_in_rect(page, rt) == [], "logo text survived"
+        # The through-line still exists on the page (partially covered -> kept by design).
+        assert pdf_engine.get_drawings_intersecting(page, rt), (
+            "the boundary-crossing line should survive (REMOVE_IF_COVERED)"
+        )
+        # But nothing remains WHOLLY inside the region (the real removal contract).
+        assert pdf_engine.get_drawings_fully_inside(page, rt) == [], (
+            "a fully-covered survivor would be a true failure"
+        )
+    finally:
+        pdf_engine.close(doc)
+
+
 def test_apply_redactions_refuses_text_none():
     # Defence-in-depth: the seam refuses the forbidden PDF_REDACT_TEXT_NONE mode.
     import fitz  # test harness may import fitz directly
