@@ -728,7 +728,10 @@ function onPageChanged(detail) {
     showResultImage(
       api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
     );
-    if (overlay) overlay.hidden = true;
+    // Keep the overlay interactive in result view so the next region can be framed directly on
+    // the after-image (renderOverlay below clears committed rects -> clean before/after). This
+    // onload fires right after an apply's setViewMode("result"); hiding here would re-block draw.
+    if (overlay) overlay.hidden = false;
   } else if (viewMode === "result" && !resultFresh) {
     setViewMode("original");
   }
