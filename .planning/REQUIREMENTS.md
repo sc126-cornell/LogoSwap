@@ -21,8 +21,8 @@
 
 ### 框選 (REGION)
 
-- [ ] **REGION-01**: 使用者可在頁面上以矩形框選一個或多個要處理的區域
-- [ ] **REGION-02**: 使用者可在多頁分別框選不同區域
+- [x] **REGION-01**: 使用者可在頁面上以矩形框選一個或多個要處理的區域
+- [x] **REGION-02**: 使用者可在多頁分別框選不同區域
 
 ### 移除 (REMOVE)
 
@@ -78,8 +78,8 @@
 | UPLOAD-04 | Phase 1 | Complete |
 | PREVIEW-01 | Phase 1 | Complete |
 | PREVIEW-02 | Phase 1 | Complete |
-| REGION-01 | Phase 2 | Pending |
-| REGION-02 | Phase 2 | Pending |
+| REGION-01 | Phase 2 | Complete |
+| REGION-02 | Phase 2 | Complete |
 | REMOVE-01 | Phase 2 | Complete |
 | REMOVE-03 | Phase 2 | Complete |
 | REMOVE-04 | Phase 2 | Complete |

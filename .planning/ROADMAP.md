@@ -11,7 +11,7 @@
 - Decimal phases (2.1, 2.2): Urgent insertions (marked with INSERTED)
 
 - [x] **Phase 1: 輸入與預覽骨幹** - 上傳向量 PDF、伺服器端渲染、瀏覽器多頁預覽,原始檔保留 (completed 2026-05-22)
-- [ ] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載
+- [x] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載 (completed 2026-05-22)
 - [ ] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比)
 - [ ] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白
 - [ ] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理
@@ -57,7 +57,7 @@ Plans:
 - [x] 02-02-PLAN.md — 向量/文字真正移除管線(add_redact_annot + apply_redactions、~5pt padding、移除後抽取斷言)、JobSpec 模型、結果預覽渲染與匯出/下載端點;對 work 副本套用、原始檔永不變(deferred-mutation D-05)
 
 **Wave 3** *(blocked on 02-02)*
-- [ ] 02-03-PLAN.md — 前端矩形框選 overlay、區域清單(跨頁、刪除/清除、可重疊、無控制點)、前後對照切換、套用移除/下載串接(沿用 Phase 1 token、雙主題、繁中文案)
+- [x] 02-03-PLAN.md — 前端矩形框選 overlay、區域清單(跨頁、刪除/清除、可重疊、無控制點)、前後對照切換、套用移除/下載串接(沿用 Phase 1 token、雙主題、繁中文案)
 
 ### Phase 3: 商標置入
 **Goal**: 在移除後的區域放上我司商標。建立固定商標庫供瀏覽挑選,選定的 logo 以維持長寬比的方式置入框選位置。
@@ -112,7 +112,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. 輸入與預覽骨幹 | 2/2 | Complete   | 2026-05-22 |
-| 2. 框選與真正移除(向量)+ 下載 | 2/3 | In Progress|  |
+| 2. 框選與真正移除(向量)+ 下載 | 3/3 | Complete   | 2026-05-22 |
 | 3. 商標置入 | 0/2 | Not started | - |
 | 4. 點陣圖與圖片型檔案支援 | 0/2 | Not started | - |
 | 5. 部署與穩固化(Ubuntu) | 0/2 | Not started | - |

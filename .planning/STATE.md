@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 2 context gathered
-last_updated: "2026-05-22T08:53:01.100Z"
+stopped_at: Completed 02-03-PLAN.md (Phase 2 complete)
+last_updated: "2026-05-22T09:08:50.329Z"
 last_activity: 2026-05-22
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 5
-  completed_plans: 4
-  percent: 80
+  completed_plans: 5
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,12 @@ See: .planning/PROJECT.md (updated 2026-05-22)
 
 ## Current Position
 
-Phase: 2 of 5 (框選與真正移除(向量)+ 下載)
-Plan: 2 of 3 complete (02-01 coords spine + 02-02 true-removal pipeline done; 02-03 region UI next)
-Status: 02-02 complete — true removal proven (region empty after redaction; original SHA-256 unchanged; 140 tests green)
-Last activity: 2026-05-22 -- executed 02-02 (removal pipeline + /process,/result endpoints)
+Phase: 2 of 5 complete (框選與真正移除(向量)+ 下載) — next: Phase 3 商標置入
+Plan: 3 of 3 complete (02-01 coords spine + 02-02 true-removal pipeline + 02-03 region UI all done)
+Status: Phase 2 complete — full user loop wired (draw → 套用移除 → 原圖/移除結果 → 下載 原名_logoswap.pdf); 140 backend tests + smoke green
+Last activity: 2026-05-22 -- executed 02-03 (region selection UI + before/after toggle + download)
 
-Progress: [████████░░] 80%
+Progress: [██████████] 100%
 
 ## Performance Metrics
 
@@ -55,6 +55,7 @@ Progress: [████████░░] 80%
 | Phase 01 P02 | ~16min | 3 tasks | 7 files |
 | Phase 02 P01 | ~35min | 2 tasks | 3 files |
 | Phase 02 P02 | ~8min | 2 tasks | 9 files |
+| Phase 02 P03 | ~9min | 3 tasks | 8 files |
 
 ## Accumulated Context
 
@@ -79,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2-02]: True removal uses fill=None (not white) — a white-fill annot paints a survivor rect that defeats the emptiness assertion; fill=None removes content and paints nothing (REMOVE-01)
 - [Phase ?]: [Phase 2-02]: Post-redaction emptiness assertion over the UNPADDED rect (5pt pad catches stroke wrappers); get_drawings overlap is degenerate-bbox-aware to catch flat stroke survivors (Pitfall 4)
 - [Phase ?]: [Phase 2-02]: /process + result-render + /result endpoints; JobSpec{dpi,regions[{page,px_rect}]} validated contract for 02-03; original SHA-256 proven unchanged (D-05); fitz still only in pdf_engine.py
+- [Phase ?]: [Phase 2-03]: Region rects stored client-side in IMAGE-PIXEL space (imageX = localX × img_w/frameW), anchored to the true render box — zoom-stable and exact against the server px_rect at dpi=200 (deferred-mutation D-05)
+- [Phase ?]: [Phase 2-03]: viewer.js overlay seam is additive — page:changed/page:zoomed CustomEvents + showOriginal/showResult helpers; api.js stays the sole server seam (regions.js never fetches)
+- [Phase ?]: [Phase 2-03]: Action group keeps exactly ONE accent button — 套用移除 until a fresh result, then 下載 PDF; editing invalidates the result (重新套用 + 框選已變更 stale notice, download disabled)
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T08:52:29.771Z
-Stopped at: Phase 2 context gathered
+Last session: 2026-05-22T09:08:50.316Z
+Stopped at: Completed 02-03-PLAN.md (Phase 2 complete)
 Resume file: None
