@@ -46,6 +46,11 @@ MAX_PAGES: int = _env_int("MAX_PAGES", 30)
 # rather than refusing to render. 40 MP * 4 bytes ~= 160 MB upper bound per render.
 MAX_RENDER_PIXELS: int = _env_int("MAX_RENDER_PIXELS", 40 * 1_000_000)
 
+# Per-job region cap (Phase 2 DoS mitigation T-02-04). A /process JobSpec carrying an
+# unbounded ``regions`` list could drive arbitrarily many redact/extract passes; reject
+# over this cap with a 422 rather than doing the work. 200 is generous for manual framing.
+MAX_REGIONS: int = _env_int("MAX_REGIONS", 200)
+
 # Human-readable forms used inside limit-bearing error messages so the frontend can
 # surface the {limit} value. Derived from the byte limit so they never drift.
 MAX_UPLOAD_MB: int = MAX_UPLOAD_BYTES // (1024 * 1024)

@@ -159,6 +159,152 @@ def unrotated_content_box(
     return (box.x0, box.y0, box.x1, box.y1)
 
 
+# --- Redaction seam (Plan 02-02) ------------------------------------------------------
+#
+# The "true removal" pipeline lives behind these wrappers so ``redact.py`` / ``pipeline.py``
+# stay fitz-free (AGPL boundary / threat T-02-03). The redaction enum CONSTANTS are
+# re-exported by name here so callers can pass them without importing fitz:
+#   - TEXT_REMOVE                  = PDF_REDACT_TEXT_REMOVE (the only acceptable text mode;
+#                                    PDF_REDACT_TEXT_NONE *keeps* text and is forbidden,
+#                                    Pitfall 3)
+#   - LINE_ART_REMOVE_IF_COVERED   = PDF_REDACT_LINE_ART_REMOVE_IF_COVERED (vector default,
+#                                    Pitfall 4)
+#   - IMAGE_NONE                   = PDF_REDACT_IMAGE_NONE (raster untouched — Phase 4)
+TEXT_REMOVE = fitz.PDF_REDACT_TEXT_REMOVE
+LINE_ART_REMOVE_IF_COVERED = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED
+IMAGE_NONE = fitz.PDF_REDACT_IMAGE_NONE
+
+
+def map_tuple_to_rect(
+    rect_tuple: tuple[float, float, float, float],
+) -> "fitz.Rect":
+    """Wrap a plain ``(x0, y0, x1, y1)`` tuple into a normalized ``fitz.Rect``.
+
+    ``redact.py`` pads the mapper's Rect in plain floats (staying fitz-free), then hands the
+    padded tuple back through this seam to obtain a usable engine Rect for
+    :func:`add_redact_annot`. Normalized so a (theoretically) inverted tuple still yields a
+    valid Rect.
+    """
+    r = fitz.Rect(rect_tuple[0], rect_tuple[1], rect_tuple[2], rect_tuple[3])
+    r.normalize()
+    return r
+
+
+def add_redact_annot(
+    page: "fitz.Page",
+    rect: "fitz.Rect",
+    fill: tuple[float, float, float] | None = (1.0, 1.0, 1.0),
+) -> None:
+    """Mark ``rect`` for redaction on ``page``.
+
+    A redact annotation is only a MARKER — content is not removed until
+    :func:`apply_redactions` runs (Pitfall 3: covering ≠ removing). ``fill`` is the colour
+    painted into the rectangle after removal: a tuple paints that colour, while ``None``
+    paints NOTHING (the area reads as page background). The vector pipeline passes
+    ``fill=None`` so no cover-rectangle is left behind to survive as a drawing (which would
+    both be a "cover" and defeat the emptiness assertion). ``rect`` MUST already be the
+    padded, unrotated-page Rect the mapper produced.
+    """
+    page.add_redact_annot(rect, fill=fill)
+
+
+def apply_redactions(
+    page: "fitz.Page",
+    *,
+    text: int,
+    graphics: int,
+    images: int,
+) -> None:
+    """Apply all pending redaction annotations on ``page`` — the TRUE-removal step.
+
+    Callers pass the re-exported constants by name (e.g. ``text=pdf_engine.TEXT_REMOVE``)
+    so they never import fitz. ``text=PDF_REDACT_TEXT_REMOVE`` is mandatory; the wrapper
+    refuses ``PDF_REDACT_TEXT_NONE`` (which would KEEP text — Pitfall 3 / threat T-02-07)
+    as a defence-in-depth guard so a forbidden mode can never silently ship extractable
+    supplier content even if a caller passed it.
+    """
+    if text == fitz.PDF_REDACT_TEXT_NONE:
+        raise PdfEngineError(
+            "拒絕使用 PDF_REDACT_TEXT_NONE:該模式會保留文字,違反真正移除要求。"
+        )
+    page.apply_redactions(text=text, graphics=graphics, images=images)
+
+
+def get_text_words_in_rect(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> list:
+    """Return the text WORDS whose bbox intersects ``rect`` (unrotated-page points).
+
+    Used by the post-redaction emptiness assertion (Pitfall 3): after applying redactions
+    the words clipped to the user's UNPADDED rect must be empty. ``get_text("words", clip=)``
+    returns a list of ``(x0, y0, x1, y1, word, block, line, word_no)`` tuples.
+    """
+    clip = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    return page.get_text("words", clip=clip)
+
+
+def _rects_overlap(
+    a: tuple[float, float, float, float], b: tuple[float, float, float, float]
+) -> bool:
+    """Inclusive AABB overlap test that treats DEGENERATE (flat) rects as real.
+
+    ``fitz.Rect.intersects`` returns ``False`` for an empty (zero-area) rect, but a
+    horizontal/vertical stroke (a logo outline, a CAD line) has a zero-HEIGHT or
+    zero-WIDTH bounding box — exactly the survivor the post-redaction assertion must catch
+    (Pitfall 4). So we test interval overlap on each axis inclusively: the drawing counts
+    as intersecting the query if their x-ranges overlap AND their y-ranges overlap. ``a``/``b``
+    are normalized ``(x0, y0, x1, y1)`` with ``x0<=x1``, ``y0<=y1``.
+    """
+    ax0, ay0, ax1, ay1 = a
+    bx0, by0, bx1, by1 = b
+    x_overlap = ax0 <= bx1 and bx0 <= ax1
+    y_overlap = ay0 <= by1 and by0 <= ay1
+    return x_overlap and y_overlap
+
+
+def get_drawings_intersecting(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> list:
+    """Return vector drawings whose bounding rect intersects ``rect`` (unrotated points).
+
+    Used by the post-redaction emptiness assertion (Pitfall 4): a stroked path that
+    survived redaction would still report a drawing intersecting the (unpadded) user rect.
+    Each drawing dict carries a ``rect`` key (its bbox); we keep only those that overlap the
+    query rect (``get_drawings`` returns ALL paths on the page). The overlap test is
+    inclusive and degenerate-aware so a flat-bbox stroke survivor is NOT missed.
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    query = (q.x0, q.y0, q.x1, q.y1)
+    hits = []
+    for drawing in page.get_drawings():
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        if _rects_overlap(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            hits.append(drawing)
+    return hits
+
+
+def save_doc(
+    doc: "fitz.Document",
+    path: str | Path,
+    *,
+    garbage: int = 4,
+    deflate: bool = True,
+    clean: bool = True,
+) -> None:
+    """Save ``doc`` to a NEW ``path`` with garbage collection + compression (Pitfall 9).
+
+    ``garbage=4, deflate=True, clean=True`` undoes redaction bloat and compacts the file.
+    The caller MUST pass a path distinct from the immutable original (the pipeline asserts
+    this) — never save back onto the upload.
+    """
+    doc.save(str(path), garbage=garbage, deflate=deflate, clean=clean)
+
+
 def close(doc: "fitz.Document") -> None:
     """Close an open document (no-op safe)."""
     try:
