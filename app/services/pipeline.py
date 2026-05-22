@@ -1,7 +1,9 @@
 """Deferred-mutation removal pipeline (D-05) — orchestrates a /process job.
 
 :func:`process_job` is the ONLY place a session's PDF is mutated, and it mutates the
-``work/`` copy exclusively — never the immutable original (chmod 0o444). For each region
+``work/`` copy exclusively — never the immutable original (chmod 0o444). Each run first
+RESETS the work copy from the pristine original (WR-01) so every apply / "重新套用" is
+computed from the unmutated document and never accumulates stale redactions. For each region
 in the :class:`~app.models.JobSpec` it:
 
   1. clamps the untrusted image-pixel rect to the page box (threat T-02-01),
@@ -21,6 +23,7 @@ removal through :mod:`app.services.redact`.
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .. import storage
@@ -87,6 +90,21 @@ def process_job(session_id: str, job_spec) -> dict:
             "work_copy_misconfigured",
             "內部錯誤:工作副本路徑與原始檔相同,已中止以保護原始檔。",
         )
+
+    # WR-01: reset the work copy from the PRISTINE original before redacting, so every apply
+    # (and every "重新套用") is computed from the unmutated document. Without this, a prior
+    # successful run leaves the work copy already-redacted, and a second apply with a different
+    # region set would operate on that stale substrate (accumulating removals / masking the
+    # real result). copyfile copies CONTENT only — the work copy stays writable even though the
+    # original is chmod 0o444 — and never mutates the original (read-only source). This keeps
+    # the work copy a faithful, re-derivable projection of (original + current region set).
+    if not Path(original).is_file():
+        raise PipelineError(
+            "work_copy_misconfigured",
+            "內部錯誤:找不到原始檔,無法重設工作副本。",
+        )
+    Path(work).parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(original, work)
 
     # The client's ``dpi`` is the REQUESTED render DPI (the ceiling the overlay measured
     # against). It is NOT trusted as the per-page scale: render may have reduced the

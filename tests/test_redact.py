@@ -295,6 +295,46 @@ def test_process_job_out_of_bounds_region_is_clamped_not_crash(ingested_session)
     assert result["page_count"] == 2
 
 
+def test_process_job_reapply_is_idempotent_from_pristine_original(ingested_session):
+    # WR-01: a second apply (重新套用) must compute from the PRISTINE original, not the
+    # already-redacted work copy. Apply region A, then apply a DIFFERENT region B; B's result
+    # must contain region A's content again (because the work copy was reset), and B must be
+    # truly removed. Region A is the line band; region B is the text near (40,60).
+    sid = ingested_session.session_id
+
+    region_a_px = [v * _SCALE for v in (5.0, 95.0, 195.0, 115.0)]  # the line at y=100
+    region_b_px = [v * _SCALE for v in (30.0, 45.0, 120.0, 75.0)]  # the "Page 1" text
+
+    # First apply: remove the line.
+    r1 = pipeline.process_job(sid, JobSpec(dpi=_DPI, regions=[RegionMark(page=0, px_rect=region_a_px)]))
+    assert r1["regions"][0]["removed"] is True
+
+    # Second apply with ONLY region B. If the work copy were NOT reset, region A (the line)
+    # would already be gone; we assert it is BACK (work copy reset to pristine) by checking the
+    # exported PDF still has the line, while region B's text is removed.
+    r2 = pipeline.process_job(sid, JobSpec(dpi=_DPI, regions=[RegionMark(page=0, px_rect=region_b_px)]))
+    assert r2["regions"][0]["removed"] is True
+
+    out = storage.outputs_dir(sid) / r2["output_filename"]
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # Region B (text) removed in this run.
+        rect_b = coords.pixels_to_pdf_rect(region_b_px, _DPI, page)
+        rt_b = (rect_b.x0, rect_b.y0, rect_b.x1, rect_b.y1)
+        assert pdf_engine.get_text_words_in_rect(page, rt_b) == [], "region B text not removed"
+        # Region A (the line) is BACK — the second run started from the pristine original, so the
+        # first run's removal did not persist into this apply (idempotent re-apply).
+        rect_a = coords.pixels_to_pdf_rect(region_a_px, _DPI, page)
+        rt_a = (rect_a.x0, rect_a.y0, rect_a.x1, rect_a.y1)
+        assert pdf_engine.get_drawings_intersecting(page, rt_a), (
+            "re-apply must reset the work copy from the immutable original (WR-01): "
+            "region A's line should reappear when only region B is applied"
+        )
+    finally:
+        pdf_engine.close(doc)
+
+
 def test_process_job_empty_regions_still_exports(ingested_session):
     # An empty regions list is a valid no-op export (all pages kept, original untouched).
     sid = ingested_session.session_id
