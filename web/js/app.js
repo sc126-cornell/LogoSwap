@@ -12,6 +12,7 @@
 
 import * as api from "./api.js";
 import { initViewer, resetViewer } from "./viewer.js";
+import { initRegions, resetRegions } from "./regions.js";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
@@ -47,6 +48,8 @@ const errorBody = document.getElementById("error-body");
 const errorRetry = document.getElementById("error-retry");
 const replaceBtn = document.getElementById("replace-file");
 const docControls = Array.from(document.querySelectorAll("[data-doc-control]"));
+const mainEl = document.querySelector("main.main");
+const sidePanelEl = document.getElementById("side-panel");
 
 // Track whether a document is currently loaded (gates the soft-confirm on replace).
 let hasLoadedDoc = false;
@@ -69,6 +72,14 @@ function setDocControlsEnabled(enabled) {
     group.setAttribute("aria-disabled", enabled ? "false" : "true");
   }
   replaceBtn.hidden = !enabled;
+}
+
+// Phase 2: expand the reserved side-panel to --side-panel-width when a doc is loaded (region UI
+// is active only in the `loaded` state); collapse it back to 0 otherwise. Driven by a class on
+// the shell so the CSS grid does the layout (no inline width math here).
+function setSidePanelExpanded(expanded) {
+  if (mainEl) mainEl.classList.toggle("main--paneled", expanded);
+  if (sidePanelEl) sidePanelEl.setAttribute("aria-hidden", expanded ? "false" : "true");
 }
 
 // ---- Error mapping -----------------------------------------------------------------
@@ -121,9 +132,18 @@ async function handleFile(file) {
 
     hasLoadedDoc = true;
     setDocControlsEnabled(true);
+    setSidePanelExpanded(true);
     showState("loaded");
 
-    // Hand off to the viewer (Task 3). It renders page 0 and wires nav/zoom.
+    // Activate the Phase 2 region UI for this session (per-page model + overlay + action group).
+    // Init regions BEFORE the first render so it's subscribed when viewer fires page:changed.
+    initRegions({
+      session_id: session.session_id,
+      page_count: session.page_count,
+    });
+
+    // Hand off to the viewer. It renders page 0 and wires nav/zoom (and fires page:changed,
+    // which regions.js consumes to project the overlay onto the sized render box).
     await initViewer({
       session_id: session.session_id,
       page_count: session.page_count,
@@ -131,6 +151,8 @@ async function handleFile(file) {
   } catch (err) {
     hasLoadedDoc = false;
     setDocControlsEnabled(false);
+    setSidePanelExpanded(false);
+    resetRegions();
     resetViewer();
     showError(err);
   } finally {
@@ -173,6 +195,8 @@ errorRetry.addEventListener("click", () => {
   // Retry returns to the empty state so the user can choose a file again.
   hasLoadedDoc = false;
   setDocControlsEnabled(false);
+  setSidePanelExpanded(false);
+  resetRegions();
   showState("empty");
 });
 

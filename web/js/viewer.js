@@ -28,6 +28,36 @@ const pageFrame = document.getElementById("page-frame");
 const pageImage = document.getElementById("page-image");
 const pageLoader = document.getElementById("page-loader");
 
+// ---- Overlay hook (Phase 2) --------------------------------------------------------
+// regions.js subscribes to these signals to keep its overlay attached to the true render box.
+// We dispatch CustomEvents on #page-stage (additive — the render/zoom logic is NOT forked):
+//   "page:zoomed"  {factor, frameW, frameH} — emitted by applyZoom; reproject rects to the box.
+//   "page:changed" {index, factor, frameW, frameH} — emitted after a successful render; swap the
+//                  shown page's regions. (Fired from renderPage's onload so the frame is sized.)
+// frameW/frameH are the displayed render-box pixels; regions.js maps image-px<->displayed-px from
+// them and the per-page image dimensions it reads from api.pageMeta. Keep the renderToken guard
+// authoritative — these events fire only for the winning (current) render.
+function emitPageZoomed(factor) {
+  stage.dispatchEvent(
+    new CustomEvent("page:zoomed", {
+      detail: { factor, frameW: pageFrame.clientWidth, frameH: pageFrame.clientHeight },
+    })
+  );
+}
+
+function emitPageChanged(index, factor) {
+  stage.dispatchEvent(
+    new CustomEvent("page:changed", {
+      detail: {
+        index,
+        factor,
+        frameW: pageFrame.clientWidth,
+        frameH: pageFrame.clientHeight,
+      },
+    })
+  );
+}
+
 const prevBtn = document.getElementById("page-prev");
 const nextBtn = document.getElementById("page-next");
 const jumpInput = document.getElementById("page-jump");
@@ -87,6 +117,8 @@ function applyZoom() {
   }
   zoomLevel.textContent = Math.round(factor * 100) + "%";
   updateZoomButtons();
+  // Notify the overlay so it reprojects committed rectangles to the new displayed box (D-02).
+  emitPageZoomed(factor);
 }
 
 function updateZoomButtons() {
@@ -158,6 +190,9 @@ async function renderPage(index) {
       state.renderBox.cssH = pageImage.naturalHeight / dpr;
       applyZoom();
     }
+    // The frame is now sized to the true render box: tell the overlay which page is shown so it
+    // swaps in this page's region set and reprojects. (Only the winning render reaches here.)
+    emitPageChanged(state.pageIndex, currentZoomFactor());
   };
   pageImage.onerror = () => {
     if (myToken !== renderToken) return; // stale error from a superseded page
@@ -279,4 +314,31 @@ export function resetViewer() {
   state.pageIndex = 0;
   pageImage.removeAttribute("src");
   showPageLoader(false);
+}
+
+// ---- Phase 2 accessors for the region overlay + before/after toggle ----------------
+// regions.js needs the live session/page coordinates and a way to swap the displayed image
+// between the original render and the 移除結果 render WITHOUT contacting the server itself or
+// forking the render machinery. These helpers keep api.js the sole seam (regions.js calls them
+// and api.* URL builders only) and reuse the same <img> + frame the viewer already sizes.
+
+/** Snapshot of the viewer's live coordinates for the overlay/action group. */
+export function getViewerState() {
+  return {
+    sessionId: state.sessionId,
+    pageIndex: state.pageIndex,
+    pageCount: state.pageCount,
+  };
+}
+
+/** Restore the ORIGINAL page render for the current page (原圖). */
+export function showOriginalImage() {
+  if (state.sessionId === null) return;
+  pageImage.src = api.pageImageURL(state.sessionId, state.pageIndex);
+}
+
+/** Show the 移除結果 (after) render for the current page. `url` is built by api.resultImageURL. */
+export function showResultImage(url) {
+  if (state.sessionId === null || !url) return;
+  pageImage.src = url;
 }
