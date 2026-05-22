@@ -28,7 +28,7 @@
 
 - [ ] **REMOVE-01**: 對向量內容,框選區域內的供應商商標物件與文字被真正移除(移除後無法再被選取或抽取),而非覆蓋
 - [ ] **REMOVE-02**: 對點陣圖/影像內容,框選區域以白色填滿(以周圍底色填滿列為加值,見 v2)
-- [ ] **REMOVE-03**: 移除與後續置入的結果精準落在使用者框選的位置(所見即所得)
+- [x] **REMOVE-03**: 移除與後續置入的結果精準落在使用者框選的位置(所見即所得)
 - [ ] **REMOVE-04**: 使用者可在套用前預覽移除前後的效果(before/after),確認沒有誤刪或殘留
 
 ### 商標置入 (LOGO)
@@ -81,7 +81,7 @@
 | REGION-01 | Phase 2 | Pending |
 | REGION-02 | Phase 2 | Pending |
 | REMOVE-01 | Phase 2 | Pending |
-| REMOVE-03 | Phase 2 | Pending |
+| REMOVE-03 | Phase 2 | Complete |
 | REMOVE-04 | Phase 2 | Pending |
 | OUTPUT-01 | Phase 2 | Pending |
 | LOGO-01 | Phase 3 | Pending |

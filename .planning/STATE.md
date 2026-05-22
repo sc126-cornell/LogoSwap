@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: verifying
 stopped_at: Phase 2 context gathered
-last_updated: "2026-05-22T08:30:01.983Z"
-last_activity: 2026-05-22 -- Phase 2 planning complete
+last_updated: "2026-05-22T08:38:54.386Z"
+last_activity: 2026-05-22
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 5
-  completed_plans: 2
-  percent: 40
+  completed_plans: 3
+  percent: 60
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-22)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 1 — 輸入與預覽骨幹
+**Current focus:** Phase 2 — 框選與真正移除(向量)+ 下載
 
 ## Current Position
 
-Phase: 1 of 5 (輸入與預覽骨幹)
-Plan: 2 of 2 in current phase
-Status: Ready to execute
-Last activity: 2026-05-22 -- Phase 2 planning complete
+Phase: 2 of 5 (框選與真正移除(向量)+ 下載)
+Plan: 1 of 3 complete (02-01 coordinate-mapper spine done; 02-02 removal next)
+Status: 02-01 complete — coordinate mapper proven (round-trip < 1px gate green)
+Last activity: 2026-05-22 -- executed 02-01 (coords spine)
 
-Progress: [██████████] 100%
+Progress: [██████░░░░] 60%
 
 ## Performance Metrics
 
@@ -53,6 +53,7 @@ Progress: [██████████] 100%
 
 *Updated after each plan completion*
 | Phase 01 P02 | ~16min | 3 tasks | 7 files |
+| Phase 02 P01 | ~35min | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -71,6 +72,9 @@ Recent decisions affecting current work:
 - [Phase 1]: Dual-theme CSS-custom-property token set established (light :root + [data-theme=dark] overrides, blue #2563EB / amber #F59E0B) — reused by Phases 2-5; all component CSS consumes var() tokens
 - [Phase 1]: Preview is a server-rendered PNG in a position:relative page stage sized to the true render box (no client PDF parser, no re-render on zoom per D-02) — overlay-ready host for Phase 2 region selection
 - [Phase 1]: web/js/api.js is the sole server seam (window.PDFTOOL_API_BASE override); theme switching is pure front-end via localStorage
+- [Phase 2-01]: Coordinate mapper is pure (no fitz); the derotation/rotation matrix multiply lives in pdf_engine so `import fitz` stays in exactly one file (AGPL seam intact, T-02-03)
+- [Phase 2-01]: derotation_matrix maps displayed->unrotated CONTENT space (mediabox), NOT page.rect; redaction containment bound = derotated full-image box (pdf_engine.unrotated_content_box)
+- [Phase 2-01]: px<->pt round-trip proven < 1px (observed ~0.00004px) at 0/90/180/270 + offset MediaBox; this harness (tests/test_coords.py) gates Plan 02-02 removal
 
 ### Pending Todos
 
@@ -92,6 +96,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-22T07:24:09.046Z
+Last session: 2026-05-22T08:38:54.372Z
 Stopped at: Phase 2 context gathered
-Resume file: .planning/phases/02-region-removal/02-CONTEXT.md
+Resume file: None
