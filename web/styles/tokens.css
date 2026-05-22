@@ -55,7 +55,7 @@
   --color-accent-hover: #1D4ED8;
   --color-danger: #DC2626;
   --color-text: #1F2933;
-  --color-text-muted: #6B7280;
+  --color-text-muted: #4B5563;     /* gray-600 — ~7:1 on white (was #6B7280 ~4.8:1) for legible secondary text */
   --color-border: #D9DCE1;
   --color-neutral-hover: #EDEFF2;  /* neutral button hover (not accent) */
   --color-focus-ring: #2563EB;     /* tracks the accent hue in light */
@@ -89,7 +89,7 @@
   --color-accent-hover: #D97706;   /* amber-600 */
   --color-danger: #F87171;
   --color-text: #E5E7EB;
-  --color-text-muted: #94A3B8;
+  --color-text-muted: #CBD5E1;     /* slate-300 — ~7:1 on slate-800 (was #94A3B8 ~4.8:1) for legible secondary text */
   --color-border: #334155;         /* slate-700 */
   --color-neutral-hover: #334155;  /* neutral button hover in dark */
   --color-focus-ring: #F59E0B;     /* tracks the amber accent in dark */
