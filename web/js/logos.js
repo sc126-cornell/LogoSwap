@@ -25,11 +25,13 @@ const AUTO = "__auto__";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
-  heading: "我司商標",
+  heading: "EXW 商標",
   subtext: "選擇要置入移除區域的商標(套用後置入所有框選區域)",
   selectAria: (name) => `選擇商標:${name}`,
   noLogo: "不置入商標",
-  auto: "自動(依框選形狀)",
+  auto: "自動(依框選形狀)", // accessible single-line label (aria)
+  autoLine1: "自動", // visible caption, line 1
+  autoLine2: "依框選形狀", // visible caption, line 2
   emptyHeading: "尚無可用的商標",
   emptyBody:
     "商標庫目前是空的。您仍可框選並移除供應商商標,完成後下載。商標由管理者預先放入。",
@@ -113,11 +115,17 @@ function makeThumbCell(id, name) {
     caption.textContent = COPY.noLogo;
     btn.appendChild(caption);
   } else if (id === AUTO) {
-    // The "自動(依框選形狀)" cell: caption-only, no single preview image.
+    // The auto-by-shape cell: caption-only, no single preview image. Two visible lines
+    // ("自動" / "依框選形狀") built via createElement + <br> (no innerHTML, T-03-04); the
+    // single-line COPY.auto is the accessible aria-label.
     btn.setAttribute("aria-label", COPY.auto);
     const caption = document.createElement("span");
     caption.className = "logo-thumb__caption";
-    caption.textContent = COPY.auto;
+    caption.append(
+      document.createTextNode(COPY.autoLine1),
+      document.createElement("br"),
+      document.createTextNode(COPY.autoLine2)
+    );
     btn.appendChild(caption);
   } else {
     btn.setAttribute("aria-label", COPY.selectAria(name));
@@ -167,7 +175,9 @@ async function loadCatalog() {
 // ---- Public API (called by app.js) -------------------------------------------------
 export function initLogos({ session_id } = {}) {
   sessionId = session_id ?? null;
-  selectedLogoId = null;
+  // Default to auto-by-shape (per UAT): the picker leads with 自動 selected. If the library is
+  // empty, getSelectedLogoId() is null and the job degrades to pure removal anyway (WR-02/D-04).
+  selectedLogoId = AUTO;
   loadCatalog();
 }
 
