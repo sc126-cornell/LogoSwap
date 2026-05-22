@@ -30,7 +30,10 @@
 **Plans**: 2 plans
 
 Plans:
+**Wave 1**
 - [ ] 01-01: 後端骨架(FastAPI)、檔案上傳與儲存、三目錄隔離、PyMuPDF 頁面渲染 API(get_pixmap + 頁面 metadata)
+
+**Wave 2** *(blocked on Wave 1 completion)*
 - [ ] 01-02: 前端預覽介面 — 顯示伺服器渲染頁面、多頁切換、縮放
 
 ### Phase 2: 框選與真正移除(向量)+ 下載
