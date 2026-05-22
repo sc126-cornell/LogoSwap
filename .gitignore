@@ -6,3 +6,11 @@ __pycache__/
 *.pyc
 .venv/
 .pytest_cache/
+
+# Agent-controlling config — kept local (not committed by team choice)
+CLAUDE.md
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+desktop.ini

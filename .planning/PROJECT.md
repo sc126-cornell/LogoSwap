@@ -1,4 +1,4 @@
-# PDF 商標替換工具 (PDF Logo Replacement Tool)
+# LogoSwap (PDF 商標替換工具)
 
 ## What This Is
 
