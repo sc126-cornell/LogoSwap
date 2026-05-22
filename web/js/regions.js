@@ -29,7 +29,12 @@
 import * as api from "./api.js";
 // WR-04: getViewerState was imported but never used (the module drives off currentPage +
 // page:changed event detail, not the viewer snapshot). Dropped to keep the data flow honest.
-import { showOriginalImage, showResultImage } from "./viewer.js";
+import {
+  showOriginalImage,
+  showResultImage,
+  getCurrentRotation,
+  getRotations,
+} from "./viewer.js";
 // Phase 3 (D-01/D-06): the selected global logo rides the SAME apply flow. We source the
 // selection from 03-01's logos.js export and include it as logo_id on /process; null = pure
 // removal. The conditional after-label reads "移除+置入結果" when a logo is selected.
@@ -580,7 +585,11 @@ function setViewMode(mode) {
 
   if (showingResult) {
     // Swap the page image to the result render (via the viewer helper + api URL); hide overlay.
-    showResultImage(api.resultImageURL(sessionId, currentPage, resultVersion));
+    // Pass the current page's rotation so the after-image matches the rotated orientation the
+    // user framed on (symmetric with the 原圖 render).
+    showResultImage(
+      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
+    );
     if (overlay) overlay.hidden = true;
   } else {
     showOriginalImage();
@@ -634,6 +643,10 @@ async function applyRemoval() {
       // logo_id is ignored server-side. api.js JSON-stringifies the whole spec unchanged.
       logo_id: getSelectedLogoId() || null,
       auto_logo: isAutoLogo(),
+      // Per-page user rotation (page-index -> degrees). The server adds these to each page's
+      // intrinsic /Rotate before mapping (so the framed rect derotates against the SAME
+      // orientation) and bakes them into the downloaded PDF. Empty = no rotation.
+      rotations: getRotations(),
     });
 
     applying = false;
@@ -708,7 +721,9 @@ function onPageChanged(detail) {
   if (dragStart) cleanupDrag({});
   // Paging while viewing the result: re-fetch the correct page's after-image; else show original.
   if (viewMode === "result" && resultFresh) {
-    showResultImage(api.resultImageURL(sessionId, currentPage, resultVersion));
+    showResultImage(
+      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
+    );
     if (overlay) overlay.hidden = true;
   } else if (viewMode === "result" && !resultFresh) {
     setViewMode("original");
@@ -723,11 +738,62 @@ function onPageZoomed() {
   renderOverlay();
 }
 
-// Lazily fetch + cache a page's image dimensions for the projection denominator.
+// A page rotation changed (viewer.js). The cached image dims for that page are now stale (they
+// swap for a quarter turn), so DROP them and re-fetch at the new rotation; the subsequent
+// page:changed (from the re-render's onload) reprojects the committed rectangles onto the new
+// box. Rotation also changes the downloaded file (the server bakes it), so it is a job-input
+// change exactly like a region edit — invalidate any fresh result via the shared stale machine.
+function onPageRotated(detail) {
+  const index = detail && typeof detail.index === "number" ? detail.index : currentPage;
+  const delta = detail && typeof detail.delta === "number" ? detail.delta : 0;
+
+  // Rotate any committed rectangles on this page from the OLD image-pixel space into the NEW one
+  // so they stay pinned over the same content (the image axes turned 90°). We use the CURRENT
+  // cached dims (the OLD orientation's img_w/img_h) as the rotation basis BEFORE dropping them.
+  const oldDims = imageDimsByPage.get(index);
+  if (delta && oldDims && (delta === 90 || delta === 270)) {
+    rotateStoredRects(index, delta, oldDims.imgW, oldDims.imgH);
+  }
+
+  // The cached dims for this page swapped for the quarter turn — drop + re-fetch at the new
+  // rotation; the re-render's page:changed reprojects onto the new box.
+  imageDimsByPage.delete(index);
+  ensureDims(index);
+  // Rotation changes the downloaded file (the server bakes it), so it is a job-input change.
+  notifyJobInputChanged();
+}
+
+// Rotate every stored image-pixel rect for a page by `delta` (90 = clockwise, 270 = ccw) within
+// an oldW x oldH image box. A point (x,y) maps to: CW -> (oldH - y, x); CCW -> (y, oldW - x).
+// We transform both corners and re-normalize. This keeps framing aligned to content across a
+// rotation (the stored source of truth stays in image-pixel space — D-05 — just re-expressed in
+// the rotated image's axes).
+function rotateStoredRects(index, delta, oldW, oldH) {
+  const list = regionsByPage.get(index);
+  if (!list || !list.length) return;
+  const cw = delta === 90;
+  for (const region of list) {
+    const [x0, y0, x1, y1] = region.pxRect;
+    const map = (x, y) => (cw ? [oldH - y, x] : [y, oldW - x]);
+    const [ax, ay] = map(x0, y0);
+    const [bx, by] = map(x1, y1);
+    region.pxRect = [
+      Math.round(Math.min(ax, bx)),
+      Math.round(Math.min(ay, by)),
+      Math.round(Math.max(ax, bx)),
+      Math.round(Math.max(ay, by)),
+    ];
+  }
+}
+
+// Lazily fetch + cache a page's image dimensions for the projection denominator. The dims swap
+// for a quarter turn, so we fetch them at the page's CURRENT user rotation; a later rotate drops
+// the cache (page:rotated) and re-fetches at the new rotation.
 async function ensureDims(index) {
   if (imageDimsByPage.has(index) || sessionId === null) return;
   try {
-    const meta = await api.pageMeta(sessionId, index);
+    const rotate = getRotations()[index] || 0;
+    const meta = await api.pageMeta(sessionId, index, rotate);
     // Record the EFFECTIVE per-page DPI alongside the dims (CR-01): img_w/img_h are already
     // measured at meta.dpi, which may be < the requested 200 for a large page.
     imageDimsByPage.set(index, { imgW: meta.img_w, imgH: meta.img_h, dpi: meta.dpi });
@@ -808,6 +874,7 @@ export function getTotalRegionCount() {
 // ---- Wiring (idempotent at module load) --------------------------------------------
 stage.addEventListener("page:changed", (e) => onPageChanged(e.detail));
 stage.addEventListener("page:zoomed", () => onPageZoomed());
+stage.addEventListener("page:rotated", (e) => onPageRotated(e.detail));
 
 clearAllBtn.addEventListener("click", openClearConfirm);
 clearCancelBtn.addEventListener("click", closeClearConfirm);

@@ -100,7 +100,7 @@ export async function getSession(id) {
  * dpi is OPTIONAL — omit it to use the server default (200). Per D-02, zoom CSS-scales this
  * already-fetched PNG; callers MUST NOT pass a per-zoom dpi here.
  */
-export function pageImageURL(id, n, dpi) {
+export function pageImageURL(id, n, dpi, rotate) {
   let url =
     API_BASE +
     "/sessions/" +
@@ -108,22 +108,34 @@ export function pageImageURL(id, n, dpi) {
     "/pages/" +
     encodeURIComponent(n) +
     "/image";
+  const params = [];
   if (dpi !== undefined && dpi !== null) {
-    url += "?dpi=" + encodeURIComponent(dpi);
+    params.push("dpi=" + encodeURIComponent(dpi));
   }
+  // rotate is the user's TRANSIENT rotation degrees (0/90/180/270) added to the page's
+  // intrinsic /Rotate for this render only; omit (or 0) => no user rotation.
+  if (rotate) {
+    params.push("rotate=" + encodeURIComponent(rotate));
+  }
+  if (params.length) url += "?" + params.join("&");
   return url;
 }
 
-/** Fetch render metadata for a page (used to size the page stage to the true render box). */
-export async function pageMeta(id, n) {
-  const response = await fetch(
+/**
+ * Fetch render metadata for a page (used to size the page stage to the true render box).
+ * Optional `rotate` (0/90/180/270) returns dims + rotation in the rotated orientation so the
+ * overlay measures px against the rotated image (img_w/img_h swap for a quarter turn).
+ */
+export async function pageMeta(id, n, rotate) {
+  let url =
     API_BASE +
-      "/sessions/" +
-      encodeURIComponent(id) +
-      "/pages/" +
-      encodeURIComponent(n) +
-      "/meta"
-  );
+    "/sessions/" +
+    encodeURIComponent(id) +
+    "/pages/" +
+    encodeURIComponent(n) +
+    "/meta";
+  if (rotate) url += "?rotate=" + encodeURIComponent(rotate);
+  const response = await fetch(url);
   if (!response.ok) {
     throw await toApiError(response);
   }
@@ -161,7 +173,7 @@ export async function processJob(id, jobSpec) {
  * work copy. Returns a string to set as an <img> src. Carries the same six X- headers as the
  * original page image, so the overlay maths is identical (D-04 before/after toggle).
  */
-export function resultImageURL(id, n, v) {
+export function resultImageURL(id, n, v, rotate) {
   let url =
     API_BASE +
     "/sessions/" +
@@ -169,13 +181,20 @@ export function resultImageURL(id, n, v) {
     "/result/pages/" +
     encodeURIComponent(n) +
     "/image";
+  const params = [];
   // WR-01: an optional cache-busting token. The result endpoint URL is otherwise identical
   // across re-applies, so the browser may serve a STALE after-image from a prior apply even
   // though the work copy on disk was freshly re-redacted. Bumping ?v= each apply forces a fresh
   // fetch so the before/after preview always matches the file the user is about to download.
   if (v !== undefined && v !== null) {
-    url += "?v=" + encodeURIComponent(v);
+    params.push("v=" + encodeURIComponent(v));
   }
+  // rotate is applied transiently (symmetric with pageImageURL) so the after-image shows the
+  // same rotated orientation the user framed on; the work copy stays at intrinsic rotation.
+  if (rotate) {
+    params.push("rotate=" + encodeURIComponent(rotate));
+  }
+  if (params.length) url += "?" + params.join("&");
   return url;
 }
 

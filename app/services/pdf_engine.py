@@ -97,16 +97,23 @@ def page_dimensions(doc: "fitz.Document", page_no: int, rotate: int = 0) -> dict
     pixel-budget fit in ``render.py`` is order-independent (w*h), so it agrees either way.
     """
     page = doc[page_no]
-    if rotate:
-        page.set_rotation((int(page.rotation) + int(rotate)) % 360)
-    # PyMuPDF's page.rect ALREADY reflects the page's /Rotate — for a quarter turn it returns
-    # the DISPLAYED (rotated) rect whose width/height match the rendered pixmap's pix.width/
-    # pix.height. So page_w_pt*scale == img_w by construction at any rotation; no manual swap.
+    intrinsic = int(page.rotation)
+    effective = (intrinsic + int(rotate)) % 360
+    # PyMuPDF's page.rect ALREADY reflects the page's CURRENT /Rotate — for a quarter turn it
+    # returns the DISPLAYED rect whose w/h match the rendered pixmap. We must NOT call
+    # set_rotation here: render_page calls this AND render_page_to_png on the same open doc, so a
+    # mutation would compound (double rotation). Instead we compute the displayed dims for the
+    # EFFECTIVE rotation purely: if the net user turn is a quarter turn, swap page.rect's w/h
+    # relative to its current orientation. page.rect already reflects the intrinsic /Rotate; a
+    # 90/270 USER turn swaps that, a 0/180 turn keeps it.
     rect = page.rect
+    swap = int(rotate) % 180 == 90
+    w = float(rect.height) if swap else float(rect.width)
+    h = float(rect.width) if swap else float(rect.height)
     return {
-        "page_w_pt": float(rect.width),
-        "page_h_pt": float(rect.height),
-        "rotation": int(page.rotation),
+        "page_w_pt": w,
+        "page_h_pt": h,
+        "rotation": effective,
     }
 
 

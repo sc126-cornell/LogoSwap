@@ -144,6 +144,65 @@
           <button type="button" id="zoom-fit" class="text-btn" disabled>整頁顯示</button>
         </div>
 
+        <!-- Rotate cluster: 逆時針 / 順時針 90°. Per-page transient rotation that is baked into
+             the download; disabled until a doc is loaded (data-doc-control). -->
+        <div class="toolbar__group rotate" data-doc-control hidden>
+          <button
+            type="button"
+            id="rotate-ccw"
+            class="icon-btn"
+            aria-label="逆時針旋轉 90 度"
+            title="逆時針旋轉 90°"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path
+                d="M4.5 8a6 6 0 1 1-.7 4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M4.5 4v4h4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            id="rotate-cw"
+            class="icon-btn"
+            aria-label="順時針旋轉 90 度"
+            title="順時針旋轉 90°"
+            disabled
+          >
+            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+              <path
+                d="M15.5 8a6 6 0 1 0 .7 4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+              <path
+                d="M15.5 4v4h-4"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1.8"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              />
+            </svg>
+          </button>
+        </div>
+
         <!-- Before/after segmented toggle (原圖 / 移除結果). Neutral surfaces; the selected
              segment uses --color-neutral-hover (NOT the accent). Hidden until a doc is loaded. -->
         <div

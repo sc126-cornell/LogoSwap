@@ -69,6 +69,9 @@ const zoomInBtn = document.getElementById("zoom-in");
 const zoomFitBtn = document.getElementById("zoom-fit");
 const zoomLevel = document.getElementById("zoom-level");
 
+const rotateCwBtn = document.getElementById("rotate-cw");
+const rotateCcwBtn = document.getElementById("rotate-ccw");
+
 // ---- State ------------------------------------------------------------------------
 const state = {
   sessionId: null,
@@ -78,7 +81,15 @@ const state = {
   fitPage: false, // when true, zoom factor fits the WHOLE page into the stage (contain), not a step
   // True render box (CSS px == device-independent px the server rendered at 200 DPI / devicePixelRatio).
   renderBox: { cssW: 0, cssH: 0 },
+  // Per-page USER rotation (0/90/180/270), keyed by page index. Default 0; persists so paging
+  // away and back keeps each page's rotation. Baked into the download via the /process payload.
+  userRotation: new Map(),
 };
+
+/** The user rotation (0/90/180/270) for a page index; default 0. */
+function rotationFor(index) {
+  return state.userRotation.get(index) || 0;
+}
 
 // ---- Helpers ----------------------------------------------------------------------
 function showPageLoader(show) {
@@ -171,8 +182,11 @@ async function renderPage(index) {
   showPageLoader(true);
 
   // Size the frame to the true render box BEFORE the image loads (coordinate fidelity).
+  // Measure against the ROTATED meta (img_w/img_h swap for a quarter turn) so the overlay's
+  // projection denominator matches the rotated image the server returns.
+  const rotate = rotationFor(index);
   try {
-    const meta = await api.pageMeta(state.sessionId, index);
+    const meta = await api.pageMeta(state.sessionId, index, rotate);
     if (myToken !== renderToken) return; // a newer navigation superseded us
     computeRenderBox(meta);
     applyZoom();
@@ -204,7 +218,7 @@ async function renderPage(index) {
     showPageLoader(false);
     showPageError();
   };
-  pageImage.src = api.pageImageURL(state.sessionId, index);
+  pageImage.src = api.pageImageURL(state.sessionId, index, undefined, rotate);
 }
 
 // Render-failure: surface the inline page-render-failure copy on the stage's error state.
@@ -249,6 +263,39 @@ function fitToPage() {
   applyZoom();
 }
 
+// ---- Rotation ---------------------------------------------------------------------
+// 順時針 = (r+90)%360, 逆時針 = (r+270)%360. Per-page (persists across nav). On rotate we
+// DROP the cached render box (its dims swap for a quarter turn) and re-render the current page:
+// renderPage re-fetches /meta?rotate + the image?rotate, re-applies zoom/fit, and emits
+// page:changed so regions.js reprojects committed rectangles onto the new (rotated) box.
+function rotateBy(deltaDeg) {
+  if (state.sessionId === null) return;
+  const cur = rotationFor(state.pageIndex);
+  const next = (cur + deltaDeg + 360) % 360;
+  state.userRotation.set(state.pageIndex, next);
+  // Tell the overlay this page's image dims are now stale (they swap for a quarter turn) so it
+  // drops its cached /meta dims and re-fetches at the new rotation before reprojecting. The
+  // page:changed event from the re-render's onload then triggers the reprojection. This is a
+  // job-input change (the download bakes the rotation), so regions.js also invalidates any
+  // fresh result (notifyJobInputChanged) on receiving it.
+  stage.dispatchEvent(
+    new CustomEvent("page:rotated", {
+      detail: { index: state.pageIndex, rotation: next, delta: (deltaDeg + 360) % 360 },
+    })
+  );
+  // Force a fresh render-box measurement (the cached one is for the previous orientation).
+  state.renderBox.cssW = 0;
+  state.renderBox.cssH = 0;
+  renderPage(state.pageIndex);
+}
+
+function rotateCw() {
+  rotateBy(90);
+}
+function rotateCcw() {
+  rotateBy(270);
+}
+
 // ---- Wiring (idempotent: initViewer may run once per upload) -----------------------
 let wired = false;
 function wireControls() {
@@ -260,6 +307,8 @@ function wireControls() {
   zoomInBtn.addEventListener("click", zoomIn);
   zoomOutBtn.addEventListener("click", zoomOut);
   zoomFitBtn.addEventListener("click", fitToPage);
+  rotateCwBtn.addEventListener("click", rotateCw);
+  rotateCcwBtn.addEventListener("click", rotateCcw);
 
   // Re-fit on viewport resize while in fit-to-page mode so the page stays fully visible.
   window.addEventListener("resize", () => {
@@ -309,10 +358,13 @@ export async function initViewer({ session_id, page_count }) {
   state.pageIndex = 0;
   state.zoomStep = 2; // 100% (used once the user picks a discrete zoom step)
   state.fitPage = true; // default: fit the WHOLE page into the viewport so it's visible at once
+  state.userRotation = new Map(); // a new doc starts with no per-page rotation
 
   // Enable per-control disabled attributes (the clusters were revealed by app.js).
   jumpInput.disabled = false;
   zoomFitBtn.disabled = false;
+  rotateCwBtn.disabled = false;
+  rotateCcwBtn.disabled = false;
 
   wireControls();
   await renderPage(0);
@@ -341,14 +393,37 @@ export function getViewerState() {
   };
 }
 
-/** Restore the ORIGINAL page render for the current page (原圖). */
+/** Restore the ORIGINAL page render for the current page (原圖), at its user rotation. */
 export function showOriginalImage() {
   if (state.sessionId === null) return;
-  pageImage.src = api.pageImageURL(state.sessionId, state.pageIndex);
+  pageImage.src = api.pageImageURL(
+    state.sessionId,
+    state.pageIndex,
+    undefined,
+    rotationFor(state.pageIndex)
+  );
 }
 
 /** Show the 移除結果 (after) render for the current page. `url` is built by api.resultImageURL. */
 export function showResultImage(url) {
   if (state.sessionId === null || !url) return;
   pageImage.src = url;
+}
+
+/** The user rotation (0/90/180/270) for the current page — regions.js builds the result URL. */
+export function getCurrentRotation() {
+  return rotationFor(state.pageIndex);
+}
+
+/**
+ * The non-zero per-page rotations as a plain object { pageIndex: degrees } for the /process
+ * payload. Only pages the user actually rotated are included (a 0 is the default and omitted),
+ * so the server bakes exactly those into the download. Keys are numbers; degrees are 0/90/180/270.
+ */
+export function getRotations() {
+  const out = {};
+  for (const [index, deg] of state.userRotation.entries()) {
+    if (deg) out[index] = deg;
+  }
+  return out;
 }
