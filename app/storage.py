@@ -14,6 +14,7 @@ basename.
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import stat
 from pathlib import Path
@@ -22,6 +23,36 @@ from . import config
 
 # Subdirectory kinds under DATA_DIR.
 _KINDS = ("originals", "work", "outputs")
+
+# A session id is ALWAYS a server-issued ``secrets.token_urlsafe`` token, whose alphabet
+# is URL-safe base64: A-Z a-z 0-9 plus ``-`` and ``_`` (no padding). ``token_urlsafe(16)``
+# yields 22 chars; we allow a generous 16-64 range so the bound is not brittle. Validating
+# against this exact alphabet BEFORE the id becomes a path segment (threat T-01-04 / path
+# traversal) is what makes ``subdir`` safe: percent-decoded separators (``%2F``/``%5C``),
+# dot segments (``..``), and absolute-style prefixes can never match and so can never reach
+# the filesystem. This closes the gap the threat model claimed (but did not) cover: the
+# untrusted string that actually builds paths is ``session_id``, not the client filename.
+_SESSION_ID_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+
+
+class InvalidSessionId(ValueError):
+    """Raised when a caller-supplied session id is not a server-issued token shape.
+
+    Subclasses :class:`ValueError` for backward compatibility (callers that already catch
+    ``ValueError`` keep working) but is a distinct type so the API layer can map a crafted
+    id to a 404 — indistinguishable from a missing session — rather than a 500.
+    """
+
+
+def validate_session_id(session_id: str) -> str:
+    """Return ``session_id`` if it matches the server-token alphabet, else raise.
+
+    The single chokepoint for the path-traversal guard: every path-building helper routes
+    through here (via :func:`subdir`), so no untrusted id can become a path segment.
+    """
+    if not isinstance(session_id, str) or not _SESSION_ID_RE.fullmatch(session_id):
+        raise InvalidSessionId(f"invalid session id: {session_id!r}")
+    return session_id
 
 # Fixed on-disk name for the immutable original and the editable work copy. The
 # client filename is stored in SessionInfo, not used on disk.
@@ -35,10 +66,22 @@ def _data_dir() -> Path:
 
 
 def subdir(kind: str, session_id: str) -> Path:
-    """Path to ``<DATA_DIR>/<kind>/<session_id>`` (not created)."""
+    """Path to ``<DATA_DIR>/<kind>/<session_id>`` (not created).
+
+    ``session_id`` is validated against the server-token alphabet before it becomes a
+    path segment (threat T-01-04). As defense-in-depth, the resolved path is asserted to
+    stay within ``DATA_DIR`` so even an unforeseen bypass cannot escape the data root.
+    """
     if kind not in _KINDS:
         raise ValueError(f"unknown storage kind: {kind!r}")
-    return _data_dir() / kind / session_id
+    validate_session_id(session_id)
+    data_dir = _data_dir()
+    dest = data_dir / kind / session_id
+    # Defense-in-depth containment: the resolved path must remain under DATA_DIR.
+    resolved = dest.resolve()
+    if not resolved.is_relative_to(data_dir.resolve()):
+        raise InvalidSessionId(f"invalid session id: {session_id!r}")
+    return dest
 
 
 def new_session() -> str:
@@ -114,5 +157,14 @@ def write_work_copy(session_id: str, data: bytes) -> Path:
 
 
 def session_exists(session_id: str) -> bool:
-    """True when the session's work copy exists (the canonical 'session present' test)."""
-    return work_path(session_id).is_file()
+    """True when the session's work copy exists (the canonical 'session present' test).
+
+    A session id that fails validation (i.e. is not a server-issued token) can never name
+    a real session, so we return ``False`` rather than letting :class:`InvalidSessionId`
+    propagate — the route then returns a 404, making a crafted id indistinguishable from a
+    missing one (no oracle, no path-traversal sink reached).
+    """
+    try:
+        return work_path(session_id).is_file()
+    except InvalidSessionId:
+        return False

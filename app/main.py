@@ -25,6 +25,7 @@ from .api import pages, sessions
 from .services.ingest import IngestError
 from .services.pdf_engine import PdfEngineError
 from .services.render import RenderError
+from .storage import InvalidSessionId
 
 app = FastAPI(title=config.API_TITLE)
 
@@ -57,6 +58,18 @@ async def _handle_render_error(_request: Request, exc: RenderError) -> JSONRespo
     return JSONResponse(
         status_code=404,
         content={"detail": {"code": exc.code, "message": exc.message}},
+    )
+
+
+@app.exception_handler(InvalidSessionId)
+async def _handle_invalid_session_id(_request: Request, exc: InvalidSessionId) -> JSONResponse:
+    # Defense-in-depth: a session id that fails the token-alphabet allowlist (threat
+    # T-01-04 / path traversal) can never name a real session. Surface it as a plain 404
+    # — indistinguishable from a missing session — so a crafted id is neither an oracle
+    # nor a 500 that leaks internals.
+    return JSONResponse(
+        status_code=404,
+        content={"detail": {"code": "session_not_found", "message": "找不到此工作階段。"}},
     )
 
 

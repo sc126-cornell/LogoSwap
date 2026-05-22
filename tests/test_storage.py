@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import secrets
 
 import pytest
 
@@ -78,4 +79,65 @@ def test_session_exists_reflects_work_copy():
     assert storage.session_exists(sid) is False
     storage.write_work_copy(sid, b"%PDF-1.7\n%%EOF")
     assert storage.session_exists(sid) is True
-    assert storage.session_exists("does-not-exist") is False
+    assert storage.session_exists("aaaaaaaaaaaaaaaa") is False  # valid shape, no such session
+
+
+# ---- CR-01: session_id path-traversal guard (the string that ACTUALLY builds paths) ----
+
+
+@pytest.mark.parametrize(
+    "evil",
+    [
+        "../escape",
+        "..\\escape",
+        "../../etc/passwd",
+        "..%2f..%2fwork",  # percent-encoded separators (decoded form would traverse)
+        "a/b",
+        "a\\b",
+        "/abs/path",
+        "with space",
+        "dotdot..token",  # contains '..' even though no separator
+        "tab\tchar",
+        "",  # empty
+        ".",
+        "..",
+        "short",  # below the 16-char minimum
+        "x" * 65,  # above the 64-char maximum
+        "valid_but_has_a_slash/",  # trailing separator
+    ],
+)
+def test_subdir_rejects_non_token_session_id(evil):
+    # subdir() is the single sink for the path-build; a non-token id must never reach disk.
+    with pytest.raises(storage.InvalidSessionId):
+        storage.subdir("work", evil)
+
+
+def test_subdir_rejects_via_all_path_helpers():
+    # Every public path helper routes through subdir(), so each must reject a traversal id.
+    for fn in (storage.original_path, storage.work_path, storage.outputs_dir):
+        with pytest.raises(storage.InvalidSessionId):
+            fn("../../escape")
+
+
+@pytest.mark.parametrize(
+    "good",
+    [
+        secrets.token_urlsafe(16),
+        secrets.token_urlsafe(32),
+        "abcdefghij1234567890",  # 20 chars, plain alnum
+        "with-dash_and_underscore-0",
+        "a" * 16,  # exactly at the lower bound
+        "a" * 64,  # exactly at the upper bound
+    ],
+)
+def test_subdir_accepts_server_token_shape(good):
+    # A genuine token-shaped id resolves to <DATA_DIR>/work/<id> and is contained.
+    path = storage.subdir("work", good)
+    assert path == config.DATA_DIR / "work" / good
+    assert path.resolve().is_relative_to(config.DATA_DIR.resolve())
+
+
+def test_session_exists_false_for_traversal_id():
+    # The route gate must report a crafted id as "not present" rather than raising.
+    assert storage.session_exists("../../etc/passwd") is False
+    assert storage.session_exists("..%2f..%2fwork") is False
