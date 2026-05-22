@@ -121,6 +121,29 @@ def test_result_render_valid_before_processing(client, valid_pdf_bytes):
     assert img.headers["X-Render-Dpi"] == "200"
 
 
+def test_before_and_after_images_share_effective_dpi_and_dims(client, valid_pdf_bytes):
+    # WR-02: the before-image (/pages/{n}/image) and the after-image
+    # (/result/pages/{n}/image) must render at the SAME effective DPI and pixel size for a
+    # page, so the before/after toggle never swaps between two differently-sized images while
+    # the overlay assumes one img_w/img_h. Both route through render.fit_dpi_to_pixel_budget;
+    # redaction does not change page geometry, so the dims hold after processing too.
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+    client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]},
+    )
+    for page_no in range(2):
+        before = client.get(f"/sessions/{sid}/pages/{page_no}/image")
+        after = client.get(f"/sessions/{sid}/result/pages/{page_no}/image")
+        assert before.status_code == 200 and after.status_code == 200
+        for header in ("X-Render-Dpi", "X-Image-Width-Px", "X-Image-Height-Px"):
+            assert before.headers[header] == after.headers[header], (
+                f"page {page_no} header {header} differs: "
+                f"before={before.headers[header]} after={after.headers[header]}"
+            )
+
+
 def test_result_render_out_of_range_page_404(client, valid_pdf_bytes):
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]
     resp = client.get(f"/sessions/{sid}/result/pages/999/image")
