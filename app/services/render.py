@@ -45,6 +45,26 @@ class RenderResult:
     dpi: int
 
 
+_VALID_ROTATIONS = (0, 90, 180, 270)
+
+
+def validate_rotation(rotate: int | None) -> int:
+    """Return ``rotate`` if it is a valid 0/90/180/270 user rotation; ``None`` -> 0.
+
+    Raises :class:`RenderError("invalid_rotation")` for any other value so a crafted
+    ``?rotate=`` becomes a structured 4xx (handled by the API layer), never a silent wrong
+    render or a 500.
+    """
+    if rotate is None:
+        return 0
+    if int(rotate) not in _VALID_ROTATIONS:
+        raise RenderError(
+            "invalid_rotation",
+            f"旋轉角度必須是 0/90/180/270 之一,收到:{rotate}。",
+        )
+    return int(rotate)
+
+
 def clamp_dpi(dpi: int | None) -> int:
     """Clamp a requested DPI into ``[MIN_DPI, MAX_DPI]``; ``None`` -> DEFAULT_DPI."""
     if dpi is None:
@@ -84,23 +104,29 @@ def render_page(
     work_pdf_path: str | Path,
     page_no: int,
     dpi: int | None = None,
+    rotate: int = 0,
 ) -> RenderResult:
     """Render ``page_no`` of the work-copy PDF at ``dpi`` (default 200, clamped).
 
     Raises :class:`RenderError("page_not_found")` for an out-of-range page. The
     document is always closed.
+
+    ``rotate`` is the user's TRANSIENT rotation degrees (0/90/180/270) added to the page's
+    intrinsic ``/Rotate`` for THIS render only — it is never persisted (the work copy/original
+    stay at their intrinsic rotation). The pixel-budget fit uses the rotated (displayed) dims so
+    a quarter turn cannot blow the budget.
     """
     clamped_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
     doc = pdf_engine.open_pdf(work_pdf_path)
     try:
         _validate_page_no(doc, page_no)
-        # Read the page rect first so we can fit DPI to the pixel budget (WR-06) BEFORE
-        # allocating the pixmap; the result's reported dpi reflects this actual value (D-03).
-        dims = pdf_engine.page_dimensions(doc, page_no)
+        # Read the (rotation-aware) page rect first so we can fit DPI to the pixel budget (WR-06)
+        # BEFORE allocating the pixmap; the result's reported dpi reflects this actual value (D-03).
+        dims = pdf_engine.page_dimensions(doc, page_no, rotate)
         effective_dpi = fit_dpi_to_pixel_budget(
             clamped_dpi, dims["page_w_pt"], dims["page_h_pt"]
         )
-        data = pdf_engine.render_page_to_png(doc, page_no, effective_dpi)
+        data = pdf_engine.render_page_to_png(doc, page_no, effective_dpi, rotate)
     finally:
         pdf_engine.close(doc)
 
@@ -119,17 +145,22 @@ def page_meta(
     work_pdf_path: str | Path,
     page_no: int,
     dpi: int | None = None,
+    rotate: int = 0,
 ) -> dict:
     """Return PageMeta-shaped data for ``page_no`` without shipping the PNG.
 
     Pixel dims are derived from the exact (clamped) DPI so they match what
     :func:`render_page` would produce: ``img = round(pt * dpi / 72)``.
+
+    ``rotate`` adds the user's transient rotation to the page's intrinsic ``/Rotate`` so the
+    returned dims + rotation reflect the rotated orientation the overlay measures px against
+    (``img_w``/``img_h`` swap for a net 90°/270°). Symmetric with :func:`render_page`.
     """
     clamped_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
     doc = pdf_engine.open_pdf(work_pdf_path)
     try:
         _validate_page_no(doc, page_no)
-        dims = pdf_engine.page_dimensions(doc, page_no)
+        dims = pdf_engine.page_dimensions(doc, page_no, rotate)
     finally:
         pdf_engine.close(doc)
 

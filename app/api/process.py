@@ -72,23 +72,33 @@ async def get_result_page_image(
     session_id: str,
     page_no: int,
     dpi: int | None = Query(default=None, ge=1),
+    rotate: int | None = Query(default=None),
 ) -> Response:
     """Render the REDACTED work copy page as image/png with the six X- coordinate headers.
 
     This is the "移除結果" after-image the before/after toggle shows (REMOVE-04). The work
     copy IS the redacted substrate after a process run; before one it equals the original,
     so this endpoint is always valid. Out-of-range page -> 404 via the RenderError path.
+
+    ``rotate`` (0/90/180/270) is applied transiently — symmetric with the 原圖 endpoint — so
+    the work copy stays at its intrinsic rotation on disk while the after-image shows the same
+    rotated orientation the user framed on. A bad value -> 400.
     """
     _require_session(session_id)
     work = storage.work_path(session_id)
 
     try:
+        user_rotation = render.validate_rotation(rotate)
         result = await run_in_threadpool(
-            render.render_page, work, page_no, dpi if dpi is not None else config.DEFAULT_DPI
+            render.render_page,
+            work,
+            page_no,
+            dpi if dpi is not None else config.DEFAULT_DPI,
+            user_rotation,
         )
     except RenderError as err:
         raise HTTPException(
-            status_code=404,
+            status_code=(400 if err.code == "invalid_rotation" else 404),
             detail={"code": err.code, "message": err.message},
         ) from err
 

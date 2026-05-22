@@ -48,7 +48,7 @@ def page_count(doc: "fitz.Document") -> int:
 
 
 def render_page_to_png(
-    doc: "fitz.Document", page_no: int, dpi: int
+    doc: "fitz.Document", page_no: int, dpi: int, rotate: int = 0
 ) -> dict:
     """Rasterize one page to PNG bytes at ``dpi`` and return it with page metadata.
 
@@ -62,6 +62,14 @@ def render_page_to_png(
     via PyMuPDF if out of range, which the caller maps to a 404.
     """
     page = doc[page_no]
+    # Apply the user's transient rotation for THIS render only: effective = intrinsic + user.
+    # The doc is a freshly-opened transient handle (render opens its own copy and closes it),
+    # so this never persists to the immutable original. With the page now at its effective
+    # rotation, the pixmap is the rotated image AND page.derotation_matrix carries a rect framed
+    # on it back to unrotated content space — the same path that already handles intrinsic
+    # /Rotate, so the coordinate seam needs no change.
+    if rotate:
+        page.set_rotation((int(page.rotation) + int(rotate)) % 360)
     pix = page.get_pixmap(dpi=dpi)
     rect = page.rect  # unrotated page rect, in points
     return {
@@ -75,19 +83,52 @@ def render_page_to_png(
     }
 
 
-def page_dimensions(doc: "fitz.Document", page_no: int) -> dict:
-    """Return page point dimensions + rotation WITHOUT full rasterization.
+def page_dimensions(doc: "fitz.Document", page_no: int, rotate: int = 0) -> dict:
+    """Return page point dimensions + EFFECTIVE rotation WITHOUT full rasterization.
 
     Used by the ``/meta`` endpoint so the frontend can size the page stage before the
     image loads. Pixel dimensions are derived from the DPI by the caller.
+
+    ``rotate`` is the user's transient rotation degrees ADDED to the page's intrinsic
+    ``/Rotate`` for this measurement only (the doc is a fresh transient handle; the original
+    is never touched). ``page_w_pt`` / ``page_h_pt`` are the DISPLAYED dimensions at the
+    effective rotation — i.e. width/height SWAP for a net 90°/270° rotation — so the meta the
+    overlay measures px against matches the rotated PNG ``render_page_to_png`` produces. The
+    pixel-budget fit in ``render.py`` is order-independent (w*h), so it agrees either way.
     """
     page = doc[page_no]
+    if rotate:
+        page.set_rotation((int(page.rotation) + int(rotate)) % 360)
+    # PyMuPDF's page.rect ALREADY reflects the page's /Rotate — for a quarter turn it returns
+    # the DISPLAYED (rotated) rect whose width/height match the rendered pixmap's pix.width/
+    # pix.height. So page_w_pt*scale == img_w by construction at any rotation; no manual swap.
     rect = page.rect
     return {
         "page_w_pt": float(rect.width),
         "page_h_pt": float(rect.height),
         "rotation": int(page.rotation),
     }
+
+
+def page_intrinsic_rotation(doc: "fitz.Document", page_no: int) -> int:
+    """Return the page's intrinsic ``/Rotate`` (0/90/180/270) without rendering.
+
+    Used by the render endpoints to compute an EFFECTIVE rotation = (intrinsic + user)
+    transiently for one render, and by the pipeline to bake the user rotation onto the
+    download output. The fitz access stays here (AGPL seam / threat T-02-03).
+    """
+    return int(doc[page_no].rotation)
+
+
+def set_page_rotation(page: "fitz.Page", rotation: int) -> None:
+    """Set a page's absolute ``/Rotate`` to ``rotation`` (a 0/90/180/270 multiple).
+
+    PyMuPDF ``Page.set_rotation`` takes an ABSOLUTE angle, normalized into [0,360). This is
+    the single seam the render/pipeline layers use to add the user's transient rotation to a
+    page's intrinsic rotation (effective = (intrinsic + user) % 360). It never persists to the
+    immutable original — callers only ever set it on a freshly-opened transient/work document.
+    """
+    page.set_rotation(int(rotation) % 360)
 
 
 def get_page(doc: "fitz.Document", page_no: int) -> "fitz.Page":

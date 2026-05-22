@@ -136,10 +136,38 @@ def process_job(session_id: str, job_spec) -> dict:
     # measured px against those reduced dims) and the server mapping cannot disagree on
     # scale. This closes the silent "wrong area redacted" pitfall the phase guards against.
     requested_dpi = render.clamp_dpi(job_spec.dpi)
+
+    # Per-page USER rotation (D-12): page-index -> degrees (0/90/180/270), already normalized by
+    # JobSpec. We BAKE these onto the download output (the user asked for a rotated PDF) and we
+    # also set them on the work page BEFORE coords mapping so pixels_to_pdf_rect derotates against
+    # the SAME effective orientation the user framed on (intrinsic + user). After saving the
+    # download we RESET each page back to its intrinsic rotation before saving the work copy, so
+    # the work copy stays at intrinsic rotation and the result-render endpoint re-applies the
+    # rotation transiently (symmetric with the 原圖 path) — no double rotation.
+    rotations: dict[int, int] = dict(getattr(job_spec, "rotations", {}) or {})
+
     doc = pdf_engine.open_pdf(work)
     try:
         n_pages = pdf_engine.page_count(doc)
         results: list[dict] = []
+
+        # Validate rotation page indices and record each touched page's INTRINSIC rotation so we
+        # can restore it before saving the work copy. Then apply the effective rotation up front
+        # so EVERY rotated page (region or not) is baked into the download output.
+        intrinsic_by_page: dict[int, int] = {}
+        for page_idx, user_deg in rotations.items():
+            if page_idx < 0 or page_idx >= n_pages:
+                raise PipelineError(
+                    "page_out_of_range",
+                    f"旋轉指定的頁碼超出範圍:第 {page_idx} 頁(共 {n_pages} 頁)。",
+                )
+            if user_deg % 360 == 0:
+                continue
+            page = pdf_engine.get_page(doc, page_idx)
+            intrinsic_by_page[page_idx] = pdf_engine.page_intrinsic_rotation(doc, page_idx)
+            pdf_engine.set_page_rotation(
+                page, (intrinsic_by_page[page_idx] + user_deg) % 360
+            )
 
         # Resolve the OPTIONAL global logo ONCE outside the loop (D-01): a manifest-allowlist
         # lookup yielding validated PNG bytes. WR-02: placement is BEST-EFFORT and degrades
@@ -253,7 +281,15 @@ def process_job(session_id: str, job_spec) -> dict:
         out_dir = storage.outputs_dir(session_id)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / out_name
+        # The download output is saved WITH the user rotation baked (the page rotations set above).
         pdf_engine.save_doc(doc, out_file)
+
+        # Reset each rotated page back to its intrinsic rotation BEFORE saving the work copy, so
+        # the work copy (the 移除結果 substrate) stays at intrinsic rotation. The result-render
+        # endpoint re-applies the user rotation transiently, exactly like the 原圖 endpoint —
+        # keeping the before/after toggle symmetric and avoiding a double rotation.
+        for page_idx, intrinsic in intrinsic_by_page.items():
+            pdf_engine.set_page_rotation(pdf_engine.get_page(doc, page_idx), intrinsic)
 
         work_tmp = Path(work).with_suffix(".redacted.tmp.pdf")
         pdf_engine.save_doc(doc, work_tmp)

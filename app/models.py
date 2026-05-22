@@ -7,7 +7,7 @@ job-spec shapes (RegionMark / JobSpec) by 02-02-PLAN.md — they are the validat
 
 from __future__ import annotations
 
-from typing import List
+from typing import Dict, List
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -103,6 +103,31 @@ class JobSpec(BaseModel):
             "aspect ratio best matches that region's framed shape (logo.pick_logo_id_for_rect)"
         ),
     )
+    rotations: Dict[int, int] = Field(
+        default_factory=dict,
+        description=(
+            "per-page USER rotation (page-index -> degrees, each a 0/90/180/270 multiple); "
+            "added to the page's intrinsic /Rotate before coords mapping and baked into the "
+            "download output. Default empty = no user rotation (Phase-2 behavior)."
+        ),
+    )
+
+    @field_validator("rotations")
+    @classmethod
+    def _rotations_are_quarter_turns(cls, v: Dict[int, int]) -> Dict[int, int]:
+        # Each value must be a 0/90/180/270 multiple; normalize into [0,360). A page index < 0
+        # is rejected (mirrors RegionMark.page ge=0). Keeps the server from baking a bogus angle.
+        out: Dict[int, int] = {}
+        for page_idx, deg in v.items():
+            if int(page_idx) < 0:
+                raise ValueError("rotation page index must be >= 0")
+            d = int(deg) % 360
+            if d not in (0, 90, 180, 270):
+                raise ValueError(
+                    "rotation must be a multiple of 90 (0/90/180/270)"
+                )
+            out[int(page_idx)] = d
+        return out
 
     @field_validator("regions")
     @classmethod

@@ -29,27 +29,40 @@ def _require_session(session_id: str) -> None:
         )
 
 
+def _render_error_status(code: str) -> int:
+    """A bad ?rotate= is a 400 (client sent an invalid value); a missing page is a 404."""
+    return 400 if code == "invalid_rotation" else 404
+
+
 @router.get("/sessions/{session_id}/pages/{page_no}/image")
 async def get_page_image(
     session_id: str,
     page_no: int,
     dpi: int | None = Query(default=None, ge=1),
+    rotate: int | None = Query(default=None),
 ) -> Response:
     """Return the page as image/png with the six X-... coordinate-seam headers.
 
     ``dpi`` is optional and defaults to ``config.DEFAULT_DPI`` (200), clamped to
-    ``[MIN_DPI, MAX_DPI]``. A missing session or out-of-range page returns 404.
+    ``[MIN_DPI, MAX_DPI]``. ``rotate`` (0/90/180/270) is the user's TRANSIENT rotation added to
+    the page's intrinsic ``/Rotate`` for this render only — it is NOT persisted. A missing
+    session or out-of-range page returns 404; a bad ``rotate`` returns 400.
     """
     _require_session(session_id)
     work = storage.work_path(session_id)
 
     try:
+        user_rotation = render.validate_rotation(rotate)
         result = await run_in_threadpool(
-            render.render_page, work, page_no, dpi if dpi is not None else config.DEFAULT_DPI
+            render.render_page,
+            work,
+            page_no,
+            dpi if dpi is not None else config.DEFAULT_DPI,
+            user_rotation,
         )
     except RenderError as err:
         raise HTTPException(
-            status_code=404,
+            status_code=_render_error_status(err.code),
             detail={"code": err.code, "message": err.message},
         ) from err
 
@@ -69,18 +82,29 @@ async def get_page_meta(
     session_id: str,
     page_no: int,
     dpi: int | None = Query(default=None, ge=1),
+    rotate: int | None = Query(default=None),
 ) -> PageMeta:
-    """Return PageMeta JSON so the frontend can size the page stage before image load."""
+    """Return PageMeta JSON so the frontend can size the page stage before image load.
+
+    ``rotate`` (0/90/180/270) reflects the rotated orientation in the returned dims +
+    rotation, so the overlay measures px against the rotated image (symmetric with the image
+    endpoint). A bad value returns 400.
+    """
     _require_session(session_id)
     work = storage.work_path(session_id)
 
     try:
+        user_rotation = render.validate_rotation(rotate)
         meta = await run_in_threadpool(
-            render.page_meta, work, page_no, dpi if dpi is not None else config.DEFAULT_DPI
+            render.page_meta,
+            work,
+            page_no,
+            dpi if dpi is not None else config.DEFAULT_DPI,
+            user_rotation,
         )
     except RenderError as err:
         raise HTTPException(
-            status_code=404,
+            status_code=_render_error_status(err.code),
             detail={"code": err.code, "message": err.message},
         ) from err
 
