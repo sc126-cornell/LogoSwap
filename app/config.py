@@ -39,6 +39,13 @@ MAX_DPI: int = _env_int("MAX_DPI", 300)
 MAX_UPLOAD_BYTES: int = _env_int("MAX_UPLOAD_BYTES", 50 * 1024 * 1024)
 MAX_PAGES: int = _env_int("MAX_PAGES", 30)
 
+# Per-render pixel ceiling (WR-06). The DPI clamp alone does NOT bound memory: a single
+# page can declare an enormous MediaBox, so even at MAX_DPI a pathological page would
+# allocate a multi-hundred-MB pixmap (~ w_px * h_px * 4 bytes). When the projected pixel
+# count exceeds this budget we scale the effective DPI DOWN to fit (graceful degradation)
+# rather than refusing to render. 40 MP * 4 bytes ~= 160 MB upper bound per render.
+MAX_RENDER_PIXELS: int = _env_int("MAX_RENDER_PIXELS", 40 * 1_000_000)
+
 # Human-readable forms used inside limit-bearing error messages so the frontend can
 # surface the {limit} value. Derived from the byte limit so they never drift.
 MAX_UPLOAD_MB: int = MAX_UPLOAD_BYTES // (1024 * 1024)

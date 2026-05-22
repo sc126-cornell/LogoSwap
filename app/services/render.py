@@ -4,14 +4,18 @@ All ``fitz`` access is routed through :mod:`app.services.pdf_engine`, so this mo
 stays engine-agnostic (it never imports the engine library directly — the AGPL seam
 stays intact; the only module that imports fitz is ``pdf_engine``).
 
-The default 200 DPI (D-02) suits CAD line clarity; the ``[MIN_DPI, MAX_DPI]`` clamp is
-the per-render pixel-budget guard (Pitfall 8 / threat T-01-02) so a caller cannot
-request a multi-gigabyte pixmap. The render reads the ``work/`` copy ONLY — never the
-immutable original (Anti-Pattern 3).
+The default 200 DPI (D-02) suits CAD line clarity. Two guards bound the per-render pixel
+budget (Pitfall 8 / threat T-01-02): the ``[MIN_DPI, MAX_DPI]`` DPI clamp, AND a pixel-count
+ceiling (``MAX_RENDER_PIXELS``, WR-06) that scales the effective DPI DOWN for a page whose
+MediaBox is large enough that even the max DPI would allocate an oversized pixmap. Without
+the second guard the DPI clamp alone does not prevent a multi-hundred-MB pixmap from a single
+adversarially-oversized page (within the 50 MB / 30-page envelope). The render reads the
+``work/`` copy ONLY — never the immutable original (Anti-Pattern 3).
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -48,6 +52,25 @@ def clamp_dpi(dpi: int | None) -> int:
     return max(config.MIN_DPI, min(config.MAX_DPI, dpi))
 
 
+def fit_dpi_to_pixel_budget(dpi: int, page_w_pt: float, page_h_pt: float) -> int:
+    """Reduce ``dpi`` so the projected pixmap stays within ``MAX_RENDER_PIXELS`` (WR-06).
+
+    Pixmap pixels at a given DPI are ``round(w_pt*dpi/72) * round(h_pt*dpi/72)`` and memory
+    is ~4 bytes/pixel. For a normal page this returns ``dpi`` unchanged; for a pathologically
+    large MediaBox it scales DPI down by ``sqrt(budget / projected)`` (pixels grow with DPI²)
+    so an oversized single page cannot allocate a huge pixmap. Never returns below 1.
+    """
+    if page_w_pt <= 0 or page_h_pt <= 0:
+        return dpi
+    scale = dpi / 72.0
+    projected = round(page_w_pt * scale) * round(page_h_pt * scale)
+    budget = config.MAX_RENDER_PIXELS
+    if projected <= budget or projected <= 0:
+        return dpi
+    adjusted = int(dpi * math.sqrt(budget / projected))
+    return max(1, adjusted)
+
+
 def _validate_page_no(doc, page_no: int) -> None:
     n = pdf_engine.page_count(doc)
     if page_no < 0 or page_no >= n:
@@ -67,10 +90,16 @@ def render_page(
     Raises :class:`RenderError("page_not_found")` for an out-of-range page. The
     document is always closed.
     """
-    effective_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
+    clamped_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
     doc = pdf_engine.open_pdf(work_pdf_path)
     try:
         _validate_page_no(doc, page_no)
+        # Read the page rect first so we can fit DPI to the pixel budget (WR-06) BEFORE
+        # allocating the pixmap; the result's reported dpi reflects this actual value (D-03).
+        dims = pdf_engine.page_dimensions(doc, page_no)
+        effective_dpi = fit_dpi_to_pixel_budget(
+            clamped_dpi, dims["page_w_pt"], dims["page_h_pt"]
+        )
         data = pdf_engine.render_page_to_png(doc, page_no, effective_dpi)
     finally:
         pdf_engine.close(doc)
@@ -96,7 +125,7 @@ def page_meta(
     Pixel dims are derived from the exact (clamped) DPI so they match what
     :func:`render_page` would produce: ``img = round(pt * dpi / 72)``.
     """
-    effective_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
+    clamped_dpi = clamp_dpi(dpi if dpi is not None else config.DEFAULT_DPI)
     doc = pdf_engine.open_pdf(work_pdf_path)
     try:
         _validate_page_no(doc, page_no)
@@ -104,6 +133,8 @@ def page_meta(
     finally:
         pdf_engine.close(doc)
 
+    # Apply the same pixel-budget DPI fit as render_page so meta dims match the PNG (WR-06).
+    effective_dpi = fit_dpi_to_pixel_budget(clamped_dpi, dims["page_w_pt"], dims["page_h_pt"])
     scale = effective_dpi / 72.0
     return {
         "page_no": page_no,
