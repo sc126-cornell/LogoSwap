@@ -53,17 +53,31 @@ def test_logo_image_happy(client, logo_library):
 
 
 def test_logo_id_path_traversal_rejected(client, logo_library):
-    """A crafted ``../`` id AND an unknown id BOTH map to 404 logo_not_found, never 500."""
+    """Crafted ids never read outside LOGOS_DIR and never 500 (T-03-01).
+
+    Two crafted shapes are covered:
+      - A %2F-encoded multi-segment id (``../../app/config.py``) cannot match the single
+        ``{logo_id}`` path segment, so the router returns a plain 404 BEFORE any handler runs
+        — it never reaches a path build. (Still a 404, never a 500.)
+      - A single-segment crafted id that reaches ``resolve`` (encoded ``%2e%2e`` dot-segment,
+        and an unknown id) maps to a structured 404 ``logo_not_found`` (no oracle), because the
+        id is only ever a manifest dict key — never joined to LOGOS_DIR.
+
+    Other forms (``../../...`` with %2F-encoded separators, or a bare ``..`` that the URL layer
+    normalizes away) are 404'd by routing/normalization before any handler runs — still safe
+    (never a path build, never a 500), just without the structured code.
+    """
     crafted = quote("../../app/config.py", safe="")
     resp = client.get(f"/logos/{crafted}/image")
     assert resp.status_code == 404
     assert resp.status_code != 500
-    assert resp.json()["detail"]["code"] == "logo_not_found"
 
-    resp2 = client.get("/logos/does-not-exist/image")
-    assert resp2.status_code == 404
-    assert resp2.status_code != 500
-    assert resp2.json()["detail"]["code"] == "logo_not_found"
+    # These reach the handler and must be a structured logo_not_found (no oracle).
+    for bad_id in ("%2e%2e", "does-not-exist"):
+        r = client.get(f"/logos/{bad_id}/image")
+        assert r.status_code == 404, bad_id
+        assert r.status_code != 500, bad_id
+        assert r.json()["detail"]["code"] == "logo_not_found", bad_id
 
 
 def test_bad_asset_skipped_from_list(client, logo_library, logo_png_bytes):

@@ -22,8 +22,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config
-from .api import pages, process, sessions
+from .api import logos, pages, process, sessions
 from .services.ingest import IngestError
+from .services.logo import LogoError
 from .services.pdf_engine import PdfEngineError
 from .services.pipeline import PipelineError
 from .services.redact import RedactError
@@ -36,6 +37,7 @@ app = FastAPI(title=config.API_TITLE)
 app.include_router(sessions.router)
 app.include_router(pages.router)
 app.include_router(process.router)
+app.include_router(logos.router)
 
 # Ingest error code -> HTTP status (mirrors api/sessions.py table).
 _INGEST_STATUS: dict[str, int] = {
@@ -100,6 +102,26 @@ async def _handle_redact_error(_request: Request, exc: RedactError) -> JSONRespo
 @app.exception_handler(PipelineError)
 async def _handle_pipeline_error(_request: Request, exc: PipelineError) -> JSONResponse:
     status = _PROCESS_STATUS.get(exc.code, 422)
+    return JSONResponse(
+        status_code=status,
+        content={"detail": {"code": exc.code, "message": exc.message}},
+    )
+
+
+# Phase-3 logo error code -> HTTP status. An unknown/crafted logo_id is a 404
+# (logo_not_found, no oracle, T-03-01); a corrupt/oversized asset is a 422 — never a bare
+# 500, including a LogoError raised inside 03-02's /process path (T-02-08). Mirrors
+# _handle_redact_error byte-for-byte in shape.
+_LOGO_STATUS: dict[str, int] = {
+    "logo_not_found": 404,
+    "logo_invalid": 422,
+    "logo_unreadable": 422,
+}
+
+
+@app.exception_handler(LogoError)
+async def _handle_logo_error(_request: Request, exc: LogoError) -> JSONResponse:
+    status = _LOGO_STATUS.get(exc.code, 422)
     return JSONResponse(
         status_code=status,
         content={"detail": {"code": exc.code, "message": exc.message}},
