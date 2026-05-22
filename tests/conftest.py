@@ -65,6 +65,45 @@ def ingested_session(valid_pdf_bytes):
 
 
 @pytest.fixture
+def logo_png_bytes() -> bytes:
+    """A small transparent RGBA PNG built in-memory (no committed binary, mirrors _build_pdf).
+
+    40x20 with a semi-transparent fill so it carries a real alpha channel (D-03) — the same
+    philosophy as the in-memory PDF fixtures.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("RGBA", (40, 20), (255, 0, 0, 128))
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def logo_library(tmp_path, monkeypatch, logo_png_bytes):
+    """Write manifest.json + a transparent PNG into a tmp LOGOS_DIR and monkeypatch config.
+
+    Mirrors the autouse ``isolated_data_dir`` fixture: ``logo.py`` reads ``config.LOGOS_DIR``
+    lazily at call time, so monkeypatching the attribute is enough. Returns the dir path.
+    """
+    import json
+
+    logos_dir = tmp_path / "logos"
+    logos_dir.mkdir()
+    (logos_dir / "placeholder.png").write_bytes(logo_png_bytes)
+    manifest = [
+        {"id": "placeholder", "file": "placeholder.png", "name": "預設商標", "tags": []}
+    ]
+    (logos_dir / "manifest.json").write_text(
+        json.dumps(manifest), encoding="utf-8"
+    )
+    monkeypatch.setattr(config, "LOGOS_DIR", logos_dir)
+    return logos_dir
+
+
+@pytest.fixture
 def client():
     """FastAPI TestClient bound to the app (httpx-backed)."""
     from fastapi.testclient import TestClient

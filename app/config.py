@@ -29,6 +29,15 @@ def _env_int(name: str, default: int) -> int:
 # Where the three-directory session layout lives (originals/ work/ outputs/).
 DATA_DIR: Path = Path(os.environ.get("DATA_DIR", "./data")).resolve()
 
+# Fixed read-only logo library (Phase 3). Defaults to a repo-relative ./logos; bake-in/mount
+# in deploy (CLAUDE.md "read-only volume for the fixed logo library"). An absent dir yields an
+# empty picker rather than an error (graceful degradation to pure removal, A2).
+LOGOS_DIR: Path = Path(os.environ.get("LOGOS_DIR", "./logos")).resolve()
+
+# Per-asset guard (T-03-02 / Pitfall 6): cap a library PNG's file size BEFORE Pillow decode so a
+# crafted/oversized asset cannot inflate memory. A bad asset is skipped from the list, not fatal.
+MAX_LOGO_BYTES: int = _env_int("MAX_LOGO_BYTES", 10 * 1024 * 1024)
+
 # Render DPI policy (D-02: 200 DPI default for CAD line clarity).
 DEFAULT_DPI: int = _env_int("DEFAULT_DPI", 200)
 MIN_DPI: int = _env_int("MIN_DPI", 72)
