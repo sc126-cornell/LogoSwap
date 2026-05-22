@@ -13,8 +13,17 @@
  *   GET  /sessions/{id}/pages/{n}/image     -> 200 image/png  (n is 0-based; dpi optional, server default 200)
  *   GET  /sessions/{id}/pages/{n}/meta      -> 200 { page_no, page_w_pt, page_h_pt, rotation, dpi, img_w, img_h }
  *
- * The image endpoint is a plain URL — set it as an <img> src. The browser never parses the PDF
- * (server-authoritative render; PDF.js is forbidden per SKELETON.md).
+ * Phase 2 contract consumed (authored by Plan 02-02 — see 02-02-SUMMARY):
+ *   POST /sessions/{id}/process             body { dpi, regions:[{ page, px_rect:[x0,y0,x1,y1] }] }
+ *                                            -> 200 { output_filename, page_count, regions:[{ page, removed, clamped }] }
+ *     errors -> 4xx { detail: { code, message } }  code in: session_not_found | invalid_request |
+ *                                                  page_out_of_range | residual_content
+ *   GET  /sessions/{id}/result/pages/{n}/image  -> 200 image/png (the 移除結果 after-image; same six X- headers)
+ *   GET  /sessions/{id}/result                  -> 200 application/pdf attachment (原名_logoswap.pdf);
+ *                                                  404 result_not_ready before any /process run
+ *
+ * The image/result endpoints are plain URLs — set them as an <img> src / anchor href. The browser
+ * never parses the PDF (server-authoritative render; PDF.js is forbidden per SKELETON.md).
  */
 
 // Configurable base; empty string => same-origin (the FastAPI static mount serves us at /).
@@ -111,4 +120,54 @@ export async function pageMeta(id, n) {
     throw await toApiError(response);
   }
   return response.json();
+}
+
+// ---- Phase 2 seam: process (true removal on the work copy) + result render + download --------
+
+/**
+ * Apply removal on the work copy (deferred-mutation, D-05). POSTs the job spec
+ * { dpi, regions:[{ page, px_rect:[x0,y0,x1,y1] }] } to /process and resolves to
+ * { output_filename, page_count, regions:[{ page, removed, clamped }] }.
+ *
+ * Throws ApiError (carrying detail.code + detail.message) on a non-2xx response, exactly like
+ * createSession, so the caller maps the code to fixed UI copy and never surfaces a raw server
+ * message as HTML (T-02-11). A network/transport failure rejects with a plain Error.
+ */
+export async function processJob(id, jobSpec) {
+  const response = await fetch(
+    API_BASE + "/sessions/" + encodeURIComponent(id) + "/process",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(jobSpec),
+    }
+  );
+  if (!response.ok) {
+    throw await toApiError(response);
+  }
+  return response.json();
+}
+
+/**
+ * Build the result (移除結果) page-image URL (0-based n) — the server's render of the redacted
+ * work copy. Returns a string to set as an <img> src. Carries the same six X- headers as the
+ * original page image, so the overlay maths is identical (D-04 before/after toggle).
+ */
+export function resultImageURL(id, n) {
+  return (
+    API_BASE +
+    "/sessions/" +
+    encodeURIComponent(id) +
+    "/result/pages/" +
+    encodeURIComponent(n) +
+    "/image"
+  );
+}
+
+/**
+ * Build the result-download URL (the exported 原名_logoswap.pdf attachment). Returns a string to
+ * navigate to / set as an anchor href; the browser handles the attachment + filename* (OUTPUT-01).
+ */
+export function resultDownloadURL(id) {
+  return API_BASE + "/sessions/" + encodeURIComponent(id) + "/result";
 }

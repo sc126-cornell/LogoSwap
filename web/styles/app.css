@@ -424,6 +424,378 @@ body {
   display: none;
 }
 
+/* ============================================================================
+ * Phase 2 — region overlay, side-panel region list, before/after toggle, action group.
+ * HARD RULE (unchanged): every color is a var(--color-*) token. The region rectangle uses the
+ * dedicated --color-region-* tokens (a cool tool-overlay hue), NEVER the reserved accent.
+ * ========================================================================== */
+
+/* ---------- Side-panel expansion (driven by app.js toggling .main--paneled) ---------- */
+
+/* When a document is loaded the reserved column expands to --side-panel-width; otherwise it
+   stays collapsed at 0 (the Phase-1 default rule above). */
+.main--paneled {
+  grid-template-columns: 1fr var(--side-panel-width);
+}
+
+.main--paneled .side-panel {
+  width: var(--side-panel-width);
+  overflow: hidden;
+}
+
+.side-panel__inner {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+/* ---------- Region panel header ---------- */
+
+.region-panel__header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+  padding: var(--space-lg) var(--space-md) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.region-panel__title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
+.region-panel__heading {
+  margin: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+  color: var(--color-text);
+}
+
+.region-panel__count {
+  margin: 0;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.region-panel__scope {
+  margin: 0;
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Destructive text button (clear-all in the header) — danger-tinted, NOT an accent fill. */
+.danger-text-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-sm);
+  font-family: inherit;
+  font-size: var(--font-size-label);
+  color: var(--color-danger);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+
+.danger-text-btn:hover:not(:disabled) {
+  border-color: var(--color-danger);
+}
+
+.danger-text-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Region empty-state ---------- */
+
+.region-empty {
+  padding: var(--space-lg) var(--space-md);
+}
+
+.region-empty[hidden] {
+  display: none;
+}
+
+.region-empty__heading {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text);
+}
+
+.region-empty__body {
+  margin: 0;
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-body);
+  color: var(--color-text-muted);
+}
+
+/* ---------- Region list ---------- */
+
+.region-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.region-list[hidden] {
+  display: none;
+}
+
+.region-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: var(--space-sm) var(--space-md);
+  border-bottom: 1px solid var(--color-border);
+  cursor: default;
+  transition: background-color 0.12s ease;
+}
+
+.region-row:hover,
+.region-row.is-active {
+  background: var(--color-neutral-hover);
+}
+
+.region-row__label {
+  font-size: var(--font-size-label);
+  color: var(--color-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Per-region delete icon button — neutral by default, danger on hover. */
+.region-row__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-hit);
+  height: var(--control-hit);
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.region-row__delete:hover {
+  color: var(--color-danger);
+  background: var(--color-neutral-hover);
+}
+
+/* ---------- Region inline notice / error (reuses .error-block tone) ---------- */
+
+.region-notice {
+  margin: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.region-notice[hidden] {
+  display: none;
+}
+
+.region-notice__body {
+  margin: 0 0 var(--space-sm);
+  font-size: var(--font-size-label);
+  line-height: var(--line-height-body);
+  color: var(--color-text-muted);
+}
+
+.region-notice__body:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- Region overlay (child of #page-frame; pins to the true render box) ---------- */
+
+.region-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: var(--overlay-z);
+  cursor: crosshair;
+  /* No background: the page image shows through; rectangles are explicit children. */
+}
+
+.region-overlay[hidden] {
+  display: none;
+}
+
+/* Committed region rectangle — slate border + translucent fill (NOT accent). */
+.region-rect {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px solid var(--color-region-border);
+  background: var(--color-region-fill);
+  cursor: default;
+}
+
+/* Drawing-in-progress (rubber-band) rectangle: dashed, lighter fill. */
+.region-rect--drawing {
+  border: 1px dashed var(--color-region-border);
+  background: var(--color-region-fill-active);
+}
+
+/* Hovered/selected (its list row is hovered/focused) — stronger border + ordinal badge. */
+.region-rect.is-active {
+  border-color: var(--color-region-border-strong);
+}
+
+.region-rect__badge {
+  position: absolute;
+  top: 0;
+  left: 0;
+  min-width: 1.4em;
+  padding: 0 var(--space-xs);
+  font-size: var(--font-size-label);
+  line-height: 1.4;
+  text-align: center;
+  color: #ffffff;
+  background: var(--color-region-border-strong);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Before/after segmented toggle ---------- */
+
+.beforeafter {
+  gap: 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.seg-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-md);
+  font-family: inherit;
+  font-size: var(--font-size-label);
+  color: var(--color-text);
+  background: var(--color-panel);
+  border: 0;
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--color-border);
+}
+
+.seg-btn:hover:not(.is-selected) {
+  background: var(--color-neutral-hover);
+}
+
+/* Selected segment = neutral-hover fill (deliberately NOT the accent). */
+.seg-btn.is-selected {
+  background: var(--color-neutral-hover);
+  font-weight: var(--font-weight-semibold);
+}
+
+.seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ---------- Action group (apply / download) ---------- */
+
+.action-group {
+  gap: var(--space-sm);
+}
+
+.action-status {
+  font-size: var(--font-size-label);
+  color: var(--color-text-muted);
+}
+
+.action-status:empty {
+  display: none;
+}
+
+/* ---------- Modal (clear-all confirm) ---------- */
+
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal__scrim {
+  position: absolute;
+  inset: 0;
+  background: var(--color-scrim);
+}
+
+.modal__dialog {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+  max-width: 28rem;
+  margin: var(--space-md);
+  padding: var(--space-xl);
+  background: var(--color-panel);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--sheet-shadow);
+}
+
+.modal__title {
+  margin: 0;
+  font-size: var(--font-size-heading);
+  font-weight: var(--font-weight-semibold);
+  line-height: var(--line-height-heading);
+  color: var(--color-text);
+}
+
+.modal__body {
+  margin: 0;
+  font-size: var(--font-size-body);
+  color: var(--color-text-muted);
+}
+
+.modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* Danger-filled confirm button (the destructive primary in the confirm dialog). */
+.danger-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-lg);
+  font-family: inherit;
+  font-size: var(--font-size-body);
+  font-weight: var(--font-weight-semibold);
+  color: #ffffff;
+  background: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: filter 0.12s ease;
+}
+
+.danger-btn:hover {
+  filter: brightness(0.94);
+}
+
 /* ---------- Responsiveness: single breakpoint so the toolbar wraps under ~720px ---------- */
 
 @media (max-width: 720px) {
@@ -434,5 +806,18 @@ body {
 
   .toolbar__spacer {
     flex-basis: 100%;
+  }
+
+  /* Below the breakpoint the side-panel stacks under the stage instead of a fixed column. */
+  .main--paneled {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr auto;
+  }
+
+  .main--paneled .side-panel {
+    width: auto;
+    max-height: 40vh;
+    border-left: 0;
+    border-top: 1px solid var(--color-border);
   }
 }

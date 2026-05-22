@@ -60,6 +60,18 @@
   --color-neutral-hover: #EDEFF2;  /* neutral button hover (not accent) */
   --color-focus-ring: #2563EB;     /* tracks the accent hue in light */
   --color-scrim: rgba(15, 23, 42, 0.45);
+
+  /* ---- Phase 2 additions: region overlay + side-panel layout ---- */
+  /* Layout dimensions (theme-agnostic) */
+  --side-panel-width: 320px;        /* reserved column expands to this in Phase 2 */
+  --overlay-z: 10;                  /* region overlay stacking above the page image */
+
+  /* Region rectangle colors — LIGHT (a dedicated slate/cool "tool overlay" hue,
+     deliberately NOT the reserved accent; see 02-UI-SPEC "Region rectangle treatment"). */
+  --color-region-border: #475569;        /* slate-600 */
+  --color-region-border-strong: #1E293B; /* slate-800 — hovered/selected */
+  --color-region-fill: rgba(71, 85, 105, 0.14);
+  --color-region-fill-active: rgba(71, 85, 105, 0.10);
 }
 
 /*
@@ -78,6 +90,12 @@
   --color-neutral-hover: #334155;  /* neutral button hover in dark */
   --color-focus-ring: #F59E0B;     /* tracks the amber accent in dark */
   --color-scrim: rgba(2, 6, 23, 0.6);
+
+  /* Region rectangle colors — DARK overrides (slate-300/200 read over dark CAD content). */
+  --color-region-border: #CBD5E1;        /* slate-300 */
+  --color-region-border-strong: #E2E8F0; /* slate-200 — hovered/selected */
+  --color-region-fill: rgba(203, 213, 225, 0.16);
+  --color-region-fill-active: rgba(203, 213, 225, 0.12);
 }
 
 /*
