@@ -96,6 +96,13 @@ class JobSpec(BaseModel):
         max_length=128,
         description="optional global logo id (D-01); resolved via manifest allowlist",
     )
+    auto_logo: bool = Field(
+        default=False,
+        description=(
+            "when true, ignore logo_id and auto-pick PER REGION the library logo whose native "
+            "aspect ratio best matches that region's framed shape (logo.pick_logo_id_for_rect)"
+        ),
+    )
 
     @field_validator("regions")
     @classmethod

@@ -1,8 +1,4 @@
 [
-  {
-    "id": "placeholder",
-    "file": "placeholder.png",
-    "name": "預設商標",
-    "tags": []
-  }
+  { "id": "logo-1line", "file": "1.png", "name": "商標(單行)", "tags": ["wide"] },
+  { "id": "logo-2line", "file": "2.png", "name": "商標(雙行)", "tags": ["block"] }
 ]

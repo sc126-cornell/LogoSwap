@@ -20,6 +20,7 @@ yields ``{}`` so the picker degrades to an empty state, never a 500 (A2).
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
@@ -170,3 +171,59 @@ def resolve(logo_id: str) -> bytes:
         return path.read_bytes()
     except OSError as err:
         raise LogoError("logo_unreadable", "商標檔案無法讀取。") from err
+
+
+# ---- Aspect-based auto-selection (per-region logo by framed shape) ------------------
+# Cache native aspect by (resolved path, mtime) so the per-region auto pick does not re-open
+# the PNG for every region of a job. Invalidated automatically when the asset's mtime changes.
+_aspect_cache: dict[tuple[str, float], float] = {}
+
+
+def _logo_aspect(entry: dict) -> float | None:
+    """Native width/height aspect of a manifest entry's PNG, or ``None`` if unreadable.
+
+    Reuses the same containment-checked path resolution as :func:`resolve` (T-03-01); a missing
+    or undecodable asset yields ``None`` (skipped from the candidate set), never an exception.
+    """
+    try:
+        path = _resolve_path(entry)
+        if not path.is_file():
+            return None
+        key = (str(path), path.stat().st_mtime)
+        cached = _aspect_cache.get(key)
+        if cached is not None:
+            return cached
+        with Image.open(path) as img:
+            width, height = img.size
+    except (LogoError, OSError, UnidentifiedImageError, ValueError):
+        return None
+    if not width or not height:
+        return None
+    aspect = width / height
+    _aspect_cache[key] = aspect
+    return aspect
+
+
+def pick_logo_id_for_rect(rect_w: float, rect_h: float) -> str | None:
+    """Pick the library logo whose native aspect ratio best matches a framed region's shape.
+
+    Auto placement (beyond D-01's single global logo): for each removed region we choose the
+    logo that best fits its proportions — a very wide region gets a wide single-line mark, a
+    blockier region gets a taller multi-line mark. "Closest" is measured in LOG-aspect space so
+    a 2×-too-wide and a 2×-too-tall mismatch are penalised symmetrically. Returns ``None`` when
+    no valid logo exists, so the caller degrades to pure removal (consistent with WR-02 / D-04).
+    """
+    if rect_w <= 0 or rect_h <= 0:
+        return None
+    target = math.log(rect_w / rect_h)
+    best_id: str | None = None
+    best_distance: float | None = None
+    for entry in _load_manifest().values():
+        aspect = _logo_aspect(entry)
+        if aspect is None or aspect <= 0:
+            continue
+        distance = abs(math.log(aspect) - target)
+        if best_distance is None or distance < best_distance:
+            best_distance = distance
+            best_id = entry["id"]
+    return best_id

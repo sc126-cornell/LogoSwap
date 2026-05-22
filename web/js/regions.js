@@ -33,7 +33,7 @@ import { showOriginalImage, showResultImage } from "./viewer.js";
 // Phase 3 (D-01/D-06): the selected global logo rides the SAME apply flow. We source the
 // selection from 03-01's logos.js export and include it as logo_id on /process; null = pure
 // removal. The conditional after-label reads "移除+置入結果" when a logo is selected.
-import { getSelectedLogoId } from "./logos.js";
+import { getSelectedLogoId, isAutoLogo } from "./logos.js";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
@@ -535,7 +535,7 @@ function setActionStatus(text) {
 // HTML default ("移除結果") is never the source of truth. The toggle mechanics are unchanged —
 // the work-copy render already contains the placed logo (zero new rendering).
 function refreshResultLabel() {
-  const hasLogo = Boolean(getSelectedLogoId());
+  const hasLogo = Boolean(getSelectedLogoId()) || isAutoLogo();
   viewResultBtn.textContent = hasLogo
     ? COPY.resultLabelWithLogo
     : COPY.resultLabelNoLogo;
@@ -629,9 +629,11 @@ async function applyRemoval() {
       // a page whose effective DPI was reduced below this still redacts the correct area (CR-01).
       dpi: REQUESTED_DPI,
       regions: getJobRegions(),
-      // D-01: the optional global logo. null when nothing is picked (pure removal). api.js
-      // JSON-stringifies the whole spec unchanged — logo_id flows through with no seam change.
+      // D-01: the optional global logo. null when nothing is picked (pure removal) OR when the
+      // "自動(依框選形狀)" choice is active — in that case auto_logo drives a per-region pick and
+      // logo_id is ignored server-side. api.js JSON-stringifies the whole spec unchanged.
       logo_id: getSelectedLogoId() || null,
+      auto_logo: isAutoLogo(),
     });
 
     applying = false;

@@ -18,12 +18,18 @@
 import * as api from "./api.js";
 import { notifyJobInputChanged } from "./regions.js";
 
+// Internal sentinel for the "自動(依框選形狀)" choice — NOT a real manifest id. In auto mode the
+// backend ignores logo_id and picks per-region by aspect (auto_logo flag), so getSelectedLogoId()
+// returns null and isAutoLogo() returns true.
+const AUTO = "__auto__";
+
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
   heading: "我司商標",
   subtext: "選擇要置入移除區域的商標(套用後置入所有框選區域)",
   selectAria: (name) => `選擇商標:${name}`,
   noLogo: "不置入商標",
+  auto: "自動(依框選形狀)",
   emptyHeading: "尚無可用的商標",
   emptyBody:
     "商標庫目前是空的。您仍可框選並移除供應商商標,完成後下載。商標由管理者預先放入。",
@@ -106,6 +112,13 @@ function makeThumbCell(id, name) {
     caption.className = "logo-thumb__caption";
     caption.textContent = COPY.noLogo;
     btn.appendChild(caption);
+  } else if (id === AUTO) {
+    // The "自動(依框選形狀)" cell: caption-only, no single preview image.
+    btn.setAttribute("aria-label", COPY.auto);
+    const caption = document.createElement("span");
+    caption.className = "logo-thumb__caption";
+    caption.textContent = COPY.auto;
+    btn.appendChild(caption);
   } else {
     btn.setAttribute("aria-label", COPY.selectAria(name));
     const img = document.createElement("img");
@@ -124,8 +137,9 @@ function makeThumbCell(id, name) {
 
 function renderGrid(logos) {
   grid.replaceChildren();
-  // Lead with the explicit clear choice so the user can return to pure removal.
+  // Lead with the explicit clear choice, then the auto-by-shape choice, then the logos.
   grid.appendChild(makeThumbCell(null, COPY.noLogo));
+  grid.appendChild(makeThumbCell(AUTO, COPY.auto));
   for (const entry of logos) {
     grid.appendChild(makeThumbCell(entry.id, entry.name));
   }
@@ -165,9 +179,14 @@ export function resetLogos() {
   loadingEl.hidden = true; // fully hidden on reset
 }
 
-/** The current global logo selection (consumed by 03-02's /process payload). null = pure removal. */
+/** The current global logo selection (consumed by the /process payload). null = pure removal OR auto. */
 export function getSelectedLogoId() {
-  return selectedLogoId;
+  return selectedLogoId === AUTO ? null : selectedLogoId;
+}
+
+/** True when the "自動(依框選形狀)" choice is active — the backend picks per-region by aspect. */
+export function isAutoLogo() {
+  return selectedLogoId === AUTO;
 }
 
 // ---- Wiring (idempotent at module load) --------------------------------------------

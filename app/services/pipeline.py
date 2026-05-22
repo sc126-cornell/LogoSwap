@@ -152,9 +152,18 @@ def process_job(session_id: str, job_spec) -> dict:
         # surface a per-job ``logo_skipped`` flag the frontend can act on. The redaction + export
         # still complete (pure removal). A logo_not_found from a stale/cleared selection likewise
         # degrades rather than failing the whole run.
+        # auto_logo (per-region by framed shape) takes precedence over the single global logo_id.
+        # In auto mode we resolve+embed lazily per CHOSEN id inside the loop, caching bytes and
+        # the embedded xref per id so repeats of the same logo dedup (Pitfall 4) while two
+        # different logos across regions each embed once.
+        auto_logo = bool(getattr(job_spec, "auto_logo", False))
         logo_bytes = None
         logo_skipped = False
-        if getattr(job_spec, "logo_id", None):
+        logo_bytes_cache: dict[str, bytes] = {}
+        logo_xrefs: dict[str, int] = {}
+        if auto_logo:
+            pass  # per-region selection happens in the loop
+        elif getattr(job_spec, "logo_id", None):
             try:
                 logo_bytes = logo.resolve(job_spec.logo_id)
             except logo.LogoError:
@@ -200,7 +209,31 @@ def process_job(session_id: str, job_spec) -> dict:
             # REGARDLESS of `removed` (the user framed it as a replacement target — A1).
             # First placement embeds (stream=bytes) and returns the xref; subsequent regions
             # reuse that xref (stream=None) to dedup the one global logo (D-01 / Pitfall 4).
-            if logo_bytes is not None:
+            if auto_logo:
+                # Pick the logo whose native aspect best matches THIS region's framed shape.
+                # Use the CLAMPED PIXEL rect aspect (display space, what the user framed) — it
+                # equals the pdf_rect aspect at this dpi and needs no fitz here. Resolve+embed
+                # once per chosen id; reuse that id's xref for repeats (dedup, Pitfall 4). A bad
+                # asset / empty library degrades to pure removal for that region (WR-02 / D-04).
+                rect_w = clamped_px[2] - clamped_px[0]
+                rect_h = clamped_px[3] - clamped_px[1]
+                chosen = logo.pick_logo_id_for_rect(rect_w, rect_h)
+                if chosen is None:
+                    logo_skipped = True
+                else:
+                    try:
+                        if chosen not in logo_bytes_cache:
+                            logo_bytes_cache[chosen] = logo.resolve(chosen)
+                        prev_xref = logo_xrefs.get(chosen, 0)
+                        logo_xrefs[chosen] = pdf_engine.place_logo(
+                            page,
+                            pdf_rect,
+                            stream=(logo_bytes_cache[chosen] if prev_xref == 0 else None),
+                            xref=prev_xref,
+                        )
+                    except logo.LogoError:
+                        logo_skipped = True
+            elif logo_bytes is not None:
                 logo_xref = pdf_engine.place_logo(
                     page,
                     pdf_rect,

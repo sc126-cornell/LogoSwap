@@ -16,7 +16,7 @@ from urllib.parse import quote
 
 import pytest
 
-from app import storage
+from app import config, storage
 from app.models import JobSpec
 from app.services import coords, logo, pdf_engine, pipeline
 
@@ -293,3 +293,97 @@ def test_bad_asset_skipped_from_list(client, logo_library, logo_png_bytes):
     assert resp.status_code == 200
     ids = [e["id"] for e in resp.json()["logos"]]
     assert ids == ["placeholder"]  # bad entries skipped, good one survives
+
+
+# ---- Auto-selection by region shape (auto_logo) ------------------------------------
+def _make_png(w: int, h: int, color=(0, 0, 255, 255)) -> bytes:
+    """Build an in-memory RGBA PNG of a given size (no committed binary)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    buf = BytesIO()
+    Image.new("RGBA", (w, h), color).save(buf, format="PNG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def two_logo_library(tmp_path, monkeypatch):
+    """A library with a WIDE (10:1) and a BLOCK (2:1) logo for auto-selection tests."""
+    logos_dir = tmp_path / "logos"
+    logos_dir.mkdir()
+    (logos_dir / "wide.png").write_bytes(_make_png(1000, 100))   # native aspect 10.0
+    (logos_dir / "block.png").write_bytes(_make_png(200, 100))   # native aspect 2.0
+    manifest = [
+        {"id": "wide", "file": "wide.png", "name": "寬", "tags": []},
+        {"id": "block", "file": "block.png", "name": "方", "tags": []},
+    ]
+    (logos_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(config, "LOGOS_DIR", logos_dir)
+    return logos_dir
+
+
+def test_pick_logo_id_for_rect_by_aspect(two_logo_library):
+    """A very wide region picks the wide logo; a square-ish region picks the block logo."""
+    assert logo.pick_logo_id_for_rect(800, 100) == "wide"   # 8:1 closest to 10:1
+    assert logo.pick_logo_id_for_rect(150, 100) == "block"  # 1.5:1 closest to 2:1
+    assert logo.pick_logo_id_for_rect(0, 100) is None        # degenerate -> None
+
+
+def test_pick_logo_id_for_rect_empty_library(tmp_path, monkeypatch):
+    """No library -> None (auto degrades to pure removal, WR-02 / D-04)."""
+    monkeypatch.setattr(config, "LOGOS_DIR", tmp_path / "does-not-exist")
+    assert logo.pick_logo_id_for_rect(800, 100) is None
+
+
+def test_auto_logo_picks_per_region_by_shape(valid_pdf_bytes, two_logo_library):
+    """auto_logo=True embeds the wide logo in a wide region and the block logo in a block region."""
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    s = dpi / 72.0
+    wide_px = [v * s for v in (10.0, 20.0, 190.0, 40.0)]    # 180x20 = 9:1 framed box
+    block_px = [v * s for v in (10.0, 60.0, 170.0, 140.0)]  # 160x80 = 2:1 framed box
+    spec = JobSpec(
+        dpi=dpi,
+        auto_logo=True,
+        regions=[
+            {"page": 0, "px_rect": wide_px},
+            {"page": 0, "px_rect": block_px},
+        ],
+    )
+    result = pipeline.process_job(sid, spec)
+    assert result["logo_skipped"] is False
+
+    out = pipeline.output_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        images = page.get_images()
+        assert len(images) == 2, f"expected two distinct logos embedded, got {len(images)}"
+        aspects = [
+            r.width / r.height
+            for img in images
+            for r in pdf_engine.get_image_rects(page, img[0])
+        ]
+        # Placed-logo aspect == native logo aspect (keep_proportion): ~10:1 and ~2:1.
+        assert any(a > 5 for a in aspects), f"expected a wide placement, got {aspects}"
+        assert any(1.5 < a < 3 for a in aspects), f"expected a block placement, got {aspects}"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_auto_logo_empty_library_degrades_to_pure_removal(valid_pdf_bytes, tmp_path, monkeypatch):
+    """auto_logo=True with no library: logo_skipped, redaction still completes, no image embedded."""
+    monkeypatch.setattr(config, "LOGOS_DIR", tmp_path / "empty")
+    sid = _ingest(valid_pdf_bytes)
+    dpi = 200
+    spec = JobSpec(dpi=dpi, auto_logo=True, regions=[{"page": 0, "px_rect": _job_px_rect(dpi)}])
+    result = pipeline.process_job(sid, spec)
+    assert result["logo_skipped"] is True
+
+    out = pipeline.output_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(out)
+    try:
+        assert pdf_engine.get_page(doc, 0).get_images() == []
+    finally:
+        pdf_engine.close(doc)
