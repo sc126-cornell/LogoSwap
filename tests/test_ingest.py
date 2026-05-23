@@ -418,3 +418,38 @@ def test_pipeline_resets_work_from_pristine_not_originals(valid_pdf_bytes, clien
     job = {"dpi": 200, "regions": [{"page": 0, "px_rect": [50.0, 50.0, 200.0, 150.0]}]}
     proc = client.post(f"/sessions/{sid}/process", json=job)
     assert proc.status_code == 200, proc.json()
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4-02 Task 03: PNG upload + raster dispatch — consecutive processes are idempotent
+# (reset-from-pristine on the image path, completing the 04-01 invariant under raster apply).
+# --------------------------------------------------------------------------------------
+
+
+def test_image_upload_consecutive_processes_idempotent(client, png_bytes):
+    """A PNG upload + two consecutive /process runs (same region) produce results of
+    near-identical size — the second apply resets work from pristine BEFORE running the
+    raster dispatch, so the IMAGE_PIXELS blank cannot accumulate.
+    """
+    resp = client.post("/sessions", files={"file": ("scan.png", png_bytes, "image/png")})
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    job = {"dpi": 200, "regions": [{"page": 0, "px_rect": [200.0, 200.0, 600.0, 500.0]}]}
+
+    proc1 = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc1.status_code == 200, proc1.json()
+    result1 = client.get(f"/sessions/{sid}/result").content
+    assert result1.startswith(b"%PDF-")
+
+    proc2 = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc2.status_code == 200, proc2.json()
+    result2 = client.get(f"/sessions/{sid}/result").content
+    assert result2.startswith(b"%PDF-")
+
+    # Sizes match within ~1 KiB (PDFs carry creation-time metadata so byte-exact compare
+    # is impossible; a >1 KiB drift would signal IMAGE_PIXELS accumulating between runs).
+    assert abs(len(result1) - len(result2)) < 1024, (
+        f"size drift between consecutive raster applies: {len(result1)} vs {len(result2)} "
+        "— pipeline reset-from-pristine may not be in effect on the image path"
+    )

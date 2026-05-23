@@ -581,3 +581,144 @@ def test_png_upload_with_logo_placement(client, png_bytes, logo_library):
     proc = client.post(f"/sessions/{sid}/process", json=job)
     assert proc.status_code == 200, proc.json()
     assert proc.json()["logo_skipped"] is False
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4-02 Task 03: image-only PDF + dual-layer OCR + image-upload e2e raster dispatch
+# --------------------------------------------------------------------------------------
+
+
+def test_image_only_pdf_full_frame_redacts_to_white(client, image_only_pdf_bytes):
+    """Image-only PDF (scan PDF) → /process with a full-page frame → result PDF has
+    the image xref auto-removed AND the centre pixel renders white."""
+    resp = client.post(
+        "/sessions", files={"file": ("scan.pdf", image_only_pdf_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+    dpi = 200
+    img_w = 595.0 * dpi / 72.0
+    img_h = 842.0 * dpi / 72.0
+    job = {
+        "dpi": dpi,
+        "regions": [{"page": 0, "px_rect": [0.0, 0.0, img_w, img_h]}],
+    }
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+    assert proc.json()["regions"][0]["removed"] is True
+
+    result = client.get(f"/sessions/{sid}/result")
+    assert result.status_code == 200
+    assert result.content.startswith(b"%PDF-")
+    doc = pdf_engine.open_pdf(result.content)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # Full-frame raster redaction auto-removes the image xref entirely.
+        assert page.get_images() == [], (
+            f"image xref should be removed on full-frame raster apply; got {page.get_images()}"
+        )
+        pix = page.get_pixmap(dpi=72)
+        cx, cy = pix.width // 2, pix.height // 2
+        pixel = pix.pixel(cx, cy)
+        assert all(c >= 250 for c in pixel[:3]), f"expected white, got {pixel}"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_image_only_pdf_with_logo_placement(client, image_only_pdf_bytes, logo_library):
+    """Image-only PDF + logo_id → logo is placed AFTER the raster redaction (Pitfall 1
+    invariant unchanged) and survives the apply. Phase 4 success criteria #3 — image-type
+    files take the same Phase 3 logo path."""
+    resp = client.post(
+        "/sessions", files={"file": ("scan.pdf", image_only_pdf_bytes, "application/pdf")}
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    logos_resp = client.get("/logos")
+    logos_list = logos_resp.json().get("logos", [])
+    if not logos_list:
+        pytest.skip("logo library empty — graceful degradation tested elsewhere")
+    logo_id = logos_list[0]["id"]
+
+    # Frame a 200x200pt patch that sits inside the image region of the A4 page.
+    dpi = 200
+    scale = dpi / 72.0
+    px_rect = [100.0 * scale, 400.0 * scale, 400.0 * scale, 600.0 * scale]
+    job = {
+        "dpi": dpi,
+        "regions": [{"page": 0, "px_rect": px_rect}],
+        "logo_id": logo_id,
+    }
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+    assert proc.json()["logo_skipped"] is False
+
+    result = client.get(f"/sessions/{sid}/result")
+    assert result.status_code == 200
+    doc = pdf_engine.open_pdf(result.content)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # At least one image XObject must remain on the page — the logo placement.
+        # (The raster background image survives in non-overlapping pixels too, but the
+        # critical invariant is "logo is present after redaction".)
+        assert len(page.get_images()) >= 1, "logo must be embedded after raster redaction"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_dual_layer_ocr_text_leak_closed_end_to_end(client, dual_layer_ocr_pdf_bytes):
+    """Dual-layer OCR PDF e2e: frame the OCR text rect → /process → /result shows no
+    extractable words inside that rect (Pitfall 3 / Pitfall E closed)."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ocr.pdf", dual_layer_ocr_pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    # The fixture inserts text at (100,400) baseline; glyphs sit a few pt above.
+    dpi = 200
+    scale = dpi / 72.0
+    px_rect = [50.0 * scale, 388.0 * scale, 400.0 * scale, 412.0 * scale]
+    job = {"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+
+    result = client.get(f"/sessions/{sid}/result")
+    assert result.status_code == 200
+    doc = pdf_engine.open_pdf(result.content)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        words = pdf_engine.get_text_words_in_rect(page, (50.0, 388.0, 400.0, 412.0))
+        assert words == [], f"dual-layer OCR text leak — expected [], got {words}"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_image_upload_through_to_raster_dispatch(client, png_bytes):
+    """Vertical slice 04-01 → 04-02 end-to-end: PNG upload normalized to A4 PDF in
+    ingest, framed region falls inside the image XObject → raster dispatch runs →
+    download filename uses ``scan_logoswap.pdf`` stem (D-13)."""
+    resp = client.post("/sessions", files={"file": ("scan.png", png_bytes, "image/png")})
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    # 400x300 PNG keep_proportion'd into A4 (595x842 portrait).
+    # Aspect 4:3 → fitted width 595, fitted height ≈ 446.25 → letterbox y ≈ [197.875, 644.125].
+    # Pick a 200x200 rect well inside that band.
+    dpi = 200
+    scale = dpi / 72.0
+    px_rect = [200.0 * scale, 350.0 * scale, 400.0 * scale, 550.0 * scale]
+    job = {"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+    assert proc.json()["regions"][0]["removed"] is True
+
+    result = client.get(f"/sessions/{sid}/result")
+    assert result.status_code == 200
+    cd = result.headers.get("content-disposition", "")
+    # D-13: scan.png → scan_logoswap.pdf (stem-only sanitization, Phase 2 _logoswap_name).
+    assert "scan_logoswap.pdf" in cd.lower(), (
+        f"download filename should use stem 'scan'; Content-Disposition = {cd!r}"
+    )
