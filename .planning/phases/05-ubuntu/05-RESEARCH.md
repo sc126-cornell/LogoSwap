@@ -1397,7 +1397,7 @@ uvicorn.run(
 | A7 | `tempfile.mkstemp(dir=...)` on Windows respects the dir arg and creates the tempfile on the SAME drive as the destination (so `os.replace` stays atomic on the same FS) | Pattern 5 | If Windows redirects tempfile to TEMP env var, os.replace crosses drives → non-atomic. Mitigation: explicit `dir=str(dest.parent)` already in example |
 | A8 | The existing Phase 1–4 codebase has zero module-level I/O side effects that would break under spawn-based workers > 1 | Pitfall 7 | Verified by reading `app/main.py` + `app/config.py` + `app/storage.py` — all module-level code is constructors / regex compile / pathlib resolve. SAFE. (downgrades from ASSUMED to VERIFIED) |
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 ### Question 1: Legacy session migration strategy
 
@@ -1411,7 +1411,7 @@ uvicorn.run(
   - **Option A: Recompute on first /process** — read originals/, hash it, write back to meta.json, proceed. Pro: no user-visible disruption. Con: defeats the security guarantee (the "baseline" is now from after Phase 5 deploy, not from ingest time — if the file was tampered between Phase 1–4 ingest and Phase 5 deploy, we'd just hash the tampered version).
   - **Option B: Reject as `session_corrupted` → user re-uploads** — clean break; security guarantee remains accurate. Con: any user with a browser tab open across the deploy gets a 410.
 
-**Recommendation:** **Option B.** Combined with D-B2's 1h TTL, the disruption window is at most 1 hour. The friendly message "此工作階段為舊版,請重新上傳檔案。" covers the UX. Implementation is one line in `verify_original_hash` (already in the example code above).
+**RESOLVED:** **Option B.** Combined with D-B2's 1h TTL, the disruption window is at most 1 hour. The friendly message "此工作階段為舊版,請重新上傳檔案。" covers the UX. Implementation is one line in `verify_original_hash` (already in the example code above).
 
 ### Question 2: PyInstaller vs source distribution for desktop target
 
@@ -1423,7 +1423,7 @@ uvicorn.run(
 **What's unclear:**
 - Is PyInstaller `--onefile` feasible for a FastAPI + PyMuPDF + Pillow app on Windows?
 
-**Recommendation:** Skip PyInstaller for v1. Ship as a git tag + README with cross-platform `pip install -r requirements.txt` + `python -m app`. Internal users with Python installed can clone + run; users without can install Python (15 min one-time). PyInstaller is a 1–2 day investigation that the deferred list explicitly tagged.
+**RESOLVED:** Skip PyInstaller for v1. Ship as a git tag + README with cross-platform `pip install -r requirements.txt` + `python -m app`. Internal users with Python installed can clone + run; users without can install Python (15 min one-time). PyInstaller is a 1–2 day investigation that the deferred list explicitly tagged.
 
 ### Question 3: docker-compose.example.yml for Ubuntu — include or document only?
 
@@ -1434,7 +1434,7 @@ uvicorn.run(
 **What's unclear:**
 - Should the repo ship `docker-compose.example.yml` that wires nginx + app for Ubuntu? Or document the nginx config in README only?
 
-**Recommendation:** **Ship the example file.** It's < 50 lines, shows the canonical pattern (nginx proxy_pass to app:8000, volume mount for /data), and Ubuntu deployers will copy-paste it. Document `docker-compose -f docker-compose.example.yml up` in README. Plan task: Plan 05-01 ships the example + README section "Deploying to Ubuntu".
+**RESOLVED:** **Ship the example file.** It's < 50 lines, shows the canonical pattern (nginx proxy_pass to app:8000, volume mount for /data), and Ubuntu deployers will copy-paste it. Document `docker-compose -f docker-compose.example.yml up` in README. Plan task: Plan 05-01 ships the example + README section "Deploying to Ubuntu".
 
 ### Question 4: `CORS_ALLOW_ORIGINS` default — empty or wildcard for v1?
 
@@ -1446,7 +1446,7 @@ uvicorn.run(
 **What's unclear:**
 - Default `CORS_ALLOW_ORIGINS=""` (no CORS middleware = no cross-origin) — does that break iframe embedding? Answer: NO, iframe embedding does not need CORS unless the parent page wants to read iframe contents or call its API directly. Same-origin browser fetch is fine inside the iframe.
 
-**Recommendation:** Default `CORS_ALLOW_ORIGINS=""`. Wire `fastapi.middleware.cors.CORSMiddleware` only if the env var is non-empty. Document in README "Embedding" section: "If the parent page calls the API directly (vs iframe-embed), set `CORS_ALLOW_ORIGINS=https://intranet.company.com`." Same recommendation as D-A2's Claude's discretion paragraph.
+**RESOLVED:** Default `CORS_ALLOW_ORIGINS=""`. Wire `fastapi.middleware.cors.CORSMiddleware` only if the env var is non-empty. Document in README "Embedding" section: "If the parent page calls the API directly (vs iframe-embed), set `CORS_ALLOW_ORIGINS=https://intranet.company.com`." Same recommendation as D-A2's Claude's discretion paragraph.
 
 ### Question 5: zeabur.json file — needed or auto-detect?
 
@@ -1458,7 +1458,7 @@ uvicorn.run(
 **What's unclear:**
 - Does Phase 5 need a `zeabur.json`?
 
-**Recommendation:** **Optional.** Without `zeabur.json`, Zeabur uses the Dockerfile's `EXPOSE 8000` + `CMD` line. Our `CMD ["sh","-c","uvicorn ... --port ${PORT:-8000} ..."]` already honors Zeabur's `$PORT`. The HEALTHCHECK directive is respected. **Skip zeabur.json**; if Zeabur surfaces issues during target-1 testing, add it in a follow-up.
+**RESOLVED:** **Optional.** Without `zeabur.json`, Zeabur uses the Dockerfile's `EXPOSE 8000` + `CMD` line. Our `CMD ["sh","-c","uvicorn ... --port ${PORT:-8000} ..."]` already honors Zeabur's `$PORT`. The HEALTHCHECK directive is respected. **Skip zeabur.json**; if Zeabur surfaces issues during target-1 testing, add it in a follow-up.
 
 ## Environment Availability
 

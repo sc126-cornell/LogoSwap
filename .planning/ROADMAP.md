@@ -108,8 +108,12 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 05-01: 多階段 Dockerfile、Uvicorn workers、Nginx 反向代理、可設定的 API base(預留嵌入彈性)
-- [ ] 05-02: 穩固化 — 大型/旋轉頁面處理、檔案大小限制、暫存清理 janitor、原始檔雜湊驗證
+
+**Wave 1**
+- [ ] 05-01-PLAN.md — 部署 slice:多階段 Dockerfile + uvicorn workers + APP_BASE_PATH(FastAPI root_path)+ /health 加強(uptime/active_sessions/disk)+ app/__main__.py 桌面入口 + AGPL §13 三件套(LICENSE + README 三部署目標 + UI footer GitHub 連結)
+
+**Wave 2** *(blocked on 05-01)*
+- [ ] 05-02-PLAN.md — 穩固化 slice:originals/ SHA-256 baseline + verify + .corrupted sentinel + /process 60s timeout(asyncio.wait_for + to_thread)+ 暫存 janitor(三點同步觸發 + 1h TTL + cross-platform chmod fix)+ 前端三個新錯誤訊息
 
 ## Progress
 
