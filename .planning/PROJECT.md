@@ -14,20 +14,20 @@
 
 <!-- Shipped and confirmed valuable. -->
 
-(None yet — ship to validate)
+- [x] 使用者可上傳單一**向量 PDF**(Phase 1 — UPLOAD-01/04)
+- [x] 使用者可在瀏覽器預覽檔案,並在多頁之間切換(Phase 1 — PREVIEW-01/02,含整頁顯示預設縮放、深淺主題、整份文件 90° 旋轉)
+- [x] 使用者可在頁面上手動框選一個或多個要處理的區域(可跨頁)(Phase 2 — REGION-01/02)
+- [x] 對向量內容,框選區域內的供應商商標物件與文字被真正移除(非覆蓋)(Phase 2 — REMOVE-01/03/04)
+- [x] 使用者可下載處理後的 PDF,原始檔案不被破壞(Phase 2 — OUTPUT-01;deferred-mutation 三目錄)
+- [x] 系統提供固定的我司商標庫(`logos/` + `manifest.json`),使用者可瀏覽並挑選 logo(Phase 3 — LOGO-01)
+- [x] 使用者可將選定的 logo 放到框選位置,維持長寬比、置中、隨頁面旋轉正立;支援「自動依框選形狀」逐區挑選(Phase 3 — LOGO-02)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 使用者可上傳單一檔案:向量 PDF、圖片型 PDF、或獨立影像檔(PNG/JPG/TIFF)
-- [ ] 使用者可在瀏覽器預覽檔案,並在多頁之間切換
-- [ ] 使用者可在頁面上手動框選一個或多個要處理的區域(可跨頁)
-- [ ] 對向量內容,框選區域內的供應商商標物件與文字被真正移除(非覆蓋)
-- [ ] 對點陣圖/影像內容,框選區域以白色或周圍底色填滿
-- [ ] 系統提供固定的我司商標庫,使用者可挑選要貼上的 logo
-- [ ] 使用者可將選定的 logo 放到指定位置(縮放貼合框選區域)
-- [ ] 使用者可下載處理後的 PDF,原始檔案不被破壞
+- [ ] 使用者可上傳**圖片型(點陣/掃描)PDF** 與**獨立影像檔**(PNG/JPG/TIFF)(Phase 4 — UPLOAD-02/03)
+- [ ] 對點陣圖/影像內容,框選區域以白色填滿(Phase 4 — REMOVE-02)
 
 ### Out of Scope
 
@@ -61,11 +61,16 @@
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| 由使用者手動框選決定移除區域(非自動偵測) | 商標樣式多變,手動框選最可靠且有彈性 | — Pending |
-| 點陣圖移除採填白/底色(非 inpainting) | 降低技術複雜度,且符合使用者可接受的結果 | — Pending |
-| 移除後貼上固定商標庫中的我司 logo 圖檔 | 公司 logo 固定,系統預存最方便挑選 | — Pending |
-| 以 PyMuPDF 為核心 PDF 處理函式庫 | 使用者指定,且 redaction 符合「真正移除」需求 | — Pending |
-| v1 為獨立工具、內網免登入 | 先交付核心價值,整合與權限控管延後 | — Pending |
+| 由使用者手動框選決定移除區域(非自動偵測) | 商標樣式多變,手動框選最可靠且有彈性 | ✓ Validated (Phase 2) |
+| 點陣圖移除採填白/底色(非 inpainting) | 降低技術複雜度,且符合使用者可接受的結果 | — Phase 4 |
+| 移除後貼上固定商標庫中的我司 logo 圖檔 | 公司 logo 固定,系統預存最方便挑選 | ✓ Validated (Phase 3) |
+| 以 PyMuPDF 為核心 PDF 處理函式庫 | 使用者指定,且 redaction 符合「真正移除」需求 | ✓ Validated (Phase 2);fitz 嚴格限制在 `pdf_engine.py`(AGPL seam) |
+| v1 為獨立工具、內網免登入 | 先交付核心價值,整合與權限控管延後 | ✓ Validated |
+| Deferred-mutation:處理只動 work 副本,原始檔永不變(SHA-256 驗證) | 預覽 / 對照 / 重做不會破壞原檔,出錯也能恢復 | ✓ Validated (Phase 2/3) |
+| Logo 自動依框選形狀挑選(原生長寬比最接近) | 多頁 PDF 上不同形狀的供應商商標,使用者不必逐區手動指定 | ✓ Validated (Phase 3 UAT) |
+| 90° 旋轉作用在整份文件(非 per-page) | 供應商 PDF 多半整份方向一致,逐頁旋轉是反向使用情境 | ✓ Validated (Phase 3 UAT) |
+| 套用變更後框選鎖定;以「恢復原圖」為唯一重置入口 | 保護跨多頁的變更不被誤動;後續編輯路徑更明確 | ✓ Validated (Phase 3 UAT) |
+| 原圖 / 移除結果切換鈕移除(視圖自動切換) | 原圖渲染路徑修好前一直顯示移除結果;UAT 期間使用者選擇取消這組按鈕 | ✓ Validated (Phase 3 UAT) |
 
 ## Evolution
 
@@ -85,4 +90,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-22 after initialization*
+*Last updated: 2026-05-23 after Phase 3 completion (incl. UAT-driven hotfixes + code review/fix)*

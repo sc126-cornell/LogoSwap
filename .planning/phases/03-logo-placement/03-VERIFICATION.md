@@ -1,8 +1,9 @@
 ---
 phase: 03-logo-placement
 verified: 2026-05-22T00:00:00Z
-status: human_needed
-score: 9/9 must-haves verified
+resolved: 2026-05-23
+status: passed
+score: 9/9 must-haves verified + 6 human-UAT items resolved (see 03-HUMAN-UAT.md)
 overrides_applied: 0
 human_verification:
   - test: "Load a PDF in the browser. In the side panel, verify the 我司商標 section appears below the region list with the placeholder thumbnail on a neutral backing. Switch between light and dark themes and confirm the grid renders correctly in both."
