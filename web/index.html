@@ -281,20 +281,20 @@
               class="dropzone"
               role="button"
               tabindex="0"
-              aria-label="選擇 PDF 檔案"
+              aria-label="選擇 PDF 或影像檔案"
             >
-              <h2 class="dropzone__heading">上傳 PDF 以開始</h2>
+              <h2 class="dropzone__heading">上傳 PDF 或影像以開始</h2>
               <p class="dropzone__body">
-                選擇或拖曳一個供應商 PDF 檔案,即可在此預覽各頁內容。原始檔案不會被更動。
+                選擇或拖曳一個 PDF 或影像檔案(PNG、JPG、TIFF),即可在此預覽並框選要替換的商標。原始檔案不會被更動。
               </p>
-              <button type="button" id="choose-file" class="primary-btn">選擇 PDF 檔案</button>
+              <button type="button" id="choose-file" class="primary-btn">選擇檔案</button>
               <p class="dropzone__secondary">或將檔案拖曳到這裡</p>
-              <p class="dropzone__hint">支援 PDF 檔(單一檔案)</p>
+              <p class="dropzone__hint">支援 PDF、PNG、JPG、TIFF(單一檔案)</p>
               <input
                 type="file"
                 id="file-input"
                 class="visually-hidden"
-                accept="application/pdf,.pdf"
+                accept="application/pdf,.pdf,image/png,image/jpeg,image/tiff,.png,.jpg,.jpeg,.tif,.tiff"
               />
             </div>
           </div>

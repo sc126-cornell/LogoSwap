@@ -251,6 +251,142 @@ def test_ingest_status_dicts_in_sync():
         assert api_dict[k] == expected
 
 
+# --- Phase 4 Task 04-01-03: image end-to-end integration -----------------------------
+
+
+def test_png_upload_normalizes_to_a4_pdf(client, png_bytes):
+    """End-to-end: PNG upload becomes a 1-page A4 PDF; /pages/0/image renders a PNG."""
+    from app import storage as _storage
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("scan.png", png_bytes, "image/png")},
+    )
+    assert resp.status_code == 201, resp.json()
+    body = resp.json()
+    assert body["page_count"] == 1
+    assert body["filename"] == "scan.png"
+
+    sid = body["session_id"]
+    # work copy is a PDF; originals/ holds the raw PNG bytes.
+    assert _storage.work_path(sid).read_bytes().startswith(b"%PDF-")
+    assert _storage.original_path(sid).read_bytes() == png_bytes
+
+    # /pages/0/image must return a PNG (the server-rendered preview of the A4 page).
+    img_resp = client.get(f"/sessions/{sid}/pages/0/image")
+    assert img_resp.status_code == 200
+    assert img_resp.content.startswith(b"\x89PNG")
+
+
+def test_jpeg_upload_normalizes_to_a4_pdf(client, jpeg_bytes):
+    """End-to-end: JPEG upload becomes a 1-page A4 PDF."""
+    from app import storage as _storage
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("drawing.jpg", jpeg_bytes, "image/jpeg")},
+    )
+    assert resp.status_code == 201, resp.json()
+    body = resp.json()
+    assert body["page_count"] == 1
+    assert body["filename"] == "drawing.jpg"
+
+    sid = body["session_id"]
+    assert _storage.work_path(sid).read_bytes().startswith(b"%PDF-")
+
+
+def test_tiff_upload_normalizes_to_a4_pdf(client, tiff_bytes):
+    """End-to-end: single-page TIFF upload becomes a 1-page A4 PDF."""
+    from app import storage as _storage
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("scan.tiff", tiff_bytes, "image/tiff")},
+    )
+    assert resp.status_code == 201, resp.json()
+    body = resp.json()
+    assert body["page_count"] == 1
+    assert body["filename"] == "scan.tiff"
+
+    sid = body["session_id"]
+    assert _storage.work_path(sid).read_bytes().startswith(b"%PDF-")
+
+
+def test_cmyk_tiff_normalized_to_rgb(client, cmyk_tiff_bytes):
+    """D-03: a CMYK TIFF upload must be ingested without crash and produce a valid PDF.
+
+    Deeper colorspace inspection (RGB / ICCBased) is deferred to 04-02 — the Phase 4-01
+    sanity bar is 'no crash + valid 1-page PDF'.
+    """
+    from app import storage as _storage
+    from app.services import pdf_engine
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("cmyk.tiff", cmyk_tiff_bytes, "image/tiff")},
+    )
+    assert resp.status_code == 201, resp.json()
+    sid = resp.json()["session_id"]
+
+    pdf_bytes = _storage.work_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(pdf_bytes)
+    try:
+        assert pdf_engine.page_count(doc) == 1
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_originals_sha256_unchanged_after_image_run(client, png_bytes):
+    """D-05: originals/ bytes (= the user's raw PNG) survive a /process run untouched.
+
+    After Phase 4 the pipeline resets from pristine/, NOT originals/, so this invariant
+    actually gets stronger for image uploads (pipeline never touches originals/ at all).
+    """
+    import hashlib as _hashlib
+
+    from app import storage as _storage
+
+    expected_sha = _hashlib.sha256(png_bytes).hexdigest()
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("scan.png", png_bytes, "image/png")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    # Trivial vector-branch process job. For image-only PDFs (no embedded vector content
+    # in the framed area) Phase 4-01 keeps IMAGE_NONE — the raster branch is added in 04-02.
+    job = {"dpi": 200, "regions": [{"page": 0, "px_rect": [50.0, 50.0, 250.0, 200.0]}]}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+
+    actual_sha = _hashlib.sha256(
+        _storage.original_path(sid).read_bytes()
+    ).hexdigest()
+    assert actual_sha == expected_sha
+
+
+def test_image_upload_download_filename_uses_stem(client, png_bytes):
+    """D-13: scan.png upload → download Content-Disposition carries scan_logoswap.pdf."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("scan.png", png_bytes, "image/png")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    job = {"dpi": 200, "regions": [{"page": 0, "px_rect": [50.0, 50.0, 250.0, 200.0]}]}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+
+    result = client.get(f"/sessions/{sid}/result")
+    assert result.status_code == 200
+    cd = result.headers.get("content-disposition", "")
+    # Either literal scan_logoswap.pdf or a percent-encoded variant (Phase 2 _logoswap_name).
+    assert "scan_logoswap.pdf" in cd or "scan_logoswap" in cd, cd
+
+
 def test_pipeline_resets_work_from_pristine_not_originals(valid_pdf_bytes, client):
     """Reset source must be pristine/, not originals/ (T-04-01-02 Step 5).
 

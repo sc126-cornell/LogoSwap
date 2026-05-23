@@ -546,3 +546,38 @@ def test_process_crafted_session_id_is_404(client):
     resp = client.post("/sessions/has space/process", json={"dpi": 200, "regions": []})
     assert resp.status_code == 404
     assert resp.status_code != 500
+
+
+# --- Phase 4 Task 04-01-03: image upload + logo placement integration ---------------
+
+
+def test_png_upload_with_logo_placement(client, png_bytes, logo_library):
+    """Phase 4 success criteria #3 partial-coverage: image-type files use the SAME logo
+    placement path as vector PDFs (Phase 3 LOGO-01 / LOGO-02 unchanged).
+
+    The logo library is provided by the ``logo_library`` fixture (Phase 3). If the picker
+    has any logo we add ``logo_id`` to the JobSpec and assert ``logo_skipped == False`` —
+    the run must succeed end-to-end and the logo must land on the framed area of the
+    normalized A4 page.
+    """
+    resp = client.post(
+        "/sessions",
+        files={"file": ("scan.png", png_bytes, "image/png")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    logos_resp = client.get("/logos")
+    assert logos_resp.status_code == 200
+    logos_list = logos_resp.json().get("logos", [])
+    if not logos_list:
+        pytest.skip("logo library empty — graceful degradation tested elsewhere")
+
+    job = {
+        "dpi": 200,
+        "regions": [{"page": 0, "px_rect": [100.0, 100.0, 400.0, 300.0]}],
+        "logo_id": logos_list[0]["id"],
+    }
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+    assert proc.json()["logo_skipped"] is False

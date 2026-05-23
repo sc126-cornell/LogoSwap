@@ -20,7 +20,10 @@ const COPY = {
   uploading: "正在上傳檔案…",
   processing: "正在處理檔案,準備預覽…",
   errorHeading: "無法開啟此檔案",
-  unsupportedType: "此檔案格式不支援。請改用 PDF 檔案後再試一次。",
+  // Phase 4 D-11 / UI-SPEC update: dropzone now accepts PDF + PNG/JPG/TIFF, so
+  // the "next step" copy mirrors the dropzone hint instead of saying "改用 PDF".
+  unsupportedType:
+    "此檔案格式不支援。請改用 PDF、PNG、JPG 或 TIFF 檔案後再試一次。",
   corruptPdf: "這個 PDF 檔案無法讀取,可能已損毀。請確認檔案後再試一次。",
   // {limit} is the numeric token extracted from the server message (e.g. "50 MB").
   // Degrade gracefully when no limit could be parsed: omit the parenthetical rather
@@ -30,6 +33,14 @@ const COPY = {
       ? `檔案超過大小上限(${limit})。請改用較小的檔案。`
       : "檔案超過大小上限。請改用較小的檔案。",
   networkFailure: "上傳失敗,請檢查網路連線後再試一次。",
+  // Phase 4 — three new ingest error codes (UI-SPEC 04 Inline error block table).
+  // Family-consistent with unsupportedType / corruptPdf: "問題描述 + 下一步".
+  unsupportedImageFormat:
+    "此影像格式不支援。請改用 PDF、PNG、JPG 或 TIFF 檔案後再試一次。",
+  multiPageTiffUnsupported:
+    "暫不支援多頁 TIFF。請先將 TIFF 拆成單頁後再上傳。",
+  corruptImage:
+    "這個影像檔案無法讀取,可能已損毀。請確認檔案後再試一次。",
 };
 
 // ---- DOM refs ---------------------------------------------------------------------
@@ -100,6 +111,15 @@ function messageForError(err) {
       return COPY.unsupportedType;
     case "corrupt_pdf":
       return COPY.corruptPdf;
+    // Phase 4 — three new image-ingest error codes (UI-SPEC 04). Grouped between
+    // the PDF family (above) and the size/page family (below) so the switch reads
+    // family-by-family.
+    case "unsupported_image_format":
+      return COPY.unsupportedImageFormat;
+    case "multi_page_tiff_unsupported":
+      return COPY.multiPageTiffUnsupported;
+    case "corrupt_image":
+      return COPY.corruptImage;
     case "file_too_large":
     case "too_many_pages":
       return COPY.fileTooLarge(extractLimit(err && err.serverMessage));
