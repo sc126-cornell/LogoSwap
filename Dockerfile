@@ -52,6 +52,14 @@ COPY --chown=app:app web/ /app/web/
 COPY --chown=app:app logos/ /app/logos/
 COPY --chown=app:app LICENSE README.md /app/
 
+# AGPL §13 placeholder substitution (WR-06). Source tree keeps the literal `<OWNER>` so
+# the dev-mode test (tests/test_agpl_compliance.py) stays green; the image bakes in the
+# real GitHub owner at build time. Zeabur / docker build can override via
+# `--build-arg GITHUB_OWNER=<handle>`. Run as root before `USER app` so sed has write
+# permission. `\<` is the literal placeholder, not a shell redirect.
+ARG GITHUB_OWNER=sc126-cornell
+RUN sed -i "s|<OWNER>|${GITHUB_OWNER}|g" /app/web/index.html /app/README.md
+
 # Per-session transient state. /data is a VOLUME so the host can mount its own dir;
 # chown to the non-root user so writes succeed when the volume is empty/new.
 RUN mkdir -p /data && chown -R app:app /data
