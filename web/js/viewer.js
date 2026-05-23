@@ -81,14 +81,15 @@ const state = {
   fitPage: false, // when true, zoom factor fits the WHOLE page into the stage (contain), not a step
   // True render box (CSS px == device-independent px the server rendered at 200 DPI / devicePixelRatio).
   renderBox: { cssW: 0, cssH: 0 },
-  // Per-page USER rotation (0/90/180/270), keyed by page index. Default 0; persists so paging
-  // away and back keeps each page's rotation. Baked into the download via the /process payload.
-  userRotation: new Map(),
+  // GLOBAL user rotation (0/90/180/270): applies to EVERY page in the document, so a sideways
+  // multi-page PDF is fixed with one click. Default 0; baked into the download via the /process
+  // payload (the backend receives a per-page dict so each page is rotated identically).
+  userRotation: 0,
 };
 
-/** The user rotation (0/90/180/270) for a page index; default 0. */
-function rotationFor(index) {
-  return state.userRotation.get(index) || 0;
+/** The current GLOBAL user rotation (0/90/180/270) — same value for every page. */
+function rotationFor(_index) {
+  return state.userRotation;
 }
 
 // ---- Helpers ----------------------------------------------------------------------
@@ -270,20 +271,18 @@ function fitToPage() {
 // page:changed so regions.js reprojects committed rectangles onto the new (rotated) box.
 function rotateBy(deltaDeg) {
   if (state.sessionId === null) return;
-  const cur = rotationFor(state.pageIndex);
-  const next = (cur + deltaDeg + 360) % 360;
-  state.userRotation.set(state.pageIndex, next);
-  // Tell the overlay this page's image dims are now stale (they swap for a quarter turn) so it
-  // drops its cached /meta dims and re-fetches at the new rotation before reprojecting. The
-  // page:changed event from the re-render's onload then triggers the reprojection. This is a
-  // job-input change (the download bakes the rotation), so regions.js also invalidates any
-  // fresh result (notifyJobInputChanged) on receiving it.
+  const delta = (deltaDeg + 360) % 360;
+  state.userRotation = (state.userRotation + delta) % 360;
+  // Document-wide: regions.js iterates every framed page and rotates its stored rects by
+  // `delta` using THAT page's pre-rotation dims, then clears the dims cache so subsequent
+  // renders re-fetch /meta at the new rotation. Job-input change → any fresh result
+  // invalidates via the shared stale machine.
   stage.dispatchEvent(
     new CustomEvent("page:rotated", {
-      detail: { index: state.pageIndex, rotation: next, delta: (deltaDeg + 360) % 360 },
+      detail: { rotation: state.userRotation, delta },
     })
   );
-  // Force a fresh render-box measurement (the cached one is for the previous orientation).
+  // Force a fresh render-box measurement for the current page (dims swap for a quarter turn).
   state.renderBox.cssW = 0;
   state.renderBox.cssH = 0;
   renderPage(state.pageIndex);
@@ -358,7 +357,7 @@ export async function initViewer({ session_id, page_count }) {
   state.pageIndex = 0;
   state.zoomStep = 2; // 100% (used once the user picks a discrete zoom step)
   state.fitPage = true; // default: fit the WHOLE page into the viewport so it's visible at once
-  state.userRotation = new Map(); // a new doc starts with no per-page rotation
+  state.userRotation = 0; // a new doc starts unrotated
 
   // Enable per-control disabled attributes (the clusters were revealed by app.js).
   jumpInput.disabled = false;
@@ -421,9 +420,11 @@ export function getCurrentRotation() {
  * so the server bakes exactly those into the download. Keys are numbers; degrees are 0/90/180/270.
  */
 export function getRotations() {
+  // Apply the global rotation to EVERY page so the backend bakes them all uniformly. Empty
+  // when there's no rotation, so the JobSpec payload stays clean for unrotated documents.
   const out = {};
-  for (const [index, deg] of state.userRotation.entries()) {
-    if (deg) out[index] = deg;
+  if (state.userRotation && state.pageCount > 0) {
+    for (let i = 0; i < state.pageCount; i++) out[i] = state.userRotation;
   }
   return out;
 }

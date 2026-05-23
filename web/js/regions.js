@@ -691,28 +691,30 @@ function onPageZoomed() {
   renderOverlay();
 }
 
-// A page rotation changed (viewer.js). The cached image dims for that page are now stale (they
-// swap for a quarter turn), so DROP them and re-fetch at the new rotation; the subsequent
-// page:changed (from the re-render's onload) reprojects the committed rectangles onto the new
-// box. Rotation also changes the downloaded file (the server bakes it), so it is a job-input
-// change exactly like a region edit — invalidate any fresh result via the shared stale machine.
+// A document-wide rotation changed (viewer.js — same delta on EVERY page, so a sideways
+// multi-page PDF is fixed with one click). Cached image dims for every page are stale (they
+// swap for a quarter turn) and committed rects on every framed page must rotate in lock-step
+// to stay pinned over the same content. Rotation bakes into the download → it's a job-input
+// change, so any fresh result invalidates via the shared stale machine.
 function onPageRotated(detail) {
-  const index = detail && typeof detail.index === "number" ? detail.index : currentPage;
   const delta = detail && typeof detail.delta === "number" ? detail.delta : 0;
 
-  // Rotate any committed rectangles on this page from the OLD image-pixel space into the NEW one
-  // so they stay pinned over the same content (the image axes turned 90°). We use the CURRENT
-  // cached dims (the OLD orientation's img_w/img_h) as the rotation basis BEFORE dropping them.
-  const oldDims = imageDimsByPage.get(index);
-  if (delta && oldDims && (delta === 90 || delta === 270)) {
-    rotateStoredRects(index, delta, oldDims.imgW, oldDims.imgH);
+  if (delta === 90 || delta === 270) {
+    // Rotate stored rects on EVERY framed page using THAT page's OLD (pre-rotation) cached
+    // dims. We MUST do this BEFORE clearing the dims cache. Pages without rects don't need
+    // rotation; pages we've never visited have no rects (you can't frame without visiting).
+    for (const [idx, list] of regionsByPage.entries()) {
+      if (!list || !list.length) continue;
+      const oldDims = imageDimsByPage.get(idx);
+      if (oldDims) rotateStoredRects(idx, delta, oldDims.imgW, oldDims.imgH);
+    }
   }
 
-  // The cached dims for this page swapped for the quarter turn — drop + re-fetch at the new
-  // rotation; the re-render's page:changed reprojects onto the new box.
-  imageDimsByPage.delete(index);
-  ensureDims(index);
-  // Rotation changes the downloaded file (the server bakes it), so it is a job-input change.
+  // All pages' dims swapped → drop the whole cache; ensureDims re-fetches at the new rotation
+  // for the current page now (its renderOverlay reprojection needs them) and lazily for other
+  // pages when the user navigates to them.
+  imageDimsByPage.clear();
+  ensureDims(currentPage);
   notifyJobInputChanged();
 }
 
