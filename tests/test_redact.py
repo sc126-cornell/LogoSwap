@@ -59,7 +59,7 @@ def test_remove_region_removes_text_and_vector(ingested_session):
         assert pdf_engine.get_text_words_in_rect(page, (rect.x0, rect.y0, rect.x1, rect.y1))
         assert pdf_engine.get_drawings_intersecting(page, (rect.x0, rect.y0, rect.x1, rect.y1))
 
-        removed = redact.remove_region(page, rect)
+        removed = redact.remove_region_vector(page, rect)
         assert removed is True
 
         # Post-condition (REMOVE-01): unpadded user rect now empty of text AND drawings.
@@ -86,7 +86,7 @@ def test_remove_region_pads_rect_larger_than_input(ingested_session, monkeypatch
     monkeypatch.setattr(redact.pdf_engine, "add_redact_annot", _spy)
     try:
         rect = coords.pixels_to_pdf_rect(_REGION_PX, _DPI, page)
-        redact.remove_region(page, rect)
+        redact.remove_region_vector(page, rect)
         padded = captured["rect"]
         # Padded rect strictly contains the user rect on every side (~REDACT_PAD_PT).
         assert padded[0] < rect.x0 and padded[1] < rect.y0
@@ -108,7 +108,7 @@ def test_remove_region_empty_area_returns_false_not_error(ingested_session):
         # Ensure it really is empty first.
         assert not pdf_engine.get_text_words_in_rect(page, (rect.x0, rect.y0, rect.x1, rect.y1))
         assert not pdf_engine.get_drawings_intersecting(page, (rect.x0, rect.y0, rect.x1, rect.y1))
-        assert redact.remove_region(page, rect) is False
+        assert redact.remove_region_vector(page, rect) is False
     finally:
         pdf_engine.close(doc)
 
@@ -125,7 +125,7 @@ def test_remove_region_fully_covered_vector_is_removed(ingested_session):
         rt = (rect.x0, rect.y0, rect.x1, rect.y1)
         # Pre: a drawing lies fully inside the rect.
         assert pdf_engine.get_drawings_fully_inside(page, rt), "fixture line not fully inside"
-        assert redact.remove_region(page, rect) is True
+        assert redact.remove_region_vector(page, rect) is True
         # Post: no drawing remains fully inside the rect (the covered line is gone).
         assert pdf_engine.get_drawings_fully_inside(page, rt) == [], "fully-covered vector survived"
     finally:
@@ -582,5 +582,146 @@ def test_rect_overlaps_image_mixed_dispatch(mixed_vector_raster_pdf_bytes):
         lower_rect = fitz.Rect(30, 350, 380, 550)  # in vector region
         assert pdf_engine.rect_overlaps_image(page, upper_rect) is True
         assert pdf_engine.rect_overlaps_image(page, lower_rect) is False
+    finally:
+        pdf_engine.close(doc)
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4-02 Task 02: remove_region_raster — true raster removal + dual-layer OCR
+# --------------------------------------------------------------------------------------
+
+
+def test_raster_full_page_blank_to_white(image_only_pdf_bytes, tmp_path):
+    """Full-page frame on image-only PDF: IMAGE_PIXELS auto-removes the image xref AND
+    the rendered centre pixel reads white (RESEARCH verified D-08)."""
+    import fitz
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(image_only_pdf_bytes)
+    doc = pdf_engine.open_pdf(pdf_path)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        full_rect = fitz.Rect(0, 0, 595.0, 842.0)
+        removed = redact.remove_region_raster(page, full_rect)
+        assert removed is True
+        # Full-page overlap auto-removes the image xref (RESEARCH verified).
+        assert page.get_images() == [], (
+            f"image xref should be auto-removed on full-frame; got {page.get_images()}"
+        )
+        # Centre pixel renders white.
+        pix = page.get_pixmap(dpi=72)
+        center_x, center_y = pix.width // 2, pix.height // 2
+        pixel = pix.pixel(center_x, center_y)
+        assert all(c >= 250 for c in pixel[:3]), f"expected white, got {pixel}"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_raster_partial_redact_inside_white_outside_keep(image_only_pdf_bytes, tmp_path):
+    """Partial frame: inside-rect pixels turn white; outside-rect (still in image area)
+    pixels keep the original colour. The conftest PNG is (200, 100, 50) orange so
+    'not white' is easy to assert."""
+    import fitz
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(image_only_pdf_bytes)
+    doc = pdf_engine.open_pdf(pdf_path)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # The image is letterboxed inside A4: 800x600 keep-proportion'd into 595x842
+        # → image area ≈ y∈[197.875, 644.125]. Frame a 200x200 box well inside it.
+        inside_rect = fitz.Rect(200, 280, 400, 480)
+        removed = redact.remove_region_raster(page, inside_rect)
+        assert removed is True
+        pix = page.get_pixmap(dpi=72)
+        # dpi=72 → 1pt == 1px
+        cx, cy = int((200 + 400) / 2), int((280 + 480) / 2)
+        inside_px = pix.pixel(cx, cy)
+        assert all(c >= 250 for c in inside_px[:3]), f"inside not white: {inside_px}"
+        # Pick a point still inside the image letterbox but outside the redact rect.
+        # Image y-band ~[198,644]; redact rect y∈[280,480]; take (100,550) — left of redact,
+        # below redact rect, inside image band.
+        ox, oy = 100, 550
+        outside_px = pix.pixel(ox, oy)
+        assert not all(c >= 250 for c in outside_px[:3]), (
+            f"outside-redact pixel unexpectedly white (image not preserved): {outside_px}"
+        )
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_raster_dual_layer_ocr_text_residual_empty(dual_layer_ocr_pdf_bytes, tmp_path):
+    """Dual-layer OCR PDF: a single apply_redactions call clears BOTH the image pixels
+    AND the OCR text layer in the frame (Pitfall 3 / Pitfall E closed)."""
+    import fitz
+
+    pdf_path = tmp_path / "ocr.pdf"
+    pdf_path.write_bytes(dual_layer_ocr_pdf_bytes)
+    doc = pdf_engine.open_pdf(pdf_path)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # The fixture inserts "SUPPLIER" at (100,400) and "WORDMARK" at (200,400) but the
+        # PDF text origin is the BASELINE, so the rendered glyph bboxes sit ABOVE y=400.
+        # PyMuPDF default insert_text fontsize is 11pt — frame a band ~y∈[388, 410]
+        # to safely include both word boxes.
+        text_rect = fitz.Rect(50, 388, 400, 412)
+        rt = (text_rect.x0, text_rect.y0, text_rect.x1, text_rect.y1)
+        # Pre: both layers exist in the framed region.
+        assert pdf_engine.get_text_words_in_rect(page, rt), (
+            "fixture invariant: OCR words must exist inside the framed rect"
+        )
+        assert pdf_engine.rect_overlaps_image(page, text_rect), (
+            "fixture invariant: raster image must overlap the framed rect"
+        )
+        removed = redact.remove_region_raster(page, text_rect)
+        assert removed is True
+        # Dual-layer leak closed: no text words remain (the OCR layer is gone).
+        residual = pdf_engine.get_text_words_in_rect(page, rt)
+        assert residual == [], f"dual-layer OCR text leak: {residual}"
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_raster_fill_none_no_drawing_residual(image_only_pdf_bytes, tmp_path):
+    """Pitfall A defence: raster branch passes fill=None so no type='fs' rect==redact_rect
+    drawing survives the apply (which would defeat get_drawings_fully_inside)."""
+    import fitz
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(image_only_pdf_bytes)
+    doc = pdf_engine.open_pdf(pdf_path)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        rect = fitz.Rect(100, 200, 300, 400)
+        redact.remove_region_raster(page, rect)
+        # Walk every drawing; refuse the survivor signature
+        # (type='fs', fill≈(1,1,1), rect overlapping the redact rect).
+        for d in page.get_drawings():
+            d_rect = d.get("rect")
+            if d_rect is None:
+                continue
+            if d.get("type") == "fs" and d.get("fill") == (1.0, 1.0, 1.0):
+                overlap = (
+                    rect.x0 <= d_rect.x1 and d_rect.x0 <= rect.x1
+                    and rect.y0 <= d_rect.y1 and d_rect.y0 <= rect.y1
+                )
+                assert not overlap, (
+                    f"raster fill=None should NOT leave an fs-fill survivor inside the rect, got {d}"
+                )
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_raster_empty_rect_no_op(image_only_pdf_bytes, tmp_path):
+    """Degenerate rect returns False without raising (mirrors vector branch _is_empty)."""
+    import fitz
+
+    pdf_path = tmp_path / "scan.pdf"
+    pdf_path.write_bytes(image_only_pdf_bytes)
+    doc = pdf_engine.open_pdf(pdf_path)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        empty_rect = fitz.Rect(100, 100, 100, 100)
+        assert redact.remove_region_raster(page, empty_rect) is False
     finally:
         pdf_engine.close(doc)
