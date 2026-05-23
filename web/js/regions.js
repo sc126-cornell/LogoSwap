@@ -53,7 +53,7 @@ const COPY = {
   resultReady: "移除結果已就緒,可切換對照或下載",
   staleNotice: "框選已變更,請重新套用以更新結果",
   preparingDownload: "正在準備下載…",
-  reapply: "重新套用",
+  restoreOriginal: "恢復原圖",
   apply: "套用變更",
   // before/after
   noResultYet: "尚無移除結果,請先套用移除",
@@ -180,7 +180,10 @@ function renderList() {
   regionCountEl.textContent = COPY.count(totalRegionCount());
   regionScopeEl.textContent = COPY.scope(currentPage + 1);
 
-  // Clear-all is enabled only when the CURRENT page has regions (its scope is this page, D-02).
+  // Clear-all is enabled only when the CURRENT page has regions. Once a result is fresh the
+  // toolbar's 恢復原圖 takes over the "start-over" job, so we HIDE this link entirely to keep
+  // the post-apply choices unambiguous (download or restore — one place for each).
+  clearAllBtn.hidden = resultFresh;
   clearAllBtn.disabled = list.length === 0;
 
   // Empty-state vs the row list.
@@ -206,6 +209,8 @@ function renderList() {
     del.setAttribute("aria-label", COPY.deleteRegion);
     del.title = COPY.deleteRegion;
     del.appendChild(makeTrashIcon());
+    // Hide per-region delete once a fresh result exists — only path to edit then is 恢復原圖.
+    del.hidden = resultFresh;
 
     del.addEventListener("click", (e) => {
       e.stopPropagation();
@@ -442,6 +447,8 @@ function cleanupDrag(e) {
 
 // ---- Mutations (delete one / clear all) --------------------------------------------
 function deleteRegion(id) {
+  // Locked while a result is fresh: post-apply editing must go through 恢復原圖 only.
+  if (resultFresh) return;
   const list = pageList(currentPage);
   const idx = list.findIndex((r) => r.id === id);
   if (idx === -1) return;
@@ -452,6 +459,23 @@ function deleteRegion(id) {
 function clearAllCurrentPage() {
   regionsByPage.set(currentPage, []);
   onRegionsEdited();
+}
+
+// "恢復原圖" — the post-apply restart: clears EVERY page's framing (not just the current one,
+// because multi-page jobs are common) and returns the view to the original. Unlike a normal edit
+// this is an explicit user action, so it does NOT show the "請重新套用" stale notice — the user
+// asked to start over, not to "re-apply with edits".
+function restoreOriginal() {
+  regionsByPage.clear();
+  const wasResultView = viewMode === "result";
+  resultFresh = false;
+  if (wasResultView) {
+    setViewMode("original");
+  }
+  setActionStatus(""); // explicit restart — clear the action status entirely
+  renderList();
+  renderOverlay();
+  updateActionGroup();
 }
 
 // ---- Region-edit reaction (re-render + stale handling) -----------------------------
@@ -487,17 +511,19 @@ export function notifyJobInputChanged(message) {
 }
 
 // ---- Action group state machine ----------------------------------------------------
-// Exactly ONE accent-filled button per state: 套用移除 (accent) until a fresh result exists, then
-// 下載 PDF (accent) and apply demotes to neutral 重新套用. The accent is .primary-btn; neutral is
-// .text-btn (the same neutral treatment as 更換檔案 etc.).
+// Exactly ONE accent-filled button per state: 套用變更 (accent) until a fresh result exists, then
+// 下載 PDF (accent) + neutral 恢復原圖. After 套用變更 the only forward paths are: download, or
+// 恢復原圖 (clears every page's framing and returns to original). To redo with different
+// regions/logo, the user clicks 恢復原圖 first (or changes the logo, which auto-invalidates).
 function updateActionGroup() {
   const total = totalRegionCount();
 
   if (resultFresh) {
-    // Result-ready: download is the single accent CTA; apply demotes to neutral 重新套用.
-    applyBtn.textContent = COPY.reapply;
+    // Result-ready: download is the single accent CTA; the apply button becomes neutral 恢復原圖
+    // (acts as a full restart, not a re-apply). Always actionable while a result exists.
+    applyBtn.textContent = COPY.restoreOriginal;
     applyBtn.className = "text-btn";
-    applyBtn.disabled = total === 0 || applying;
+    applyBtn.disabled = applying;
     applyBtn.removeAttribute("title");
 
     downloadBtn.hidden = false;
@@ -854,7 +880,11 @@ clearConfirmBtn.addEventListener("click", () => {
   clearAllCurrentPage();
 });
 
-applyBtn.addEventListener("click", applyRemoval);
+// The button is dual-purpose: 套用變更 before a fresh result, 恢復原圖 once one exists.
+applyBtn.addEventListener("click", () => {
+  if (resultFresh) restoreOriginal();
+  else applyRemoval();
+});
 downloadBtn.addEventListener("click", downloadResult);
 
 // Keyboard: Escape cancels an in-progress drag OR closes the confirm dialog. Delete/Backspace
