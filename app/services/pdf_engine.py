@@ -207,7 +207,7 @@ def unrotated_content_box(
     return (box.x0, box.y0, box.x1, box.y1)
 
 
-# --- Redaction seam (Plan 02-02) ------------------------------------------------------
+# --- Redaction seam (Plan 02-02 + Phase 4-02 raster branch) ---------------------------
 #
 # The "true removal" pipeline lives behind these wrappers so ``redact.py`` / ``pipeline.py``
 # stay fitz-free (AGPL boundary / threat T-02-03). The redaction enum CONSTANTS are
@@ -217,10 +217,17 @@ def unrotated_content_box(
 #                                    Pitfall 3)
 #   - LINE_ART_REMOVE_IF_COVERED   = PDF_REDACT_LINE_ART_REMOVE_IF_COVERED (vector default,
 #                                    Pitfall 4)
-#   - IMAGE_NONE                   = PDF_REDACT_IMAGE_NONE (raster untouched — Phase 4)
+#   - IMAGE_NONE                   = PDF_REDACT_IMAGE_NONE (raster untouched — vector
+#                                    branch; Phase 2 default)
+#   - IMAGE_PIXELS                 = PDF_REDACT_IMAGE_PIXELS (raster overlap: blank the
+#                                    pixels of every image XObject overlapping the
+#                                    redact rect; integer xref of fully-covered images
+#                                    is auto-removed by PyMuPDF — Phase 4 D-08, raster
+#                                    branch)
 TEXT_REMOVE = fitz.PDF_REDACT_TEXT_REMOVE
 LINE_ART_REMOVE_IF_COVERED = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED
 IMAGE_NONE = fitz.PDF_REDACT_IMAGE_NONE
+IMAGE_PIXELS = fitz.PDF_REDACT_IMAGE_PIXELS
 
 # A4 page dimensions in PDF points (1 pt = 1/72"). D-01 of Phase 4:
 # all standalone image uploads (PNG/JPG/TIFF) normalize to a single-page portrait A4
@@ -331,6 +338,47 @@ def get_image_rects(page: "fitz.Page", xref: int) -> list:
     target rect and aspect-preserved WITHOUT importing fitz (AGPL seam, threat T-02-03).
     """
     return page.get_image_rects(xref)
+
+
+def rect_overlaps_image(page: "fitz.Page", rect: "fitz.Rect") -> bool:
+    """True iff ``rect`` (unrotated-page points) overlaps any image XObject on ``page``.
+
+    Used by ``pipeline.process_job`` per-region dispatch (Phase 4 D-05): given a
+    user-framed rect already mapped to unrotated-page points (via
+    ``coords.pixels_to_pdf_rect`` and Phase 2's derotation matrix), test whether the
+    rect overlaps any image XObject placed on the page. If yes, the pipeline routes
+    to ``redact.remove_region_raster`` (which sets ``images=IMAGE_PIXELS``); if no,
+    it routes to ``redact.remove_region_vector`` (the original Phase 2 path,
+    ``images=IMAGE_NONE``).
+
+    Implementation: enumerate every image xref via ``page.get_images()``, then for
+    each xref enumerate its placed bbox(es) via ``page.get_image_rects(xref)`` (the
+    same image may appear at multiple positions). Any inclusive AABB overlap →
+    True; no overlaps → False. The Rect returned by ``get_image_rects`` lives in
+    UNROTATED-page space (same space as ``rect``), so no derotation matrix is needed
+    here.
+
+    Lives in pdf_engine.py because ``page.get_images`` / ``page.get_image_rects`` are
+    fitz APIs — the AGPL seam invariant (threat T-02-03) requires every fitz access
+    route through this module. ``redact.py`` and ``pipeline.py`` stay fitz-free.
+
+    [VERIFIED: Phase 4 RESEARCH Pattern 4 — PyMuPDF 1.27.2.3 returns
+        get_image_rects = [Rect(0.0, 197.875, 595.0, 644.125)] for a single image
+        keep_proportion'd into A4 (letterboxed top/bottom).]
+    """
+    q = fitz.Rect(rect)
+    q.normalize()
+    for entry in page.get_images():
+        xref = entry[0]
+        for img_rect in page.get_image_rects(xref):
+            ir = fitz.Rect(img_rect)
+            ir.normalize()
+            # AABB inclusive overlap (mirrors the degenerate-bbox-aware test in
+            # ``_rects_overlap`` but kept inline here for a tight type contract:
+            # this helper takes ``fitz.Rect``, ``_rects_overlap`` takes tuples).
+            if ir.x0 <= q.x1 and q.x0 <= ir.x1 and ir.y0 <= q.y1 and q.y0 <= ir.y1:
+                return True
+    return False
 
 
 def get_text_words_in_rect(
