@@ -459,6 +459,12 @@ export function notifyJobInputChanged(message) {
       setViewMode("original");
     }
     setActionStatus(message || COPY.staleNotice);
+    // WR-01: renderList() owns clearAllBtn.hidden (= resultFresh), so flipping resultFresh
+    // off here without re-rendering left 清除全部 hidden in the side panel until the next
+    // page-change — incorrect after a logo/rotation change post-apply, where the user is now
+    // back in the pre-apply mode and should be able to clear framing again. Re-rendering here
+    // keeps the side panel in sync with the same stale-machine that onRegionsEdited uses.
+    renderList();
   }
   updateActionGroup();
 }
