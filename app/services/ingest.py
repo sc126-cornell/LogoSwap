@@ -160,6 +160,24 @@ def _ingest_image(data: bytes, sniff_kind: str) -> bytes:
                 f"不支援的影像格式:{fmt}。",
             )
 
+        # DoS hard cap on pixel count (WR-03). Pillow's ``Image.DecompressionBombError``
+        # only RAISES at ``MAX_IMAGE_PIXELS * 2``; below that it merely emits a warning
+        # and proceeds. So a 60-megapixel TIFF passes ``verify()`` + ``load()``,
+        # ``image_to_a4_pdf`` then re-encodes it as PNG inside an A4 page, and the
+        # resulting CPU/memory spike (PyMuPDF does not downscale on insert_image)
+        # exceeds the wall-clock budget per worker. ``MAX_UPLOAD_BYTES`` is already
+        # checked upstream but a small heavily-compressed source (e.g. a uniform
+        # gradient PNG) can sit well under 50 MB and still decompress to ≥100 MP.
+        # Re-use the existing ``config.MAX_INGEST_IMAGE_PIXELS`` constant — its docstring
+        # already states it is the ingest-side pixel ceiling — and enforce it as a HARD
+        # cap (raise an IngestError, not just a warning). Pillow's own threshold
+        # remains in place as a backstop.
+        if img.width * img.height > config.MAX_INGEST_IMAGE_PIXELS:
+            raise IngestError(
+                "image_too_large_pixels",
+                f"影像像素數過多(超過 {config.MAX_INGEST_IMAGE_PIXELS:,} 像素),請先縮圖再上傳。",
+            )
+
         # D-03 CMYK→RGB, RGBA→RGB (Pitfall D, Pitfall G).
         # Pillow's plain ``convert("RGB")`` on an alpha-bearing image DROPS the alpha
         # channel without compositing — so RGBA pixel (0,0,0,0) becomes RGB (0,0,0)

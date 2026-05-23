@@ -10,7 +10,8 @@
  *     errors -> 4xx { detail: { code, message } }  code in: unsupported_type | file_too_large |
  *                                                  too_many_pages | corrupt_pdf | empty_file |
  *                                                  unsupported_image_format | multi_page_tiff_unsupported |
- *                                                  corrupt_image  (last three added in Phase 4, UPLOAD-03)
+ *                                                  corrupt_image  (last three added in Phase 4, UPLOAD-03) |
+ *                                                  image_too_large_pixels  (Phase 4 hotfix WR-03 — pixel-count DoS cap)
  *   GET  /sessions/{id}                     -> 200 { session_id, page_count, filename } | 404
  *   GET  /sessions/{id}/pages/{n}/image     -> 200 image/png  (n is 0-based; dpi optional, server default 200)
  *   GET  /sessions/{id}/pages/{n}/meta      -> 200 { page_no, page_w_pt, page_h_pt, rotation, dpi, img_w, img_h }

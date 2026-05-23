@@ -41,6 +41,14 @@ const COPY = {
     "暫不支援多頁 TIFF。請先將 TIFF 拆成單頁後再上傳。",
   corruptImage:
     "這個影像檔案無法讀取,可能已損毀。請確認檔案後再試一次。",
+  // Phase 4 hotfix WR-03: DoS-class pixel-count cap. The server message carries
+  // the configured pixel limit (e.g. "89,478,485 像素"); we extract it via
+  // extractLimit() and inject it into the parenthetical here, just like
+  // fileTooLarge does for size/page limits.
+  imageTooLargePixels: (limit) =>
+    limit
+      ? `影像像素數過多(超過 ${limit})。請先縮圖再上傳。`
+      : "影像像素數過多。請先縮圖再上傳。",
 };
 
 // ---- DOM refs ---------------------------------------------------------------------
@@ -94,13 +102,13 @@ function setSidePanelExpanded(expanded) {
 }
 
 // ---- Error mapping -----------------------------------------------------------------
-// Pull ONLY a numeric limit token (e.g. "50 MB" or "30 頁") out of the server message.
-// On no-match, fall back to "" — NEVER the raw server string (WR-02 / T-01-14): the
-// caller's COPY.fileTooLarge("") omits the parenthetical, so a server-wording change can
-// no longer surface raw backend text in user-facing copy.
+// Pull ONLY a numeric limit token (e.g. "50 MB", "30 頁", "89,478,485 像素") out of the
+// server message. On no-match, fall back to "" — NEVER the raw server string
+// (WR-02 / T-01-14): the caller's COPY.fileTooLarge("") omits the parenthetical, so a
+// server-wording change can no longer surface raw backend text in user-facing copy.
 function extractLimit(serverMessage) {
   if (!serverMessage) return "";
-  const m = serverMessage.match(/(\d[\d.,]*\s*(?:MB|GB|KB|頁|pages?))/i);
+  const m = serverMessage.match(/(\d[\d.,]*\s*(?:MB|GB|KB|頁|pages?|像素))/i);
   return m ? m[1].trim() : "";
 }
 
@@ -120,6 +128,11 @@ function messageForError(err) {
       return COPY.multiPageTiffUnsupported;
     case "corrupt_image":
       return COPY.corruptImage;
+    // Phase 4 hotfix WR-03 — pixel-count DoS cap. Same "問題描述 + 下一步" family
+    // as the size/page caps, but with a distinct piece of UX copy because the
+    // remedy is different ("先縮圖", not "改用較小的檔案").
+    case "image_too_large_pixels":
+      return COPY.imageTooLargePixels(extractLimit(err && err.serverMessage));
     case "file_too_large":
     case "too_many_pages":
       return COPY.fileTooLarge(extractLimit(err && err.serverMessage));
