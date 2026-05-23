@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Phase 4 complete (raster dispatch + image-only PDF + dual-layer OCR e2e closed)
-last_updated: "2026-05-23T09:05:48.313Z"
-last_activity: 2026-05-23 -- Phase 04 marked complete
+stopped_at: Phase 4 hotfix closed — review/fix + validate + secure + UAT all PASS (243 tests, 17/17 STRIDE threats)
+last_updated: "2026-05-23T13:50:00.000Z"
+last_activity: 2026-05-23 -- Phase 04 hotfix收口 (UAT 1/2/3/4/6/7/8 pass; #5 megapixel cap UI deferred)
 progress:
   total_phases: 5
   completed_phases: 4
@@ -25,10 +25,29 @@ See: .planning/PROJECT.md (updated 2026-05-23)
 
 ## Current Position
 
-Phase: 04 — COMPLETE
+Phase: 04 — COMPLETE + HOTFIX CLOSED
 Plan: 2 of 2 complete (04-01 + 04-02 both shipped)
-Status: Phase 04 complete
-Last activity: 2026-05-23 -- Phase 04 marked complete
+Status: Phase 04 hotfix gate-passed (review/fix + validate + secure + UAT)
+Last activity: 2026-05-23 -- Phase 04 hotfix 收口,等待 push 決策
+
+**Hotfix 收口記錄(自 137a592 後 13 個 commit):**
+- 5 UAT hotfix(8c7e90a..9b84b83)
+- 1 UI 抛光(6ae755f)
+- 6 code-review fix(7c1a745..403b6ac)
+- 4 docs/test commit(355b37d, 7997a8b, 3bd6c57, ef30dab)
+- 測試:233 → 243 passed
+- STRIDE:17/17 threats closed(15 mitigate + 2 accept;4 mitigation 因 hotfix 被 STRENGTHENED)
+- AGPL seam / XSS guard / SHA-256 D-05 invariant 全部維持
+
+**人工 UAT 結果(2026-05-23):**
+- ✅ #1 DC-1.pdf 完整 round-trip(zero-area artefact 已消)
+- ✅ #2 DC-2.pdf 完整 round-trip
+- ✅ #3 PNG 透明圖上傳(RGBA 合成白底生效)
+- ✅ #4 影像檔上傳預覽座標(/pages/meta 改讀 pristine 後對齊)
+- ⏸ #5 超大影像錯誤訊息 — DEFERRED(手邊無 ≥89MP 樣本)
+- ✅ #6 UI 商標調整視覺(logo heading + 四格 picker 一致)
+- ✅ #7 Phase 3 logo 置入(向量 PDF + auto 模式)零迴歸
+- ✅ #8「不置入商標」選項輸出純白
 
 Progress: [██████████] 100% (Phase 1–4 all complete, Phase 5 not yet planned)
 
@@ -109,7 +128,7 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| UAT | #5 超大影像錯誤訊息實機驗證(WR-03 megapixel cap UI rendering) | DEFERRED — 手邊無 ≥89MP 影像樣本;自動測試已覆蓋(test_ingest_image_over_pixel_cap_rejected_with_limit_in_message),UI 字串渲染待真實大檔到手再驗 | 2026-05-23 |
 
 ## Session Continuity
 
