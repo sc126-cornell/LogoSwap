@@ -175,8 +175,9 @@ async function handleFile(file) {
       page_count: session.page_count,
     });
 
-    // Activate the Phase 3 logo picker for this session (fetches the catalog once via api.js).
-    initLogos({ session_id: session.session_id });
+    // Activate the Phase 3 logo picker (fetches the catalog once via api.js). The library
+    // is global / session-less (Phase 3 D-01), so initLogos takes no args. IN-02.
+    initLogos();
 
     // Hand off to the viewer. It renders page 0 and wires nav/zoom (and fires page:changed,
     // which regions.js consumes to project the overlay onto the sized render box).

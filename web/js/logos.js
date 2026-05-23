@@ -57,7 +57,6 @@ const noticeRetryEl = document.getElementById("logo-notice-retry");
 // ---- State -------------------------------------------------------------------------
 // The single client-side selection (D-01: one global logo). null = pure removal.
 let selectedLogoId = null;
-let sessionId = null;
 
 // ---- View helpers (mutually-exclusive states) --------------------------------------
 function showState(name) {
@@ -196,8 +195,14 @@ async function loadCatalog() {
 }
 
 // ---- Public API (called by app.js) -------------------------------------------------
-export function initLogos({ session_id } = {}) {
-  sessionId = session_id ?? null;
+// initLogos previously accepted `{ session_id }` and stored it as module-scope state,
+// but no other function ever read that state — `api.logoImageURL(id)` and
+// `api.listLogos()` are session-less (the logo library is a global read-only mount,
+// Phase 3 D-01). Keeping the parameter would mislead readers into thinking the
+// picker is session-scoped. If per-session catalogs are added later, wire the
+// session id through `api.listLogos(sessionId)` then and re-introduce the state
+// where it is actually consulted. IN-02.
+export function initLogos() {
   // Default to auto-by-shape (per UAT): the picker leads with 自動 selected. If the library is
   // empty, getSelectedLogoId() is null and the job degrades to pure removal anyway (WR-02/D-04).
   selectedLogoId = AUTO;
@@ -205,7 +210,6 @@ export function initLogos({ session_id } = {}) {
 }
 
 export function resetLogos() {
-  sessionId = null;
   selectedLogoId = null;
   grid.replaceChildren();
   showState("loading");
