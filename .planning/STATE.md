@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Phase 4 hotfix closed — review/fix + validate + secure + UAT all PASS (243 tests, 17/17 STRIDE threats)
-last_updated: "2026-05-23T13:50:00.000Z"
-last_activity: 2026-05-23 -- Phase 04 hotfix收口 (UAT 1/2/3/4/6/7/8 pass; #5 megapixel cap UI deferred)
+status: Phase 04 hotfix gate-passed (review/fix + validate + secure + UAT)
+stopped_at: Phase 5 context gathered
+last_updated: "2026-05-23T14:45:13.420Z"
+last_activity: 2026-05-23 -- Phase 04 hotfix 收口,等待 push 決策
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 9
   completed_plans: 9
-  percent: 80
+  percent: 100
 ---
 
 # Project State
@@ -31,6 +31,7 @@ Status: Phase 04 hotfix gate-passed (review/fix + validate + secure + UAT)
 Last activity: 2026-05-23 -- Phase 04 hotfix 收口,等待 push 決策
 
 **Hotfix 收口記錄(自 137a592 後 13 個 commit):**
+
 - 5 UAT hotfix(8c7e90a..9b84b83)
 - 1 UI 抛光(6ae755f)
 - 6 code-review fix(7c1a745..403b6ac)
@@ -40,6 +41,7 @@ Last activity: 2026-05-23 -- Phase 04 hotfix 收口,等待 push 決策
 - AGPL seam / XSS guard / SHA-256 D-05 invariant 全部維持
 
 **人工 UAT 結果(2026-05-23):**
+
 - ✅ #1 DC-1.pdf 完整 round-trip(zero-area artefact 已消)
 - ✅ #2 DC-2.pdf 完整 round-trip
 - ✅ #3 PNG 透明圖上傳(RGBA 合成白底生效)
@@ -132,6 +134,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-23T08:53:20.000Z
-Stopped at: Phase 4 complete (raster dispatch + image-only PDF + dual-layer OCR e2e closed)
-Resume file: .planning/phases/04-raster-image-support/04-02-SUMMARY.md
+Last session: 2026-05-23T14:45:13.405Z
+Stopped at: Phase 5 context gathered
+Resume file: .planning/phases/05-ubuntu/05-CONTEXT.md
