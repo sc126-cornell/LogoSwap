@@ -174,9 +174,12 @@ def resolve(logo_id: str) -> bytes:
 
 
 # ---- Aspect-based auto-selection (per-region logo by framed shape) ------------------
-# Cache native aspect by (resolved path, mtime) so the per-region auto pick does not re-open
-# the PNG for every region of a job. Invalidated automatically when the asset's mtime changes.
-_aspect_cache: dict[tuple[str, float], float] = {}
+# Cache native aspect by resolved path; the value carries the (mtime, aspect) pair so a
+# stale mtime invalidates the entry IN PLACE (rather than leaking a new key per replacement,
+# WR-03). The cache holds at most ONE entry per asset path — replacing a logo file overwrites
+# the old aspect rather than appending a sibling — so it can never grow unbounded across
+# administrator asset replacements in a long-lived uvicorn worker.
+_aspect_cache: dict[str, tuple[float, float]] = {}
 
 
 def _logo_aspect(entry: dict) -> float | None:
@@ -192,16 +195,21 @@ def _logo_aspect(entry: dict) -> float | None:
     silently degraded to pure removal. Aligning the picker's allowlist with the catalog's prevents
     that invisible-winner case (the picker is the catalog allowlist, by D-04). A logo_invalid /
     logo_unreadable / OSError on the asset yields ``None`` so the region degrades gracefully.
+
+    WR-03: the cache is keyed by ``str(path)`` (one entry per asset). On an mtime mismatch the
+    entry is overwritten — replacing a logo file in place no longer leaks a new key per
+    replacement, so a long-lived uvicorn worker cannot accumulate stale entries.
     """
     try:
         path = _resolve_path(entry)
         if not path.is_file():
             return None
         _validate_png(path)
-        key = (str(path), path.stat().st_mtime)
+        key = str(path)
+        mtime = path.stat().st_mtime
         cached = _aspect_cache.get(key)
-        if cached is not None:
-            return cached
+        if cached is not None and cached[0] == mtime:
+            return cached[1]
         with Image.open(path) as img:
             width, height = img.size
     except (LogoError, OSError, UnidentifiedImageError, ValueError):
@@ -209,7 +217,7 @@ def _logo_aspect(entry: dict) -> float | None:
     if not width or not height:
         return None
     aspect = width / height
-    _aspect_cache[key] = aspect
+    _aspect_cache[key] = (mtime, aspect)
     return aspect
 
 

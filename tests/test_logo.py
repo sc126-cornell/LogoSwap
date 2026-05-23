@@ -478,6 +478,54 @@ def test_pick_logo_id_for_rect_skips_non_png_entries(tmp_path, monkeypatch):
     assert [e["id"] for e in logo.list_logos()] == ["block"]
 
 
+def test_aspect_cache_bounded_across_asset_replacements(tmp_path, monkeypatch, logo_png_bytes):
+    """WR-03: replacing a logo file in place must NOT leak a new cache entry per replacement.
+
+    The aspect cache is keyed by str(path); the value carries (mtime, aspect) so an mtime change
+    overwrites the entry rather than appending a sibling. Without the fix the (path, mtime) key
+    caused one stale entry per replacement to accumulate in a long-lived uvicorn worker.
+    """
+    import time
+
+    logos_dir = tmp_path / "logos"
+    logos_dir.mkdir()
+    (logos_dir / "logo.png").write_bytes(_make_png(100, 100))   # 1:1
+    manifest = [{"id": "x", "file": "logo.png", "name": "x", "tags": []}]
+    (logos_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(config, "LOGOS_DIR", logos_dir)
+
+    # Clear the module cache so this test's measurements are independent of prior tests.
+    logo._aspect_cache.clear()
+    baseline = len(logo._aspect_cache)
+
+    # Prime the cache with the initial asset.
+    assert logo.pick_logo_id_for_rect(100, 100) == "x"
+    assert len(logo._aspect_cache) == baseline + 1
+
+    # Replace the asset in place a few times, forcing a different mtime each time.
+    target = logos_dir / "logo.png"
+    aspects = [(200, 100), (300, 100), (400, 100)]
+    for i, (w, h) in enumerate(aspects):
+        target.write_bytes(_make_png(w, h))
+        # Some filesystems quantize mtime — nudge it forward to ensure a real change.
+        new_mtime = target.stat().st_mtime + (i + 1) * 1.0
+        import os
+        os.utime(target, (new_mtime, new_mtime))
+        # Trigger another picker call (which goes through _logo_aspect for this entry).
+        assert logo.pick_logo_id_for_rect(w, h) == "x"
+
+    # Cache holds AT MOST one entry per asset path — never one-per-replacement.
+    assert len(logo._aspect_cache) == baseline + 1, (
+        f"aspect cache leaked entries across replacements: {logo._aspect_cache}"
+    )
+    # Sanity: the cached value reflects the LATEST mtime + aspect (not a stale 1:1 from before).
+    key = str(target.resolve())
+    cached_mtime, cached_aspect = logo._aspect_cache[key]
+    assert cached_mtime == target.stat().st_mtime
+    final_w, final_h = aspects[-1]
+    assert abs(cached_aspect - final_w / final_h) < 1e-9
+
+
 def test_pick_logo_id_for_rect_skips_corrupt_entries(tmp_path, monkeypatch, logo_png_bytes):
     """WR-02 (second face): a manifest entry whose file is corrupt is skipped from the picker.
 
