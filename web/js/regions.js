@@ -46,6 +46,7 @@ const COPY = {
   count: (n) => `已框選 ${n} 個區域`,
   scope: (current) => `目前顯示第 ${current} 頁的框選`,
   regionLabel: (n) => `區域 ${n}`,
+  deleteRegion: "刪除此區域",
   // action group / status
   applyDisabledHint: "先框選至少一個區域,再套用移除",
   preApplyHint: "請框選要修改的區域,可跨頁連續框選。",
@@ -180,10 +181,9 @@ function renderList() {
   regionCountEl.textContent = COPY.count(totalRegionCount());
   regionScopeEl.textContent = COPY.scope(currentPage + 1);
 
-  // Clear-all is enabled only when the CURRENT page has regions. Once a result is fresh the
-  // toolbar's 恢復原圖 takes over the "start-over" job, so we HIDE this link entirely to keep
-  // the post-apply choices unambiguous (download or restore — one place for each).
-  clearAllBtn.hidden = resultFresh;
+  // Clear-all is enabled only when the CURRENT page has regions (scope: this page). The toolbar
+  // 恢復原圖 is a separate, document-wide restart; both coexist post-apply so the user has the
+  // full granularity (single-region trash / per-page clear / full restore).
   clearAllBtn.disabled = list.length === 0;
 
   // Empty-state vs the row list.
@@ -203,6 +203,17 @@ function renderList() {
     label.className = "region-row__label";
     label.textContent = COPY.regionLabel(i + 1);
 
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "region-row__delete";
+    del.setAttribute("aria-label", COPY.deleteRegion);
+    del.title = COPY.deleteRegion;
+    del.appendChild(makeTrashIcon());
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteRegion(region.id);
+    });
+
     // Bidirectional hover/focus: highlight the matching rectangle.
     const activate = () => setActiveRegion(region.id, true);
     const deactivate = () => setActiveRegion(region.id, false);
@@ -210,10 +221,38 @@ function renderList() {
     li.addEventListener("mouseleave", deactivate);
     li.addEventListener("focus", activate);
     li.addEventListener("blur", deactivate);
+    li.addEventListener("keydown", (e) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        e.preventDefault();
+        deleteRegion(region.id);
+      }
+    });
 
-    li.append(label);
+    li.append(label, del);
     regionListEl.appendChild(li);
   });
+}
+
+function makeTrashIcon() {
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(NS, "svg");
+  svg.setAttribute("width", "18");
+  svg.setAttribute("height", "18");
+  svg.setAttribute("viewBox", "0 0 20 20");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  const path = document.createElementNS(NS, "path");
+  path.setAttribute(
+    "d",
+    "M4 6h12M8 6V4.5h4V6M6 6l.7 9.5h6.6L14 6M9 9v4M11 9v4"
+  );
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "1.5");
+  path.setAttribute("stroke-linecap", "round");
+  path.setAttribute("stroke-linejoin", "round");
+  svg.appendChild(path);
+  return svg;
 }
 
 // ---- Overlay rectangle rendering ---------------------------------------------------
@@ -403,7 +442,15 @@ function cleanupDrag(e) {
   dragActiveId = null;
 }
 
-// ---- Mutations (clear all current page / restore-original) -------------------------
+// ---- Mutations (delete one / clear current page / restore-original) ----------------
+function deleteRegion(id) {
+  const list = pageList(currentPage);
+  const idx = list.findIndex((r) => r.id === id);
+  if (idx === -1) return;
+  list.splice(idx, 1);
+  onRegionsEdited();
+}
+
 function clearAllCurrentPage() {
   regionsByPage.set(currentPage, []);
   onRegionsEdited();

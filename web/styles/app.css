@@ -599,6 +599,26 @@ body {
 }
 
 /* Per-region delete icon button — neutral by default, danger on hover. */
+.region-row__delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-hit);
+  height: var(--control-hit);
+  padding: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: color 0.12s ease, background-color 0.12s ease;
+}
+
+.region-row__delete:hover {
+  color: var(--color-danger);
+  background: var(--color-neutral-hover);
+}
+
 /* ---------- Region inline notice / error (reuses .error-block tone) ---------- */
 
 .region-notice {
