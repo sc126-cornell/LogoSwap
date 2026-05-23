@@ -46,11 +46,10 @@ const COPY = {
   count: (n) => `已框選 ${n} 個區域`,
   scope: (current) => `目前顯示第 ${current} 頁的框選`,
   regionLabel: (n) => `區域 ${n}`,
-  deleteRegion: "刪除此區域",
   // action group / status
   applyDisabledHint: "先框選至少一個區域,再套用移除",
   applying: "正在套用移除…",
-  resultReady: "移除結果已就緒,可切換對照或下載",
+  resultReady: "已套用變更,可以恢復原圖或是下載變更後檔案。",
   staleNotice: "框選已變更,請重新套用以更新結果",
   preparingDownload: "正在準備下載…",
   restoreOriginal: "恢復原圖",
@@ -203,20 +202,6 @@ function renderList() {
     label.className = "region-row__label";
     label.textContent = COPY.regionLabel(i + 1);
 
-    const del = document.createElement("button");
-    del.type = "button";
-    del.className = "region-row__delete";
-    del.setAttribute("aria-label", COPY.deleteRegion);
-    del.title = COPY.deleteRegion;
-    del.appendChild(makeTrashIcon());
-    // Hide per-region delete once a fresh result exists — only path to edit then is 恢復原圖.
-    del.hidden = resultFresh;
-
-    del.addEventListener("click", (e) => {
-      e.stopPropagation();
-      deleteRegion(region.id);
-    });
-
     // Bidirectional hover/focus: highlight the matching rectangle.
     const activate = () => setActiveRegion(region.id, true);
     const deactivate = () => setActiveRegion(region.id, false);
@@ -224,38 +209,10 @@ function renderList() {
     li.addEventListener("mouseleave", deactivate);
     li.addEventListener("focus", activate);
     li.addEventListener("blur", deactivate);
-    li.addEventListener("keydown", (e) => {
-      if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        deleteRegion(region.id);
-      }
-    });
 
-    li.append(label, del);
+    li.append(label);
     regionListEl.appendChild(li);
   });
-}
-
-function makeTrashIcon() {
-  const NS = "http://www.w3.org/2000/svg";
-  const svg = document.createElementNS(NS, "svg");
-  svg.setAttribute("width", "18");
-  svg.setAttribute("height", "18");
-  svg.setAttribute("viewBox", "0 0 20 20");
-  svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("focusable", "false");
-  const path = document.createElementNS(NS, "path");
-  path.setAttribute(
-    "d",
-    "M4 6h12M8 6V4.5h4V6M6 6l.7 9.5h6.6L14 6M9 9v4M11 9v4"
-  );
-  path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "1.5");
-  path.setAttribute("stroke-linecap", "round");
-  path.setAttribute("stroke-linejoin", "round");
-  svg.appendChild(path);
-  return svg;
 }
 
 // ---- Overlay rectangle rendering ---------------------------------------------------
@@ -445,17 +402,7 @@ function cleanupDrag(e) {
   dragActiveId = null;
 }
 
-// ---- Mutations (delete one / clear all) --------------------------------------------
-function deleteRegion(id) {
-  // Locked while a result is fresh: post-apply editing must go through 恢復原圖 only.
-  if (resultFresh) return;
-  const list = pageList(currentPage);
-  const idx = list.findIndex((r) => r.id === id);
-  if (idx === -1) return;
-  list.splice(idx, 1);
-  onRegionsEdited();
-}
-
+// ---- Mutations (clear all current page / restore-original) -------------------------
 function clearAllCurrentPage() {
   regionsByPage.set(currentPage, []);
   onRegionsEdited();
@@ -522,7 +469,7 @@ function updateActionGroup() {
     // Result-ready: download is the single accent CTA; the apply button becomes neutral 恢復原圖
     // (acts as a full restart, not a re-apply). Always actionable while a result exists.
     applyBtn.textContent = COPY.restoreOriginal;
-    applyBtn.className = "text-btn";
+    applyBtn.className = "outline-btn"; // accent border so 恢復原圖 stands out
     applyBtn.disabled = applying;
     applyBtn.removeAttribute("title");
 

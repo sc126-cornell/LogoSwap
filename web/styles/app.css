@@ -172,6 +172,31 @@ body {
   cursor: not-allowed;
 }
 
+/* Accent-outline button: bordered + text in the accent hue, neutral fill. Used by 恢復原圖
+   after 套用變更 to make the restart path more discoverable without competing with the
+   single primary CTA (下載 PDF). Tracks the accent (blue in light, amber in dark). */
+.outline-btn {
+  min-height: var(--control-hit);
+  padding: 0 var(--space-md);
+  font-family: inherit;
+  font-size: var(--font-size-label);
+  color: var(--color-accent);
+  background: var(--color-panel);
+  border: 2px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.12s ease;
+}
+
+.outline-btn:hover:not(:disabled) {
+  background: var(--color-neutral-hover);
+}
+
+.outline-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Theme toggle stays neutral; icon visibility is driven by the root data-theme. */
 .theme-toggle__icon {
   display: none;
@@ -574,26 +599,6 @@ body {
 }
 
 /* Per-region delete icon button — neutral by default, danger on hover. */
-.region-row__delete {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--control-hit);
-  height: var(--control-hit);
-  padding: 0;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  cursor: pointer;
-  transition: color 0.12s ease, background-color 0.12s ease;
-}
-
-.region-row__delete:hover {
-  color: var(--color-danger);
-  background: var(--color-neutral-hover);
-}
-
 /* ---------- Region inline notice / error (reuses .error-block tone) ---------- */
 
 .region-notice {
