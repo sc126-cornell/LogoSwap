@@ -42,9 +42,15 @@ body {
 
 /* ---------- App shell (grid: toolbar row + main[stage 1fr | side-panel 0]) ---------- */
 
+/* WR-07: 4 rows — toolbar | main | session-hint | footer. The session-hint row is
+   ``auto`` (collapses to 0 when the hint is [hidden] via .app-session-hint[hidden]),
+   so the layout matches the pre-fix 3-row appearance until a TTL hint actually shows.
+   The hint lives as a direct child of .app-shell (NOT inside <main>); injecting it
+   inside <main> broke <main>'s 2-column grid by inserting an unexpected third grid
+   cell that pushed the side-panel layout. */
 .app-shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto 1fr auto auto;
   height: 100%;
 }
 

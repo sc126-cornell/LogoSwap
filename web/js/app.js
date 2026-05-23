@@ -90,9 +90,13 @@ const sidePanelEl = document.getElementById("side-panel");
 let hasLoadedDoc = false;
 
 // Phase 5 Plan 05-02 D-B2 — session TTL UI hint node. Created lazily (once) and reused
-// across uploads. Lives inside the page-stage container so it sits alongside the preview
-// flow naturally; aria-live="polite" announces text changes to screen readers without
-// interrupting other live regions. Strictly textContent — never innerHTML (T-01-14).
+// across uploads. WR-07: inserted as a sibling of <main> inside .app-shell (between
+// <main> and <footer>) — NOT inside <main>. The <main> element is itself a 2-column
+// grid (stage 1fr + side-panel); injecting the hint there created a third grid cell
+// that misaligned the side-panel once .main--paneled engaged. The .app-shell row grid
+// is widened to accommodate the hint as its own row (auto 1fr auto auto).
+// aria-live="polite" announces text changes to screen readers without interrupting
+// other live regions. Strictly textContent — never innerHTML (T-01-14).
 let sessionHintEl = null;
 
 function ensureSessionHintEl() {
@@ -102,13 +106,18 @@ function ensureSessionHintEl() {
   el.setAttribute("aria-live", "polite");
   el.setAttribute("role", "status");
   el.hidden = true;
-  // Append to the page-stage so it lives in the same flow as preview / error states
-  // without disturbing the .state[data-state] state machine (the hint is layout-
-  // adjacent — siblings of the states, not inside one).
-  if (stage && stage.parentElement) {
-    stage.parentElement.insertBefore(el, stage.nextSibling);
-  } else if (stage) {
-    stage.appendChild(el);
+  // Insert as a sibling of <main> inside .app-shell, placed before the footer so the
+  // shell row order stays: toolbar | main | hint | footer. Falls back to appending to
+  // .app-shell when no footer is present (defensive); ultimately to body if the shell
+  // is somehow absent (should not happen — index.html always has it).
+  const shell = document.querySelector(".app-shell");
+  const footerEl = shell ? shell.querySelector(".app-footer") : null;
+  if (shell && footerEl) {
+    shell.insertBefore(el, footerEl);
+  } else if (shell) {
+    shell.appendChild(el);
+  } else {
+    document.body.appendChild(el);
   }
   sessionHintEl = el;
   return el;
