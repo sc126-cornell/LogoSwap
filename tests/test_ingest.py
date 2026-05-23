@@ -593,6 +593,135 @@ def test_pipeline_resets_work_from_pristine_not_originals(valid_pdf_bytes, clien
 # --------------------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------------------
+# Phase 5 Plan 05-02 Task 2: ingest hash baseline + pipeline verify integration
+# --------------------------------------------------------------------------------------
+
+
+def test_ingest_writes_original_sha256_into_meta_for_pdf(valid_pdf_bytes):
+    """D-C1: ingest PDF → meta.json original_sha256 = SHA-256(uploaded bytes)."""
+    info = ingest.ingest_upload("design.pdf", valid_pdf_bytes)
+    meta = storage.read_session_meta(info.session_id)
+    assert meta is not None
+    assert meta.get("original_sha256") == hashlib.sha256(valid_pdf_bytes).hexdigest()
+    assert len(meta["original_sha256"]) == 64  # hex digest length
+
+
+@pytest.mark.parametrize(
+    "fixture_name,filename",
+    [
+        ("png_bytes", "scan.png"),
+        ("jpeg_bytes", "drawing.jpg"),
+        ("tiff_bytes", "scan.tiff"),
+    ],
+)
+def test_ingest_image_hash_is_over_raw_image_bytes(request, fixture_name, filename):
+    """D-C4: image ingest hashes the user's RAW image bytes, NOT the normalized A4 PDF.
+
+    This keeps verify_original_hash (which reads originals/ — the raw image) aligned
+    with what was hashed at ingest. Both sides agree on "the bytes the user uploaded",
+    preserving the Phase 4 D-05 invariant in Phase 5's runtime verify mechanism.
+    """
+    data = request.getfixturevalue(fixture_name)
+    info = ingest.ingest_upload(filename, data)
+    meta = storage.read_session_meta(info.session_id)
+    assert meta is not None
+    assert meta["original_sha256"] == hashlib.sha256(data).hexdigest()
+
+
+def test_pipeline_raises_pipeline_error_original_tampered_on_hash_mismatch(valid_pdf_bytes):
+    """D-C2: process_job verifies the SHA-256 baseline → mismatch raises PipelineError.
+
+    Simulates an out-of-band tamper of originals/source.pdf (chmod-around-write) AFTER
+    a clean ingest. The pipeline's verify call detects the divergence, the integrity
+    layer writes the .corrupted sentinel, and the pipeline re-raises as PipelineError
+    with code=original_tampered for the main.py exception handler to map to 503.
+    """
+    import os as _os
+    import stat as _stat
+    from app.models import JobSpec
+    from app.services import pipeline
+
+    info = ingest.ingest_upload("design.pdf", valid_pdf_bytes)
+    sid = info.session_id
+
+    # Tamper originals
+    orig = storage.original_path(sid)
+    _os.chmod(orig, _stat.S_IWRITE | _stat.S_IREAD)
+    orig.write_bytes(b"%PDF-1.7\nTAMPERED\n%%EOF")
+    _os.chmod(orig, _stat.S_IRUSR | _stat.S_IRGRP | _stat.S_IROTH)
+
+    spec = JobSpec(dpi=200, regions=[])
+    with pytest.raises(pipeline.PipelineError) as exc:
+        pipeline.process_job(sid, spec)
+    assert exc.value.code == "original_tampered"
+    # Sentinel must be written BEFORE the raise (integrity side-effect first).
+    assert storage.is_session_corrupted(sid) is True
+
+
+def test_pipeline_raises_session_corrupted_on_legacy_meta(valid_pdf_bytes):
+    """Pitfall 4: legacy session (meta.json without original_sha256) → session_corrupted."""
+    import json as _json
+    from app.models import JobSpec
+    from app.services import pipeline
+
+    info = ingest.ingest_upload("design.pdf", valid_pdf_bytes)
+    sid = info.session_id
+
+    # Rewrite meta.json without original_sha256 (simulate Phase 1–4 sidecar)
+    meta_path = storage.meta_path(sid)
+    meta_path.write_text(_json.dumps({"page_count": 2, "filename": "design.pdf"}))
+
+    spec = JobSpec(dpi=200, regions=[])
+    with pytest.raises(pipeline.PipelineError) as exc:
+        pipeline.process_job(sid, spec)
+    assert exc.value.code == "session_corrupted"
+
+
+def test_pipeline_does_not_touch_originals_on_verify_failure(valid_pdf_bytes):
+    """D-05 + D-C4: verify failure does not mutate originals/ or pristine/.
+
+    Whether verify passes OR fails, the pipeline must not write to originals/ at all
+    (Phase 4 D-05 strengthening: pipeline never touches originals/). pristine/ also
+    stays put (it is the reset source — if the pipeline mutated it on failure, the
+    next run would be wrong).
+    """
+    import os as _os
+    import stat as _stat
+    from app.models import JobSpec
+    from app.services import pipeline
+
+    info = ingest.ingest_upload("design.pdf", valid_pdf_bytes)
+    sid = info.session_id
+
+    # Capture pristine bytes BEFORE tampering originals
+    pristine_before = storage.pristine_path(sid).read_bytes()
+    pristine_sha_before = hashlib.sha256(pristine_before).hexdigest()
+
+    # Tamper originals — record the tampered bytes' hash so we can prove originals
+    # ENDS at the tampered value (no further mutation by pipeline)
+    orig = storage.original_path(sid)
+    _os.chmod(orig, _stat.S_IWRITE | _stat.S_IREAD)
+    tampered_bytes = b"%PDF-1.7\nTAMPERED\n%%EOF"
+    orig.write_bytes(tampered_bytes)
+    _os.chmod(orig, _stat.S_IRUSR | _stat.S_IRGRP | _stat.S_IROTH)
+    tampered_sha = hashlib.sha256(tampered_bytes).hexdigest()
+
+    spec = JobSpec(dpi=200, regions=[])
+    with pytest.raises(pipeline.PipelineError):
+        pipeline.process_job(sid, spec)
+
+    # originals bytes are exactly what we tampered to (pipeline did NOT touch them)
+    assert hashlib.sha256(storage.original_path(sid).read_bytes()).hexdigest() == tampered_sha
+    # pristine bytes unchanged from pre-tamper baseline
+    assert hashlib.sha256(storage.pristine_path(sid).read_bytes()).hexdigest() == pristine_sha_before
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4 Task 04-02-03 (carried) — regression check for raster dispatch idempotence
+# --------------------------------------------------------------------------------------
+
+
 def test_image_upload_consecutive_processes_idempotent(client, png_bytes):
     """A PNG upload + two consecutive /process runs (same region) produce results of
     near-identical size — the second apply resets work from pristine BEFORE running the
