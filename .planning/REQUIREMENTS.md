@@ -11,7 +11,7 @@
 
 - [x] **UPLOAD-01**: 使用者可上傳單一向量 PDF 進行處理
 - [ ] **UPLOAD-02**: 使用者可上傳圖片型(點陣/掃描)PDF 進行處理
-- [ ] **UPLOAD-03**: 使用者可上傳獨立影像檔(PNG/JPG/TIFF),系統將其正規化為可處理的單頁文件
+- [x] **UPLOAD-03**: 使用者可上傳獨立影像檔(PNG/JPG/TIFF),系統將其正規化為可處理的單頁文件
 - [x] **UPLOAD-04**: 系統保留原始檔案不被修改,所有結果輸出為新檔
 
 ### 預覽 (PREVIEW)
@@ -87,7 +87,7 @@
 | LOGO-01 | Phase 3 | Complete |
 | LOGO-02 | Phase 3 | Complete |
 | UPLOAD-02 | Phase 4 | Pending |
-| UPLOAD-03 | Phase 4 | Pending |
+| UPLOAD-03 | Phase 4 | Complete |
 | REMOVE-02 | Phase 4 | Pending |
 
 **Coverage:**

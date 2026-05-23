@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 context gathered
-last_updated: "2026-05-23T08:23:43.533Z"
-last_activity: 2026-05-23 -- Phase 04 planning complete
+stopped_at: Phase 4 plan 04-01 complete (image ingest vertical slice landed)
+last_updated: "2026-05-23T09:30:00.000Z"
+last_activity: 2026-05-23 -- Phase 04 plan 04-01 complete
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 8
+  percent: 88
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-23)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 4 — 點陣圖與圖片型檔案支援(尚未開始)
+**Current focus:** Phase 04 — raster-image-support
 
 ## Current Position
 
-Phase: 4
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-05-23 -- Phase 04 planning complete
+Phase: 04 (raster-image-support) — EXECUTING
+Plan: 2 of 2 (04-01 complete; 04-02 raster redact dispatch pending)
+Status: Executing Phase 04
+Last activity: 2026-05-23 -- Phase 04 plan 04-01 complete
 
-Progress: [██████████] 100%
+Progress: [████████░░] 88%
 
 ## Performance Metrics
 
@@ -59,6 +59,7 @@ Progress: [██████████] 100%
 | Phase 02 P03 | ~9min | 3 tasks | 8 files |
 | Phase 03 P01 | ~25 min | 2 tasks | 14 files |
 | Phase 03 P02 | 15min | 2 tasks | 7 files |
+| Phase 04 P01 | ~50 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -88,6 +89,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 2-03]: Action group keeps exactly ONE accent button — 套用移除 until a fresh result, then 下載 PDF; editing invalidates the result (重新套用 + 框選已變更 stale notice, download disabled)
 - [Phase ?]: [Phase 3-01]: logo_id resolves only as a manifest dict key + is_relative_to(LOGOS_DIR) assert (T-03-01); logo.py/logos.py fitz-free; ONE shared stale machine
 - [Phase ?]: [Phase 3-02]: place_logo is the only new fitz call (pdf_engine.py); insert AFTER apply_redactions, keep_proportion=True center+contain (LOGO-02), one global logo dedups to a single xref (D-01); no logo_id = pure removal; original SHA-256 unchanged (D-05); pipeline stays fitz-free
+- [Phase 4-01]: image_to_a4_pdf is the only new fitz call (pdf_engine.py); ingest dispatch on four magic headers; image magics MUST match at offset 0 (PDF-only allows ≤8 leading offset, D-12); Pillow chain verify/load CMYK→RGB + n_frames check; pipeline reset source switched originals→pristine (D-05 invariant on originals/ now STRICTER — pipeline never touches originals/); AGPL seam still 1 file
 
 ### Pending Todos
 
@@ -109,6 +111,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-23T05:31:27.081Z
-Stopped at: Phase 4 context gathered
-Resume file: .planning/phases/04-raster-image-support/04-CONTEXT.md
+Last session: 2026-05-23T09:30:00.000Z
+Stopped at: Phase 4 plan 04-01 complete (image ingest vertical slice landed)
+Resume file: .planning/phases/04-raster-image-support/04-01-SUMMARY.md

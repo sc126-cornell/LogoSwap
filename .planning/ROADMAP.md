@@ -91,7 +91,7 @@ Plans:
 
 Plans:
 **Wave 1**
-- [ ] 04-01-PLAN.md — 影像 ingest 垂直切片:PNG/JPG/TIFF magic-header dispatch + Pillow 驗證鏈(verify / n_frames / CMYK→RGB / load)+ pdf_engine.image_to_a4_pdf(fit 置中 A4 portrait,JPEG 直通)+ pristine_pdf 第三目錄(解決 reset-from-pristine invariant)+ dropzone accept 擴張 + 三個新錯誤碼繁中文案(UPLOAD-03)
+- [x] 04-01-PLAN.md — 影像 ingest 垂直切片:PNG/JPG/TIFF magic-header dispatch + Pillow 驗證鏈(verify / n_frames / CMYK→RGB / load)+ pdf_engine.image_to_a4_pdf(fit 置中 A4 portrait,JPEG 直通)+ pristine_pdf 第三目錄(解決 reset-from-pristine invariant)+ dropzone accept 擴張 + 三個新錯誤碼繁中文案(UPLOAD-03)(completed 2026-05-23)
 
 **Wave 2** *(blocked on 04-01)*
 - [ ] 04-02-PLAN.md — Raster 移除分支 + per-region dispatch:pdf_engine.IMAGE_PIXELS 常數 + rect_overlaps_image helper + redact.remove_region_vector / _raster 拆分(raster 分支 fill=None + 只 text 殘留斷言)+ pipeline.process_job 1 行 dispatch + 雙層 OCR text leak 封堵 + image-only PDF 端到端 + logo 置入(UPLOAD-02 + REMOVE-02)
