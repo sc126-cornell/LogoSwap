@@ -54,7 +54,7 @@ const COPY = {
   staleNotice: "框選已變更,請重新套用以更新結果",
   preparingDownload: "正在準備下載…",
   reapply: "重新套用",
-  apply: "套用移除",
+  apply: "套用變更",
   // before/after
   noResultYet: "尚無移除結果,請先套用移除",
   // notices / errors
