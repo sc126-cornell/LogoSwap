@@ -9,7 +9,10 @@ in the :class:`~app.models.JobSpec` it:
   1. clamps the untrusted image-pixel rect to the page box (threat T-02-01),
   2. maps it to the unrotated page via the proven Plan 02-01 mapper
      (``coords.pixels_to_pdf_rect`` — REMOVE-03; placement correctness inherited),
-  3. truly removes the content inside it (``redact.remove_region`` — REMOVE-01),
+  3. truly removes the content inside it. Phase 4 D-05 dispatches per-region:
+     :func:`pdf_engine.rect_overlaps_image` → :func:`redact.remove_region_raster`
+     (raster branch, IMAGE_PIXELS); otherwise :func:`redact.remove_region_vector`
+     (vector branch, IMAGE_NONE — original Phase 2 path, REMOVE-01),
 
 then saves the redacted result BACK to the work copy (so the result-render endpoint can
 show the "移除結果" after-image) AND to ``outputs/原名_logoswap.pdf`` for download
@@ -234,7 +237,17 @@ def process_job(session_id: str, job_spec) -> dict:
                 region.px_rect, img_w, img_h
             )
             pdf_rect = coords.pixels_to_pdf_rect(clamped_px, effective_dpi, page)
-            removed = redact.remove_region(page, pdf_rect)
+
+            # Phase 4 D-05: per-region dispatch by image-overlap probe in PDF point
+            # space. ``rect_overlaps_image`` takes an unrotated-page rect — exactly what
+            # ``pixels_to_pdf_rect`` produces — so no extra conversion. True → route to
+            # ``remove_region_raster`` (images=IMAGE_PIXELS + text-only residual
+            # assertion); False → route to ``remove_region_vector`` (Phase 2 path
+            # unchanged, images=IMAGE_NONE + text + drawings assertions).
+            if pdf_engine.rect_overlaps_image(page, pdf_rect):
+                removed = redact.remove_region_raster(page, pdf_rect)
+            else:
+                removed = redact.remove_region_vector(page, pdf_rect)
 
             # Place the logo STRICTLY AFTER remove_region (which runs apply_redactions
             # internally) so it is not redacted away (Pitfall 1), on the SAME pdf_rect, and
