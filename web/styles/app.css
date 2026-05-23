@@ -863,6 +863,14 @@ body {
   width: 100%;
   height: var(--logo-thumb-size);
   object-fit: contain; /* matches the D-02 contain the server applies in the PDF */
+  /* Transparent-PNG legibility: logos are dark text on transparent backgrounds. Give the IMG
+     a white backing in both themes so dark-text logos stay readable in dark mode (UI-SPEC
+     Pitfall 2). In light mode this is near-seamless with --color-surface; in dark mode it
+     reads as a "name card" tile against the dark panel. */
+  background: #ffffff;
+  border-radius: var(--radius-sm);
+  padding: 4px;
+  box-sizing: border-box;
 }
 
 .logo-thumb__caption {
