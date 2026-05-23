@@ -25,13 +25,16 @@ const AUTO = "__auto__";
 
 // ---- Verbatim SPEC copy (繁體中文) -------------------------------------------------
 const COPY = {
-  heading: "EXW 商標",
+  heading: "商標", // 「EXW」字面以 logo 圖樣顯示;此鍵僅作 SPEC 對照,實際 heading 文案於 index.html 渲染
   subtext: "選擇要置入移除區域的商標(套用後置入所有框選區域)",
   selectAria: (name) => `選擇商標:${name}`,
-  noLogo: "不置入商標",
-  auto: "自動(依框選形狀)", // accessible single-line label (aria)
+  noLogo: "不置入商標", // accessible single-line label (aria)
+  noLogoLine1: "不置入商標", // visible caption, line 1
+  noLogoLine2: "(變成空白)", // visible caption, line 2
+  auto: "自動(依框選形狀)加入商標", // accessible single-line label (aria)
   autoLine1: "自動", // visible caption, line 1
   autoLine2: "依框選形狀", // visible caption, line 2
+  autoLine3: "加入商標", // visible caption, line 3
   emptyHeading: "尚無可用的商標",
   emptyBody:
     "商標庫目前是空的。您仍可框選並移除供應商商標,完成後下載。商標由管理者預先放入。",
@@ -108,25 +111,44 @@ function makeThumbCell(id, name) {
   btn.setAttribute("aria-pressed", "false");
 
   if (id === null) {
-    // The "不置入商標" clear cell: a neutral caption, no image.
+    // The "不置入商標" clear cell: a neutral caption, no image. Two visible lines; the second
+    // line clarifies the outcome. Same .logo-thumb--centered treatment as the AUTO cell:
+    // a transparent placeholder reserves the image-slot height so the cell matches its
+    // siblings, and the caption is overlaid + vertically centered via grid placement.
+    btn.classList.add("logo-thumb--centered");
     btn.setAttribute("aria-label", COPY.noLogo);
+    const placeholder = document.createElement("span");
+    placeholder.className = "logo-thumb__placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
     const caption = document.createElement("span");
     caption.className = "logo-thumb__caption";
-    caption.textContent = COPY.noLogo;
-    btn.appendChild(caption);
+    caption.append(
+      document.createTextNode(COPY.noLogoLine1),
+      document.createElement("br"),
+      document.createTextNode(COPY.noLogoLine2)
+    );
+    btn.append(placeholder, caption);
   } else if (id === AUTO) {
-    // The auto-by-shape cell: caption-only, no single preview image. Two visible lines
-    // ("自動" / "依框選形狀") built via createElement + <br> (no innerHTML, T-03-04); the
-    // single-line COPY.auto is the accessible aria-label.
+    // The auto-by-shape cell: caption-only, no single preview image. Three visible lines
+    // ("自動" / "依框選形狀" / "加入商標") built via createElement + <br> (no innerHTML,
+    // T-03-04); the single-line COPY.auto is the accessible aria-label. The placeholder
+    // reserves image-slot height; .logo-thumb--centered overlays + vertically centers the
+    // caption on top of it.
+    btn.classList.add("logo-thumb--centered");
     btn.setAttribute("aria-label", COPY.auto);
+    const placeholder = document.createElement("span");
+    placeholder.className = "logo-thumb__placeholder";
+    placeholder.setAttribute("aria-hidden", "true");
     const caption = document.createElement("span");
     caption.className = "logo-thumb__caption";
     caption.append(
       document.createTextNode(COPY.autoLine1),
       document.createElement("br"),
-      document.createTextNode(COPY.autoLine2)
+      document.createTextNode(COPY.autoLine2),
+      document.createElement("br"),
+      document.createTextNode(COPY.autoLine3)
     );
-    btn.appendChild(caption);
+    btn.append(placeholder, caption);
   } else {
     btn.setAttribute("aria-label", COPY.selectAria(name));
     const img = document.createElement("img");
@@ -145,12 +167,13 @@ function makeThumbCell(id, name) {
 
 function renderGrid(logos) {
   grid.replaceChildren();
-  // Lead with the explicit clear choice, then the auto-by-shape choice, then the logos.
-  grid.appendChild(makeThumbCell(null, COPY.noLogo));
+  // Lead with the auto-by-shape choice, then the logos, and put the explicit clear choice last
+  // (per UAT: "不置入商標" lives at the tail of the grid).
   grid.appendChild(makeThumbCell(AUTO, COPY.auto));
   for (const entry of logos) {
     grid.appendChild(makeThumbCell(entry.id, entry.name));
   }
+  grid.appendChild(makeThumbCell(null, COPY.noLogo));
   applySelection();
   showState("populated");
 }

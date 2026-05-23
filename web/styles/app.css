@@ -500,6 +500,13 @@ body {
   color: var(--color-text);
 }
 
+.region-panel__heading-logo {
+  height: 4.8em;
+  width: auto;
+  vertical-align: -1.9em;
+  margin-right: -0.5em;
+}
+
 .region-panel__count {
   margin: 0;
   font-size: var(--font-size-label);
@@ -854,6 +861,21 @@ body {
   transition: background-color 0.12s ease, border-color 0.12s ease;
 }
 
+/* "自動" and "不置入商標" cells have no image. Switch the cell to a 1x1 CSS grid so the
+   transparent placeholder (which reserves image-slot height for visual size parity) and
+   the caption occupy the same grid cell, with the caption vertically + horizontally
+   centered on top of the (invisible) placeholder. */
+.logo-thumb--centered {
+  display: grid;
+  grid-template: 1fr / 1fr;
+  place-items: center;
+}
+
+.logo-thumb--centered > .logo-thumb__placeholder,
+.logo-thumb--centered > .logo-thumb__caption {
+  grid-area: 1 / 1;
+}
+
 /* Hover is neutral (NOT accent — mirrors .region-row:hover). */
 .logo-thumb:hover {
   background: var(--color-neutral-hover);
@@ -862,6 +884,15 @@ body {
 /* The ONE new accent element (UI-SPEC §Color reserved-for): the selected thumbnail. */
 .logo-thumb.is-selected {
   border: 2px solid var(--color-accent);
+}
+
+/* Transparent image-slot placeholder for image-less cells (不置入商標, 自動). Same height as
+   .logo-thumb__img so all four thumbs share an intrinsic image+caption stack and render at
+   the same size regardless of which grid row they fall on. */
+.logo-thumb__placeholder {
+  display: block;
+  width: 100%;
+  height: var(--logo-thumb-size);
 }
 
 .logo-thumb__img {
