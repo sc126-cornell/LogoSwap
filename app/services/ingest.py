@@ -140,44 +140,54 @@ def _ingest_image(data: bytes, sniff_kind: str) -> bytes:
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError, ValueError) as err:
         raise IngestError("corrupt_image", "影像檔案損壞或無法解析。") from err
 
-    # Re-open after verify().
+    # Re-open after verify(). IN-03: use ``with Image.open(...) as src:`` so the source
+    # file handle / underlying BytesIO is released deterministically the moment we have a
+    # detached copy in ``img``. The ``finally: img.close()`` below then only needs to clean
+    # up the SINGLE working handle (either the copy, or the alpha-composited ``background``
+    # that replaced it), not two parallel handles relying on Pillow's __del__ to mop up the
+    # source. Frame-count + pixel-cap checks happen INSIDE the ``with`` so they see the
+    # source's metadata (n_frames lives on the source image, not the copy).
     try:
-        img = Image.open(io.BytesIO(data))
+        with Image.open(io.BytesIO(data)) as src:
+            n_frames = getattr(src, "n_frames", 1)
+            if n_frames > 1:
+                raise IngestError(
+                    "multi_page_tiff_unsupported",
+                    "暫不支援多頁 TIFF,請先拆成單頁 TIFF 再上傳。",
+                )
+
+            if fmt not in _ACCEPTED_IMAGE_FORMATS:
+                raise IngestError(
+                    "unsupported_image_format",
+                    f"不支援的影像格式:{fmt}。",
+                )
+
+            # DoS hard cap on pixel count (WR-03). Pillow's ``Image.DecompressionBombError``
+            # only RAISES at ``MAX_IMAGE_PIXELS * 2``; below that it merely emits a warning
+            # and proceeds. So a 60-megapixel TIFF passes ``verify()`` + ``load()``,
+            # ``image_to_a4_pdf`` then re-encodes it as PNG inside an A4 page, and the
+            # resulting CPU/memory spike (PyMuPDF does not downscale on insert_image)
+            # exceeds the wall-clock budget per worker. ``MAX_UPLOAD_BYTES`` is already
+            # checked upstream but a small heavily-compressed source (e.g. a uniform
+            # gradient PNG) can sit well under 50 MB and still decompress to ≥100 MP.
+            # Re-use the existing ``config.MAX_INGEST_IMAGE_PIXELS`` constant — its docstring
+            # already states it is the ingest-side pixel ceiling — and enforce it as a HARD
+            # cap (raise an IngestError, not just a warning). Pillow's own threshold
+            # remains in place as a backstop.
+            if src.width * src.height > config.MAX_INGEST_IMAGE_PIXELS:
+                raise IngestError(
+                    "image_too_large_pixels",
+                    f"影像像素數過多(超過 {config.MAX_INGEST_IMAGE_PIXELS:,} 像素),請先縮圖再上傳。",
+                )
+
+            # Detach a working copy so we can keep mutating after ``src`` is closed.
+            img = src.copy()
+    except IngestError:
+        raise
     except (UnidentifiedImageError, OSError, ValueError) as err:
         raise IngestError("corrupt_image", "影像檔案損壞或無法解析。") from err
 
     try:
-        n_frames = getattr(img, "n_frames", 1)
-        if n_frames > 1:
-            raise IngestError(
-                "multi_page_tiff_unsupported",
-                "暫不支援多頁 TIFF,請先拆成單頁 TIFF 再上傳。",
-            )
-
-        if fmt not in _ACCEPTED_IMAGE_FORMATS:
-            raise IngestError(
-                "unsupported_image_format",
-                f"不支援的影像格式:{fmt}。",
-            )
-
-        # DoS hard cap on pixel count (WR-03). Pillow's ``Image.DecompressionBombError``
-        # only RAISES at ``MAX_IMAGE_PIXELS * 2``; below that it merely emits a warning
-        # and proceeds. So a 60-megapixel TIFF passes ``verify()`` + ``load()``,
-        # ``image_to_a4_pdf`` then re-encodes it as PNG inside an A4 page, and the
-        # resulting CPU/memory spike (PyMuPDF does not downscale on insert_image)
-        # exceeds the wall-clock budget per worker. ``MAX_UPLOAD_BYTES`` is already
-        # checked upstream but a small heavily-compressed source (e.g. a uniform
-        # gradient PNG) can sit well under 50 MB and still decompress to ≥100 MP.
-        # Re-use the existing ``config.MAX_INGEST_IMAGE_PIXELS`` constant — its docstring
-        # already states it is the ingest-side pixel ceiling — and enforce it as a HARD
-        # cap (raise an IngestError, not just a warning). Pillow's own threshold
-        # remains in place as a backstop.
-        if img.width * img.height > config.MAX_INGEST_IMAGE_PIXELS:
-            raise IngestError(
-                "image_too_large_pixels",
-                f"影像像素數過多(超過 {config.MAX_INGEST_IMAGE_PIXELS:,} 像素),請先縮圖再上傳。",
-            )
-
         # D-03 CMYK→RGB, RGBA→RGB (Pitfall D, Pitfall G).
         # Pillow's plain ``convert("RGB")`` on an alpha-bearing image DROPS the alpha
         # channel without compositing — so RGBA pixel (0,0,0,0) becomes RGB (0,0,0)
@@ -192,7 +202,9 @@ def _ingest_image(data: bytes, sniff_kind: str) -> bytes:
         if has_alpha:
             rgba = img.convert("RGBA")
             background = Image.new("RGB", rgba.size, (255, 255, 255))
-            background.paste(rgba, mask=rgba.split()[3])
+            # IN-03: named-channel access. Documented Pillow idiom; semantics identical to
+            # ``rgba.split()[3]`` but the intent is obvious to a future reader.
+            background.paste(rgba, mask=rgba.getchannel("A"))
             img = background
         elif img.mode != "RGB":
             img = img.convert("RGB")
