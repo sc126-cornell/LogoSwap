@@ -12,7 +12,7 @@ LogoSwap 以 **GNU AGPLv3** 授權。當本工具於網路服務形態提供給�
 是否限於內網),AGPLv3 §13 要求對網路使用者揭露完整原始碼。本專案以三件套
 滿足該義務:
 
-1. 完整原始碼公開於:`https://github.com/<OWNER>/logoswap`
+1. 完整原始碼公開於:`https://github.com/<OWNER>/LogoSwap`
    *(部署前必須將 `<OWNER>` 替換為實際的 public GitHub repo owner;同時更新
    `web/index.html` 內 footer 的同一 placeholder。)*
 2. AGPL-3.0 全文見專案根目錄 [`LICENSE`](./LICENSE)。
@@ -40,7 +40,7 @@ README 的 `<OWNER>` 已替換 + UI footer 的 GitHub URL 已替換。
 
 ```bash
 # 1) 推到 public GitHub repo
-git remote add origin https://github.com/<OWNER>/logoswap.git
+git remote add origin https://github.com/<OWNER>/LogoSwap.git
 git push -u origin master
 
 # 2) 在 Zeabur 連接此 repo,Zeabur 會自動偵測 Dockerfile 並 build。
@@ -65,8 +65,8 @@ Zeabur 會自動注入 `$PORT`,Dockerfile 的 `CMD` 已用 `${PORT:-8000}` 接�
 
 ```bash
 # Linux / macOS
-git clone https://github.com/<OWNER>/logoswap.git
-cd logoswap
+git clone https://github.com/<OWNER>/LogoSwap.git
+cd LogoSwap
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -76,8 +76,8 @@ python -m app
 
 ```powershell
 # Windows PowerShell
-git clone https://github.com/<OWNER>/logoswap.git
-cd logoswap
+git clone https://github.com/<OWNER>/LogoSwap.git
+cd LogoSwap
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
