@@ -60,6 +60,16 @@ def sweep_expired_sessions(now: float | None = None) -> int:
                 continue
             if mtime_age < ttl:
                 continue
+            # WR-05 TOCTOU narrowing: a concurrent worker's /process can bump
+            # outputs/{sid} mtime between the first age check above and the rmtree below.
+            # Re-check immediately before deletion so a session that just had a fresh
+            # /process land in the millisecond window is skipped this round (next sweep
+            # will revisit it once it ages out again). Narrows — does not eliminate — the
+            # window; full elimination would require an inter-worker lock, which is
+            # rejected for a single-process LAN tool (D-B4).
+            mtime_age_recheck = storage.session_age_seconds(sid)
+            if mtime_age_recheck is None or mtime_age_recheck < ttl:
+                continue
             # delete_session is best-effort and itself swallows OSError, but we still
             # wrap in try/except for any unforeseen failure (test monkeypatch coverage).
             storage.delete_session(sid)
