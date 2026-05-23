@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 Plan 01 complete — deploy slice ready (Dockerfile + /health + AGPL §13)
-last_updated: "2026-05-23T16:01:00.000Z"
-last_activity: 2026-05-23 -- Phase 5 Plan 01 executed (deploy slice)
+stopped_at: Phase 5 Plan 02 complete — hardening slice landed (SHA-256 verify + janitor + /process timeout + 前端 UX)
+last_updated: "2026-05-24T00:00:00.000Z"
+last_activity: 2026-05-24 -- Phase 5 Plan 02 executed (hardening slice)
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 11
-  completed_plans: 10
-  percent: 91
+  completed_plans: 11
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-23)
 
 ## Current Position
 
-Phase: 5 (ubuntu) — EXECUTING
-Plan: 2 of 2 (05-01 complete, 05-02 next)
-Status: Phase 5 Plan 01 (deploy slice) complete; Plan 02 (hardening) pending
-Last activity: 2026-05-23 -- Phase 5 Plan 01 executed (deploy slice)
+Phase: 5 (ubuntu) — COMPLETE
+Plan: 2 of 2 (05-01 + 05-02 both complete)
+Status: Phase 5 Plan 02 (hardening slice) complete — SHA-256 verify + janitor + /process timeout + 前端 UX. Phase 5 success criteria #1/#2/#3 all landed. STRIDE 27/27 closed.
+Last activity: 2026-05-24 -- Phase 5 Plan 02 executed (hardening slice)
 
 **Hotfix 收口記錄(自 137a592 後 13 個 commit):**
 
@@ -51,7 +51,7 @@ Last activity: 2026-05-23 -- Phase 5 Plan 01 executed (deploy slice)
 - ✅ #7 Phase 3 logo 置入(向量 PDF + auto 模式)零迴歸
 - ✅ #8「不置入商標」選項輸出純白
 
-Progress: [██████████] 100% (Phase 1–4 all complete, Phase 5 not yet planned)
+Progress: [██████████] 100% (Phase 1–5 all complete; 11/11 plans landed)
 
 ## Performance Metrics
 
@@ -83,6 +83,7 @@ Progress: [██████████] 100% (Phase 1–4 all complete, Phase
 | Phase 04 P01 | ~50 min | 3 tasks | 13 files |
 | Phase 04 P02 | ~11 min | 3 tasks | 7 files |
 | Phase 05 P01 | ~25 min | 3 tasks | 10 files |
+| Phase 05 P02 | ~70 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -121,6 +122,17 @@ Recent decisions affecting current work:
 - [Phase 5-01]: _START_TIME captured at module top — spawn-safe per-worker semantic (Pitfall 7); each uvicorn worker reports its own uptime; lifespan(app) skeleton present so Plan 05-02 fills body only, never the FastAPI constructor
 - [Phase 5-01]: Desktop entry app/__main__.py defaults host to 127.0.0.1 (T-05-09 — loopback only); only Dockerfile CMD binds 0.0.0.0; UVICORN_NO_BROWSER=1 suppresses auto-open
 - [Phase 5-01]: <OWNER> placeholder reserved in README (5 places) + index.html footer (1 place); substitution is a deploy-ops gate before public-GitHub push, NOT in plan scope
+- [Phase 5-02]: SHA-256 baseline written into meta.json atomically (tempfile.mkstemp(dir=dest.parent) + os.replace; A7 cross-drive guarantee); verify_original_hash runs at pipeline.process_job entry; side-effect-before-raise (sentinel written BEFORE IntegrityError) so caller catch path cannot bypass cleanup
+- [Phase 5-02]: Janitor 1h TTL with 3 synchronous trigger points (lifespan startup + POST /sessions finally + POST /process finally); all try/except wrapped so failure never taints HTTP response (T-05-05 / D-B1); _on_rm_error shared rmtree handler re-chmods 0o444 → retry for Pitfall 3 cross-platform readonly cleanup
+- [Phase 5-02]: /process 60s timeout via asyncio.wait_for(asyncio.to_thread(...)) (D-D3); 504 processing_timeout; Pitfall 1 inline note documents "thread cannot be killed; UVICORN_WORKERS=2 keeps preview live; ProcessPoolExecutor upgrade deferred to v1.x"
+- [Phase 5-02]: Corrupted gate (is_session_corrupted short-circuit → 410 session_corrupted) at app/api/process.py BEFORE the timeout wrapper; legacy session (Phase 1-4 meta.json without original_sha256) fail-closed → session_corrupted; 1h TTL janitor reclaims naturally — no migration script needed (Pitfall 4)
+- [Phase 5-02]: session_age_seconds uses MAX (not min) mtime across 4-kind dirs — protects freshly-downloaded outputs/ from premature sweep even when originals/ is hours old (D-B4 race protection)
+- [Phase 5-02]: Image upload SHA-256 hashes user's RAW image bytes (not the normalized A4 PDF) so verify reads originals/ → both sides agree; Phase 4 D-05 strengthening (pipeline doesn't write to originals/) carried forward; integrity layer pipeline only READS originals/
+- [Phase 5-02]: _PROCESS_STATUS extended with original_tampered:503 / session_corrupted:410 / processing_timeout:504 as DEFENSE IN DEPTH — api/process.py raises HTTPException directly; the dict catches any future PipelineError re-raise path
+- [Phase 5-02]: Frontend繁中 message mapping for 3 new server codes (originalTampered / sessionCorrupted / processingTimeout) via existing messageForError switch — no new UI scaffolding; XSS posture preserved (textContent only)
+- [Phase 5-02]: D-B2 session TTL UI hint「此次處理 1 小時內完成下載 — 逾時需重新上傳」 inserted as aria-live="polite" polite live region in page-stage on upload success; swaps to「此次處理已過期,請重新上傳此檔」 on GET /sessions/{id} 404; createElement + textContent (XSS-safe, no innerHTML)
+- [Phase 5-02]: AGPL seam stays at 1 fitz file (pdf_engine.py) — integrity.py + janitor.py are stdlib-only (hashlib / shutil / os / tempfile / time); AST-grep guards in tests/test_integrity.py + tests/test_janitor.py mirror canonical test_fitz_import_confined_to_engine_seam
+- [Phase 5-02]: Phase 5 STRIDE total = 27/27 closed (15 mitigate + 7 accept + 5 accept-by-mitigation-equivalent); Phase 5 success criteria #1 (Plan 05-01) + #2 + #3 (Plan 05-02) all landed
 
 ### Pending Todos
 
@@ -142,6 +154,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-23T16:01:00.000Z
-Stopped at: Phase 5 Plan 01 (deploy slice) complete — 3/3 tasks, 243/243 tests pass
-Resume file: .planning/phases/05-ubuntu/05-02-PLAN.md
+Last session: 2026-05-24T00:00:00.000Z
+Stopped at: Phase 5 Plan 02 (hardening slice) complete — 3/3 tasks, 287 passed + 1 platform-skipped, +45 new tests, AGPL seam preserved
+Resume file: None (Phase 5 complete; ready for phase-level UAT + Zeabur deploy)

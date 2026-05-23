@@ -15,7 +15,7 @@
  (completed 2026-05-22)
 - [x] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比) (completed 2026-05-23)
 - [x] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白 (completed 2026-05-23;hotfix 收口 review/fix + validate + secure + UAT pass,243 tests / 17 STRIDE threats closed)
-- [ ] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理
+- [x] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理 (completed 2026-05-24;05-01 deploy slice + 05-02 hardening slice;287 passed + 1 platform-skipped;27/27 STRIDE threats closed)
 
 ## Phase Details
 
@@ -112,8 +112,8 @@ Plans:
 **Wave 1**
 - [x] 05-01-PLAN.md — 部署 slice:多階段 Dockerfile + uvicorn workers + APP_BASE_PATH(FastAPI root_path)+ /health 加強(uptime/active_sessions/disk)+ app/__main__.py 桌面入口 + AGPL §13 三件套(LICENSE + README 三部署目標 + UI footer GitHub 連結) (completed 2026-05-23;3 tasks, 10 files, 243/243 tests pass)
 
-**Wave 2** *(blocked on 05-01)*
-- [ ] 05-02-PLAN.md — 穩固化 slice:originals/ SHA-256 baseline + verify + .corrupted sentinel + /process 60s timeout(asyncio.wait_for + to_thread)+ 暫存 janitor(三點同步觸發 + 1h TTL + cross-platform chmod fix)+ 前端三個新錯誤訊息
+**Wave 2** *(completed)*
+- [x] 05-02-PLAN.md — 穩固化 slice:originals/ SHA-256 baseline + verify + .corrupted sentinel + /process 60s timeout(asyncio.wait_for + to_thread)+ 暫存 janitor(三點同步觸發 + 1h TTL + cross-platform chmod fix)+ 前端三個新錯誤訊息 (completed 2026-05-24;3 tasks, 13 files, 287 passed + 1 skipped, +45 new tests, AGPL seam preserved)
 
 ## Progress
 
@@ -126,4 +126,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. 框選與真正移除(向量)+ 下載 | 3/3 | Complete   | 2026-05-22 |
 | 3. 商標置入 | 2/2 | Complete    | 2026-05-23 |
 | 4. 點陣圖與圖片型檔案支援 | 2/2 | Complete   | 2026-05-23 |
-| 5. 部署與穩固化(Ubuntu) | 1/2 | In progress | - |
+| 5. 部署與穩固化(Ubuntu) | 2/2 | Complete | 2026-05-24 |
