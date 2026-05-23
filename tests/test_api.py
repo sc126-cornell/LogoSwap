@@ -277,9 +277,24 @@ def test_handler_rejects_raw_traversal_session_id(client, valid_pdf_bytes):
 
 
 def test_health(client):
+    # Phase 5 (D-D4): /health returns five fields. Schema is the contract; exact
+    # numbers (uptime/disk) are non-deterministic so assert shape + types only.
     resp = client.get("/health")
     assert resp.status_code == 200
-    assert resp.json() == {"status": "ok"}
+    body = resp.json()
+    assert body["status"] == "ok"
+    assert set(body.keys()) >= {
+        "status",
+        "uptime_seconds",
+        "active_sessions",
+        "data_dir_bytes",
+        "data_dir_pct",
+    }
+    assert isinstance(body["uptime_seconds"], (int, float))
+    assert body["uptime_seconds"] >= 0
+    assert isinstance(body["active_sessions"], int)
+    assert isinstance(body["data_dir_bytes"], int)
+    assert isinstance(body["data_dir_pct"], (int, float))
 
 
 def test_original_unchanged_after_rendering(client, valid_pdf_bytes):

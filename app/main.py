@@ -14,6 +14,9 @@ the directory exists, so the app still imports and boots without it.
 
 from __future__ import annotations
 
+import shutil
+import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -21,7 +24,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config
+from . import config, storage
 from .api import logos, pages, process, sessions
 from .services.ingest import IngestError
 from .services.logo import LogoError
@@ -31,7 +34,26 @@ from .services.redact import RedactError
 from .services.render import RenderError
 from .storage import InvalidSessionId
 
-app = FastAPI(title=config.API_TITLE)
+# Per-worker process start time. Module-top capture is spawn-safe: every uvicorn
+# worker (multiprocessing.spawn on Windows) re-imports app.main and captures its
+# own start time, so /health reports per-worker uptime — the desired semantic
+# (Pitfall 7).
+_START_TIME: float = time.time()
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Skeleton — Plan 05-02 fills in `janitor.sweep_expired_sessions()` here.
+    # Keeping the signature now means 05-02 only edits the body, never the
+    # FastAPI constructor call below.
+    yield
+
+
+app = FastAPI(
+    title=config.API_TITLE,
+    root_path=config.APP_BASE_PATH,
+    lifespan=lifespan,
+)
 
 # Routers (thin handlers; logic in services/).
 app.include_router(sessions.router)
@@ -165,8 +187,51 @@ async def _handle_validation_error(
 
 @app.get("/health", tags=["health"])
 async def health() -> dict:
-    """Liveness probe."""
-    return {"status": "ok"}
+    """Liveness + lightweight observability probe (Phase 5, D-D4).
+
+    Returns five fields:
+
+    * ``status`` — "ok" (the historical liveness signal).
+    * ``uptime_seconds`` — wall-clock seconds since THIS worker imported the
+      module. Per-worker, not per-app — that is intentional (Pitfall 7).
+    * ``active_sessions`` — count of well-formed session dirs under
+      ``originals/``. Sessions are only counted when their directory name
+      matches the server-token alphabet (``_SESSION_ID_RE``) so any orphan dir
+      a misbehaving admin/test left behind is excluded. Returns -1 if the
+      directory cannot be enumerated.
+    * ``data_dir_bytes`` / ``data_dir_pct`` — filesystem-level disk usage of the
+      mount that backs ``DATA_DIR`` (NOT per-session usage; Pitfall 8).
+
+    Deliberately does NOT include any session_id, filename, or path string
+    (T-05-08 — /health is unauthenticated; treat its body as public).
+    """
+    uptime = max(0.0, time.time() - _START_TIME)
+    originals_root = Path(config.DATA_DIR) / "originals"
+    active_sessions = 0
+    if originals_root.is_dir():
+        try:
+            active_sessions = sum(
+                1
+                for entry in originals_root.iterdir()
+                if entry.is_dir() and storage._SESSION_ID_RE.fullmatch(entry.name)
+            )
+        except OSError:
+            active_sessions = -1
+    data_dir_bytes = 0
+    data_dir_pct = 0.0
+    try:
+        usage = shutil.disk_usage(str(config.DATA_DIR))
+        data_dir_bytes = usage.used
+        data_dir_pct = round(100.0 * usage.used / usage.total, 2)
+    except (OSError, FileNotFoundError):
+        pass
+    return {
+        "status": "ok",
+        "uptime_seconds": round(uptime, 2),
+        "active_sessions": active_sessions,
+        "data_dir_bytes": data_dir_bytes,
+        "data_dir_pct": data_dir_pct,
+    }
 
 
 # Mount the static frontend at / when present (created in Plan 01-02). Guard the mount

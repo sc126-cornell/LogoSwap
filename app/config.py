@@ -82,3 +82,12 @@ MAX_REGIONS: int = _env_int("MAX_REGIONS", 200)
 MAX_UPLOAD_MB: int = MAX_UPLOAD_BYTES // (1024 * 1024)
 
 API_TITLE: str = os.environ.get("API_TITLE", "PDF 商標替換工具 API")
+
+# Phase 5: deployment / embedding (Plan 05-01).
+# Worker count is exposed so /preview is not starved while /process holds one worker
+# (D-D2). Default 2 is generous for desktop and reasonable for the Ubuntu portal;
+# Zeabur free tier can drop to 1 via env. APP_BASE_PATH is the optional FastAPI
+# root_path (D-A2) — empty string keeps the default root mount, non-empty (e.g.
+# "/pdf-logo") matches a strip-prefix reverse proxy in front of uvicorn.
+UVICORN_WORKERS: int = _env_int("UVICORN_WORKERS", 2)
+APP_BASE_PATH: str = os.environ.get("APP_BASE_PATH", "")
