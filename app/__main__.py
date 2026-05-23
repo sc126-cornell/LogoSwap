@@ -28,15 +28,20 @@ import webbrowser
 
 import uvicorn
 
+from .config import _env_int
+
 
 def _open_browser(url: str) -> None:
     threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
 
 def main() -> None:
+    # WR-01: reuse the config._env_int helper so an empty / non-integer PORT or
+    # UVICORN_WORKERS (common when deploy templates clear an env var) falls back to the
+    # default instead of crashing the desktop entry point with ValueError.
     host = os.environ.get("HOST", "127.0.0.1")
-    port = int(os.environ.get("PORT", "8000"))
-    workers = int(os.environ.get("UVICORN_WORKERS", "1"))
+    port = _env_int("PORT", 8000)
+    workers = _env_int("UVICORN_WORKERS", 1)
     url = f"http://{host}:{port}"
 
     if not os.environ.get("UVICORN_NO_BROWSER"):
