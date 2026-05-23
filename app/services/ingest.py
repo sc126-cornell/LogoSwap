@@ -161,7 +161,22 @@ def _ingest_image(data: bytes, sniff_kind: str) -> bytes:
             )
 
         # D-03 CMYK→RGB, RGBA→RGB (Pitfall D, Pitfall G).
-        if img.mode != "RGB":
+        # Pillow's plain ``convert("RGB")`` on an alpha-bearing image DROPS the alpha
+        # channel without compositing — so RGBA pixel (0,0,0,0) becomes RGB (0,0,0)
+        # BLACK, turning a fully transparent background into a fully black one. The
+        # user perceives transparent PNGs as "white background" in the browser, so
+        # we must composite onto white explicitly BEFORE dropping alpha. Covers
+        # RGBA, LA, and palette PNGs that carry transparency via ``info["transparency"]``.
+        has_alpha = (
+            img.mode in ("RGBA", "LA")
+            or (img.mode == "P" and "transparency" in img.info)
+        )
+        if has_alpha:
+            rgba = img.convert("RGBA")
+            background = Image.new("RGB", rgba.size, (255, 255, 255))
+            background.paste(rgba, mask=rgba.split()[3])
+            img = background
+        elif img.mode != "RGB":
             img = img.convert("RGB")
 
         # Force pixel decode — catch truncated-payload corruption that survives verify().

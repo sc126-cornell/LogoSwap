@@ -123,6 +123,37 @@ def _build_cmyk_tiff(width: int = 400, height: int = 300) -> bytes:
     return buf.getvalue()
 
 
+def _build_rgba_transparent_png(
+    width: int = 400,
+    height: int = 300,
+    fg_color: tuple = (0, 200, 100),
+) -> bytes:
+    """Return RGBA PNG with a fully-transparent background + an opaque rectangle of ``fg_color``.
+
+    Mirrors the real-world bug case the UAT surfaced (#hotfix-04-01): mind-map export
+    PNGs where most pixels are ``(0, 0, 0, 0)`` (transparent black) and only the
+    content nodes are opaque. Pillow ``convert("RGB")`` without an explicit white
+    composite drops alpha and turns the transparent background BLACK, producing a
+    black-background result PDF — Pitfall G.
+    """
+    from io import BytesIO
+
+    from PIL import Image, ImageDraw
+
+    img = Image.new("RGBA", (width, height), (0, 0, 0, 0))  # transparent black
+    draw = ImageDraw.Draw(img)
+    # Opaque rectangle near the centre — proves opaque content survives the composite.
+    pad_w = width // 4
+    pad_h = height // 4
+    draw.rectangle(
+        (pad_w, pad_h, width - pad_w, height - pad_h),
+        fill=(*fg_color, 255),
+    )
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
 @pytest.fixture
 def png_bytes() -> bytes:
     """A small single-frame RGB PNG."""

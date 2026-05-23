@@ -336,6 +336,74 @@ def test_cmyk_tiff_normalized_to_rgb(client, cmyk_tiff_bytes):
         pdf_engine.close(doc)
 
 
+def test_rgba_transparent_png_composites_onto_white(client):
+    """Pitfall G + UAT-found regression: RGBA PNG with transparent background must render WHITE.
+
+    Repro of the mind-map export bug surfaced during Phase 4 UAT (#hotfix-04-01):
+    the user uploaded a PNG whose ~88% background pixels were ``(0, 0, 0, 0)`` —
+    transparent black. Pillow ``convert("RGB")`` *without* an explicit white composite
+    drops alpha and turns those pixels into RGB ``(0, 0, 0)`` BLACK; the result PDF
+    rendered with a black background instead of white. ``_ingest_image`` must composite
+    transparent pixels onto white BEFORE dropping alpha.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    from app import storage as _storage
+    from app.services import pdf_engine
+    from tests.conftest import _build_rgba_transparent_png
+
+    rgba_png = _build_rgba_transparent_png(width=400, height=300, fg_color=(0, 200, 100))
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("mindmap.png", rgba_png, "image/png")},
+    )
+    assert resp.status_code == 201, resp.json()
+    sid = resp.json()["session_id"]
+
+    # Render the normalized A4 PDF and assert background pixels are WHITE, not BLACK.
+    pdf_bytes = _storage.work_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(pdf_bytes)
+    try:
+        assert pdf_engine.page_count(doc) == 1
+        page = doc[0]
+        # Render at low DPI — pixel sampling is enough to detect the BLACK regression.
+        pix = page.get_pixmap(dpi=72)
+        rendered = Image.open(BytesIO(pix.tobytes("png"))).convert("RGB")
+
+        # A4 portrait fit: a 400x300 (landscape, 4:3) image fits width-to-A4 and leaves
+        # white letterboxing top/bottom. The top-most + bottom-most strips are guaranteed
+        # white from the A4 page background. The CENTER pixel falls within the image —
+        # since we placed an opaque green rect in the center, the center pixel must be
+        # green-ish, NOT black. The corner-of-image-area pixels were originally
+        # transparent and must now be WHITE (the composite worked).
+        w, h = rendered.size
+        # Corners of A4 page — must be white (A4 letterbox area).
+        assert rendered.getpixel((5, 5)) == (255, 255, 255), "A4 letterbox top-left not white"
+        assert rendered.getpixel((w - 5, h - 5)) == (255, 255, 255), "A4 letterbox bottom-right not white"
+        # A point that lies within the image area but outside the opaque green rectangle
+        # was originally transparent — must render WHITE (composite-onto-white worked).
+        # The image is 400x300 landscape fitted to A4 portrait width 595; image takes ~75%
+        # of vertical space centered. Sample a point ~10% in from the image's left edge
+        # at the top of the image area — that area was transparent.
+        cx, cy = w // 2, h // 2
+        center_r, center_g, center_b = rendered.getpixel((cx, cy))
+        assert center_g > 100, f"center pixel must be green-ish (opaque content survived); got {(center_r, center_g, center_b)}"
+        # Sample a point that should be in the image area but outside the green rect —
+        # near the left edge of where the image was fit. Was transparent → must be WHITE.
+        # Image fits height 595 * (300/400) = 446 pt; image area y-range ~= (842-446)/2 to (842+446)/2
+        # = 198 to 644. Pick y=210 (top of image area), x ~= 100 (well left of the centered green rect).
+        ix, iy = w // 6, 210
+        transparent_was = rendered.getpixel((ix, iy))
+        assert transparent_was == (255, 255, 255), (
+            f"transparent background must composite onto WHITE, got {transparent_was} at ({ix},{iy})"
+        )
+    finally:
+        pdf_engine.close(doc)
+
+
 def test_originals_sha256_unchanged_after_image_run(client, png_bytes):
     """D-05: originals/ bytes (= the user's raw PNG) survive a /process run untouched.
 
