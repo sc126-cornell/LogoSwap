@@ -440,3 +440,63 @@ def test_auto_logo_empty_library_degrades_to_pure_removal(valid_pdf_bytes, tmp_p
         assert pdf_engine.get_page(doc, 0).get_images() == []
     finally:
         pdf_engine.close(doc)
+
+
+def test_pick_logo_id_for_rect_skips_non_png_entries(tmp_path, monkeypatch):
+    """WR-02: the picker's candidate set MUST be the same allowlist list_logos uses.
+
+    A JPEG manifest entry that list_logos filters out (PNG-only / D-03) must NOT be considered
+    by pick_logo_id_for_rect either, even if its native aspect is the closest match. Without the
+    fix the JPEG won the aspect search; resolve(chosen) then raised logo_invalid and the region
+    silently degraded to pure removal even though a valid wide PNG was in the library. With the
+    fix the JPEG is skipped from the picker and the genuine PNG wins.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    logos_dir = tmp_path / "logos"
+    logos_dir.mkdir()
+    # A VALID PNG with a block (2:1) aspect.
+    (logos_dir / "block.png").write_bytes(_make_png(200, 100))
+    # A wider JPEG (10:1) — Pillow-decodable so a naive aspect read would prefer it for a wide
+    # region — but list_logos rejects it as logo_invalid (D-03 PNG-only).
+    buf = BytesIO()
+    Image.new("RGB", (1000, 100), (0, 128, 0)).save(buf, format="JPEG")
+    (logos_dir / "wide.jpg").write_bytes(buf.getvalue())
+    manifest = [
+        {"id": "block", "file": "block.png", "name": "方", "tags": []},
+        {"id": "wide_jpeg", "file": "wide.jpg", "name": "寬 JPEG", "tags": []},
+    ]
+    (logos_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(config, "LOGOS_DIR", logos_dir)
+
+    # Even for a very wide region (8:1, closer to the JPEG's 10:1 than the PNG's 2:1), the picker
+    # MUST return the valid PNG — the JPEG is filtered out by the same gate list_logos uses.
+    assert logo.pick_logo_id_for_rect(800, 100) == "block"
+    # Sanity: list_logos confirms the JPEG is excluded from the catalog allowlist.
+    assert [e["id"] for e in logo.list_logos()] == ["block"]
+
+
+def test_pick_logo_id_for_rect_skips_corrupt_entries(tmp_path, monkeypatch, logo_png_bytes):
+    """WR-02 (second face): a manifest entry whose file is corrupt is skipped from the picker.
+
+    Mirrors the JPEG case: a corrupt PNG that list_logos filters out (logo_unreadable) must NOT
+    be considered for the aspect search either. Otherwise the corrupt entry would silently win
+    auto-pick and the region would degrade to pure removal even when a valid logo was available.
+    """
+    logos_dir = tmp_path / "logos"
+    logos_dir.mkdir()
+    (logos_dir / "good.png").write_bytes(logo_png_bytes)
+    (logos_dir / "broken.png").write_bytes(b"not a real png")
+    manifest = [
+        {"id": "good", "file": "good.png", "name": "好", "tags": []},
+        {"id": "broken", "file": "broken.png", "name": "壞", "tags": []},
+    ]
+    (logos_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    monkeypatch.setattr(config, "LOGOS_DIR", logos_dir)
+
+    # The corrupt entry is invisible to the picker; the only visible candidate is the valid PNG.
+    chosen = logo.pick_logo_id_for_rect(200, 100)
+    assert chosen == "good"
+    assert chosen != "broken"

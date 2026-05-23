@@ -184,11 +184,20 @@ def _logo_aspect(entry: dict) -> float | None:
 
     Reuses the same containment-checked path resolution as :func:`resolve` (T-03-01); a missing
     or undecodable asset yields ``None`` (skipped from the candidate set), never an exception.
+
+    WR-02: gate the candidate on the SAME validation ``list_logos`` uses (``_validate_png`` —
+    PNG-only, size cap, decodability). Without this gate a JPEG / corrupt / oversized manifest
+    entry that ``list_logos`` filters OUT was still considered by ``pick_logo_id_for_rect``: if it
+    won the aspect search the subsequent ``resolve(chosen)`` raised ``LogoError`` and the region
+    silently degraded to pure removal. Aligning the picker's allowlist with the catalog's prevents
+    that invisible-winner case (the picker is the catalog allowlist, by D-04). A logo_invalid /
+    logo_unreadable / OSError on the asset yields ``None`` so the region degrades gracefully.
     """
     try:
         path = _resolve_path(entry)
         if not path.is_file():
             return None
+        _validate_png(path)
         key = (str(path), path.stat().st_mtime)
         cached = _aspect_cache.get(key)
         if cached is not None:
