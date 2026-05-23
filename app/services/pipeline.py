@@ -32,7 +32,7 @@ import unicodedata
 from pathlib import Path
 
 from .. import storage
-from . import coords, logo, pdf_engine, redact, render
+from . import coords, integrity, logo, pdf_engine, redact, render
 
 # WR-05: the export stem is the (possibly CJK) display name and is reflected into the
 # Content-Disposition header. Bound it so a 10 KB name cannot reach the header, and below we
@@ -118,6 +118,20 @@ def process_job(session_id: str, job_spec) -> dict:
             "work_copy_misconfigured",
             "內部錯誤:工作副本路徑與初始 PDF 副本相同,已中止以保護工作流程。",
         )
+
+    # Phase 5 (Plan 05-02 D-C2): verify the SHA-256 baseline of originals/source.pdf
+    # against the value recorded in meta.json at ingest. Failure → IntegrityError with
+    # a typed code (original_tampered | session_corrupted), which the integrity layer
+    # has ALREADY converted into a .corrupted sentinel before re-raising — so the next
+    # /process on this sid short-circuits at the route layer (410). We re-raise as a
+    # PipelineError so the existing main.py exception handler can map it to a status:
+    # _PROCESS_STATUS["original_tampered"] = 503 / ["session_corrupted"] = 410
+    # (added in Task 3). Verify runs BEFORE the reset-from-pristine copy so a tampered
+    # session never even gets its work copy written.
+    try:
+        integrity.verify_original_hash(session_id)
+    except integrity.IntegrityError as err:
+        raise PipelineError(err.code, err.message) from err
 
     # WR-01: reset the work copy from the PRISTINE PDF snapshot before redacting, so every
     # apply (and every "重新套用") is computed from the unmutated document. Without this, a
