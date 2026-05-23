@@ -8,12 +8,16 @@ stable ``detail.code`` and surface the limit-bearing message.
 
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from .. import config, storage
 from ..models import SessionInfo
 from ..services import ingest, janitor, pdf_engine
 from ..services.ingest import IngestError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["sessions"])
 
@@ -79,10 +83,13 @@ async def create_session(file: UploadFile = File(...)) -> SessionInfo:
         # so a janitor failure (concurrent rmtree race, transient I/O error) does not
         # taint the response — the upload either succeeded (201) or already raised the
         # appropriate IngestError. The sweep is best-effort cleanup, not a precondition.
+        # CR-01: log at WARNING so an unexpected sweep failure is observable.
         try:
             janitor.sweep_expired_sessions()
         except Exception:
-            pass
+            logger.warning(
+                "POST /sessions: janitor sweep failed", exc_info=True
+            )
 
 
 @router.get("/sessions/{session_id}", response_model=SessionInfo)

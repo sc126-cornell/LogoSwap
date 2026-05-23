@@ -14,6 +14,7 @@ the directory exists, so the app still imports and boots without it.
 
 from __future__ import annotations
 
+import logging
 import shutil
 import time
 from contextlib import asynccontextmanager
@@ -35,6 +36,8 @@ from .services.redact import RedactError
 from .services.render import RenderError
 from .storage import InvalidSessionId
 
+logger = logging.getLogger(__name__)
+
 # Per-worker process start time. Module-top capture is spawn-safe: every uvicorn
 # worker (multiprocessing.spawn on Windows) re-imports app.main and captures its
 # own start time, so /health reports per-worker uptime — the desired semantic
@@ -48,11 +51,13 @@ async def lifespan(app: FastAPI):
     # a prior process (crash, manual restart, deploy) gets reclaimed before the first
     # request lands. Wrapped in try/except so a startup janitor failure (broken
     # filesystem, missing DATA_DIR on first boot) cannot prevent the app from coming up
-    # — uvicorn would otherwise 503 the entire process.
+    # — uvicorn would otherwise 503 the entire process. We log at WARNING (CR-01) so a
+    # misconfigured DATA_DIR (wrong path / permission denied / unmounted volume) leaves
+    # an observable diagnostic instead of silent failure on the first user upload.
     try:
         janitor.sweep_expired_sessions()
     except Exception:
-        pass
+        logger.warning("lifespan: startup janitor sweep failed", exc_info=True)
     yield
 
 

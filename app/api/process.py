@@ -24,6 +24,7 @@ process model / DoS T-02-04). The typed pipeline/redact errors are mapped to str
 from __future__ import annotations
 
 import asyncio
+import logging
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -35,6 +36,8 @@ from ..models import JobSpec
 from ..services import janitor, pipeline, render
 from ..services.redact import RedactError
 from ..services.render import RenderError
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["process"])
 
@@ -109,11 +112,16 @@ async def process_session(session_id: str, job: JobSpec) -> dict:
     finally:
         # D-B1 trigger (c): /process end calls janitor sweep. try/except guarantees a
         # janitor failure cannot taint the response (T-05-05 mitigation; the sweep itself
-        # already swallows OSError, but defense in depth).
+        # already swallows OSError, but defense in depth). CR-01: log at WARNING so a
+        # janitor regression is observable in ops logs.
         try:
             janitor.sweep_expired_sessions()
         except Exception:
-            pass
+            logger.warning(
+                "POST /process: janitor sweep failed (session_id=%s)",
+                session_id,
+                exc_info=True,
+            )
 
 
 @router.get("/sessions/{session_id}/result/pages/{page_no}/image")
