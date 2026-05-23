@@ -40,41 +40,12 @@ body {
   border: 0;
 }
 
-/* ---------- App shell (grid: toolbar row + main[stage 1fr | side-panel 0]) ---------- */
+/* ---------- App shell (grid: toolbar row + main[stage 1fr | side-panel 0] + footer) ---------- */
 
-/* WR-07: 4 rows — toolbar | main | session-hint | footer. The session-hint row is
-   ``auto`` (collapses to 0 when the hint is [hidden] via .app-session-hint[hidden]),
-   so the layout matches the pre-fix 3-row appearance until a TTL hint actually shows.
-   The hint lives as a direct child of .app-shell (NOT inside <main>); injecting it
-   inside <main> broke <main>'s 2-column grid by inserting an unexpected third grid
-   cell that pushed the side-panel layout. */
 .app-shell {
   display: grid;
-  grid-template-rows: auto 1fr auto auto;
+  grid-template-rows: auto 1fr auto;
   height: 100%;
-}
-
-/* ---------- Session TTL hint (Phase 5 Plan 05-02 D-B2) ---------- *
- * Polite live-region inserted under the page-stage after a successful upload to surface
- * the 1-hour session TTL ("此次處理 1 小時內完成下載 — 逾時需重新上傳。"). Replaced with the
- * expired-session message on a GET /sessions/{id} 404 (友善訊息). Token-only — no raw hex
- * — so the dual-theme reskin (Phase 1) applies automatically. Inherits the same small,
- * muted typography as the AGPL footer because both are passive informational text, not
- * actions.
- */
-
-.app-session-hint {
-  margin: 0;
-  padding: var(--space-xs) var(--space-lg);
-  background: var(--color-panel);
-  border-top: 1px solid var(--color-border);
-  font-size: var(--font-size-small);
-  color: var(--color-text-muted);
-  text-align: center;
-}
-
-.app-session-hint[hidden] {
-  display: none;
 }
 
 /* ---------- AGPL §13 footer (Phase 5) ---------- *

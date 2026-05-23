@@ -58,11 +58,6 @@ const COPY = {
     "此工作階段已過期或無法使用,請重新上傳檔案。",
   processingTimeout:
     "處理逾時,請改用較小檔案或減少框選區域數量後再試一次。",
-  // Phase 5 Plan 05-02 D-B2 — session TTL UI hint + 404 expired friendly message.
-  // Static literals (no {limit} injection) inserted into a polite live-region node
-  // created via createElement + textContent (XSS-safe — no innerHTML).
-  sessionTtlHint:
-    "此次處理 1 小時內完成下載 — 逾時需重新上傳。",
   sessionExpired:
     "此次處理已過期,請重新上傳此檔。",
 };
@@ -88,56 +83,6 @@ const sidePanelEl = document.getElementById("side-panel");
 
 // Track whether a document is currently loaded (gates the soft-confirm on replace).
 let hasLoadedDoc = false;
-
-// Phase 5 Plan 05-02 D-B2 — session TTL UI hint node. Created lazily (once) and reused
-// across uploads. WR-07: inserted as a sibling of <main> inside .app-shell (between
-// <main> and <footer>) — NOT inside <main>. The <main> element is itself a 2-column
-// grid (stage 1fr + side-panel); injecting the hint there created a third grid cell
-// that misaligned the side-panel once .main--paneled engaged. The .app-shell row grid
-// is widened to accommodate the hint as its own row (auto 1fr auto auto).
-// aria-live="polite" announces text changes to screen readers without interrupting
-// other live regions. Strictly textContent — never innerHTML (T-01-14).
-let sessionHintEl = null;
-
-function ensureSessionHintEl() {
-  if (sessionHintEl) return sessionHintEl;
-  const el = document.createElement("p");
-  el.className = "app-session-hint";
-  el.setAttribute("aria-live", "polite");
-  el.setAttribute("role", "status");
-  el.hidden = true;
-  // Insert as a sibling of <main> inside .app-shell, placed before the footer so the
-  // shell row order stays: toolbar | main | hint | footer. Falls back to appending to
-  // .app-shell when no footer is present (defensive); ultimately to body if the shell
-  // is somehow absent (should not happen — index.html always has it).
-  const shell = document.querySelector(".app-shell");
-  const footerEl = shell ? shell.querySelector(".app-footer") : null;
-  if (shell && footerEl) {
-    shell.insertBefore(el, footerEl);
-  } else if (shell) {
-    shell.appendChild(el);
-  } else {
-    document.body.appendChild(el);
-  }
-  sessionHintEl = el;
-  return el;
-}
-
-function showSessionTtlHint() {
-  const el = ensureSessionHintEl();
-  el.textContent = COPY.sessionTtlHint;
-  el.hidden = false;
-}
-
-function showSessionExpired() {
-  const el = ensureSessionHintEl();
-  el.textContent = COPY.sessionExpired;
-  el.hidden = false;
-}
-
-function hideSessionHint() {
-  if (sessionHintEl) sessionHintEl.hidden = true;
-}
 
 // ---- State machine ----------------------------------------------------------------
 function showState(name) {
@@ -215,6 +160,8 @@ function messageForError(err) {
       return COPY.sessionCorrupted;
     case "processing_timeout":
       return COPY.processingTimeout;
+    case "session_not_found":
+      return COPY.sessionExpired;
     default:
       // Network/transport failures (fetch rejected) and any unmapped server code.
       return COPY.networkFailure;
@@ -224,21 +171,8 @@ function messageForError(err) {
 function showError(err) {
   // textContent only — never inject server/error text as HTML (T-01-14 / T-01-15).
   errorBody.textContent = messageForError(err);
-  // Phase 5 D-B2 友善訊息: a 404 on GET /sessions/{id} means the TTL janitor cleaned this
-  // session — swap the loaded-time TTL hint for the explicit "expired" message so the
-  // user understands re-upload is required. We detect via the ApiError shape that
-  // api.js attaches: { status: 404, code: "session_not_found" }. Other 404s on different
-  // endpoints (logos, pages) leave the hint alone.
-  if (err && err.status === 404 && err.code === "session_not_found") {
-    showSessionExpired();
-  }
   showState("error");
 }
-
-// Public hook so other modules (regions.js / logos.js) can surface the expired-session
-// message without duplicating the COPY string. Wired now (D-B2); modules subscribe in
-// a future plan if needed — current acceptance is source-grep + DOM structure.
-window.__logoSwapShowSessionExpired = showSessionExpired;
 
 // ---- Upload flow -------------------------------------------------------------------
 async function handleFile(file) {
@@ -256,11 +190,6 @@ async function handleFile(file) {
     setDocControlsEnabled(true);
     setSidePanelExpanded(true);
     showState("loaded");
-
-    // Phase 5 D-B2: show the 1-hour TTL hint immediately after a successful upload so
-    // the user knows to finish the round-trip within the window. Placed AFTER showState
-    // ("loaded") so the hint never appears alongside an upload error.
-    showSessionTtlHint();
 
     // Activate the Phase 2 region UI for this session (per-page model + overlay + action group).
     // Init regions BEFORE the first render so it's subscribed when viewer fires page:changed.
@@ -329,7 +258,6 @@ errorRetry.addEventListener("click", () => {
   setSidePanelExpanded(false);
   resetRegions();
   resetLogos();
-  hideSessionHint();
   showState("empty");
 });
 
