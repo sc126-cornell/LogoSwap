@@ -14,13 +14,20 @@ basename.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import secrets
+import shutil
 import stat
+import tempfile
+import time
 from pathlib import Path
+from typing import Iterator
 
 from . import config
+
+logger = logging.getLogger(__name__)
 
 # Subdirectory kinds under DATA_DIR.
 #
@@ -164,17 +171,47 @@ def meta_path(session_id: str) -> Path:
     return subdir("work", session_id) / _META_NAME
 
 
-def write_session_meta(session_id: str, *, page_count: int, filename: str) -> Path:
-    """Persist ingest-time metadata (page count + display filename) as ``work/{sid}/meta.json``.
+def write_session_meta(
+    session_id: str,
+    *,
+    page_count: int,
+    filename: str,
+    original_sha256: str,
+) -> Path:
+    """Persist ingest-time metadata as ``work/{sid}/meta.json`` atomically.
 
-    Written once at ingest so :func:`read_session_meta` can serve GET /sessions/{id}
-    without re-opening the PDF (WR-03). The work dir already exists from ``new_session``.
+    Phase 5 (D-C1): ``original_sha256`` is REQUIRED — the SHA-256 baseline for the
+    user's uploaded bytes, written in the same transaction as page_count/filename so
+    a mid-write crash cannot leave a meta without a baseline. The atomic primitive
+    is ``tempfile.mkstemp(dir=dest.parent)`` + ``os.replace``: the tmp file is forced
+    onto the same filesystem as the destination (A7 — os.replace is only atomic
+    intra-FS), and a partial write never becomes visible at the dest path.
+
+    On failure the tmp file is unlinked; on success ``os.replace`` does the rename.
+    The work dir already exists from :func:`new_session`.
     """
     dest = meta_path(session_id)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"page_count": int(page_count), "filename": str(filename)}
-    with open(dest, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh)
+    payload = {
+        "page_count": int(page_count),
+        "filename": str(filename),
+        "original_sha256": str(original_sha256),
+    }
+    fd, tmp_path = tempfile.mkstemp(
+        prefix=".meta.", suffix=".json.tmp", dir=str(dest.parent)
+    )
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+        os.replace(tmp_path, dest)
+    except BaseException:
+        # Clean up the tmp so a failure leaves no .meta.*.tmp orphan behind. The dest
+        # is either still its prior content (atomic) or absent (first write).
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
     return dest
 
 
@@ -248,4 +285,150 @@ def session_exists(session_id: str) -> bool:
     try:
         return work_path(session_id).is_file()
     except InvalidSessionId:
+        return False
+
+
+# ---- Phase 5 (Plan 05-02): janitor + integrity helpers ----------------------------------
+#
+# All helpers route through :func:`subdir` for the path-traversal allowlist (T-05-07).
+# The `_on_rm_error` handler is shared with :mod:`app.services.janitor` (it imports this
+# symbol) so the Pitfall 3 cross-platform fix lives in exactly one place.
+
+# Phase 5 sentinel filename — placed under work/{sid}/ when a session is detected as
+# corrupted (integrity verify failure). Hyphen-prefix avoids colliding with the JSON
+# sidecar's `.meta.*.tmp` namespace.
+_CORRUPTED_NAME = ".corrupted"
+
+
+def _on_rm_error(func, path, exc_info) -> None:
+    """``shutil.rmtree`` error handler — re-chmod 0o444 → retry (Pitfall 3, cross-platform).
+
+    On Windows, ``os.unlink`` on a file with mode 0o444 raises ``PermissionError`` because
+    the file lacks the "write" attribute. POSIX ``unlink`` is governed by the DIRECTORY
+    mode and usually succeeds regardless of the file mode, but defending both keeps a
+    single implementation working in CI on either platform. We only treat unlink/rmdir/
+    remove failures as recoverable; anything else is logged + swallowed (the janitor /
+    delete_session contract is "best-effort cleanup, never raise").
+    """
+    if exc_info and isinstance(exc_info[1], PermissionError) and func in (
+        os.unlink,
+        os.remove,
+        os.rmdir,
+    ):
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
+            func(path)
+            return
+        except OSError as err:
+            logger.warning("rmtree retry failed for %s: %s", path, err)
+            return
+    logger.warning(
+        "rmtree error on %s (func=%s): %s",
+        path,
+        getattr(func, "__name__", func),
+        exc_info[1] if exc_info else None,
+    )
+
+
+def list_session_ids() -> Iterator[str]:
+    """Yield every well-formed session id present under any of the four kind dirs.
+
+    Used by :mod:`app.services.janitor` (it needs the union across kinds because a job
+    can leave artifacts in any subset). Names that fail :data:`_SESSION_ID_RE` are
+    skipped — defense in depth against an admin/test creating a stray dir.
+    """
+    data_dir = _data_dir()
+    seen: set[str] = set()
+    for kind in _KINDS:
+        root = data_dir / kind
+        if not root.is_dir():
+            continue
+        try:
+            for entry in root.iterdir():
+                name = entry.name
+                if name in seen:
+                    continue
+                if entry.is_dir() and _SESSION_ID_RE.fullmatch(name):
+                    seen.add(name)
+                    yield name
+        except OSError as err:
+            logger.warning("list_session_ids: failed under %s: %s", root, err)
+
+
+def session_age_seconds(session_id: str) -> float | None:
+    """Return seconds since the session's MOST-RECENT activity (max mtime across 4 kinds).
+
+    Returns ``None`` if no dir for this session exists in any kind. ``max`` (not min) is
+    deliberate: ``outputs/`` may be freshly produced from a /process run while
+    ``originals/`` was written an hour ago — protecting the most-recent artifact prevents
+    the janitor from deleting a session whose result was just downloaded.
+    """
+    mtimes: list[float] = []
+    for kind in _KINDS:
+        try:
+            path = subdir(kind, session_id)
+        except InvalidSessionId:
+            return None
+        try:
+            mtimes.append(path.stat().st_mtime)
+        except FileNotFoundError:
+            continue
+        except OSError as err:
+            logger.warning("session_age_seconds: stat failed on %s: %s", path, err)
+            continue
+    if not mtimes:
+        return None
+    return time.time() - max(mtimes)
+
+
+def delete_session(session_id: str) -> None:
+    """Remove the session's directory from all four kinds (best-effort, never raises).
+
+    Each kind is rmtree'd independently so a failure in one kind does NOT skip the others
+    (D-B3 "4-kind 一起刪"). :func:`_on_rm_error` re-chmods read-only originals → retry so
+    the chmod 0o444 in :func:`write_original` does not block cleanup (Pitfall 3).
+    """
+    try:
+        validate_session_id(session_id)
+    except InvalidSessionId:
+        return
+    for kind in _KINDS:
+        try:
+            path = subdir(kind, session_id)
+        except InvalidSessionId:
+            continue
+        if not path.exists():
+            continue
+        try:
+            shutil.rmtree(path, onerror=_on_rm_error)
+        except OSError as err:
+            logger.warning("delete_session: rmtree failed on %s: %s", path, err)
+
+
+def mark_session_corrupted(session_id: str) -> Path:
+    """Write the ``.corrupted`` sentinel under ``work/{sid}/`` (D-C3).
+
+    The sentinel is a zero-byte marker, not a JSON sidecar — its EXISTENCE is the signal.
+    Subsequent /process calls short-circuit to 410 ``session_corrupted``; the 1-hour TTL
+    sweep eventually reclaims the disk.
+    """
+    work_dir = subdir("work", session_id)
+    work_dir.mkdir(parents=True, exist_ok=True)
+    sentinel = work_dir / _CORRUPTED_NAME
+    sentinel.touch(exist_ok=True)
+    return sentinel
+
+
+def is_session_corrupted(session_id: str) -> bool:
+    """True iff the ``.corrupted`` sentinel exists under ``work/{sid}/``.
+
+    Crafted / non-token ids are swallowed and reported as ``False`` (never a traceback
+    that would let an attacker probe the storage layer via error oracles). Mirrors the
+    :func:`session_exists` contract.
+    """
+    try:
+        return (subdir("work", session_id) / _CORRUPTED_NAME).is_file()
+    except InvalidSessionId:
+        return False
+    except OSError:
         return False

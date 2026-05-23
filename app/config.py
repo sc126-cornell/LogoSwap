@@ -91,3 +91,18 @@ API_TITLE: str = os.environ.get("API_TITLE", "PDF 商標替換工具 API")
 # "/pdf-logo") matches a strip-prefix reverse proxy in front of uvicorn.
 UVICORN_WORKERS: int = _env_int("UVICORN_WORKERS", 2)
 APP_BASE_PATH: str = os.environ.get("APP_BASE_PATH", "")
+
+# Phase 5: hardening (Plan 05-02).
+# SESSION_TTL_SECONDS — janitor TTL hard upper bound (D-B2). 1h gives users headroom
+# while making "disk fills" structurally impossible for a single-user LAN tool. TTL ≫
+# PROCESS_TIMEOUT_SECONDS (60x) is the race-window guarantee that backs D-B4: an
+# in-flight /process job cannot age out mid-run.
+# PROCESS_TIMEOUT_SECONDS — /process hard ceiling enforced by asyncio.wait_for at the
+# route handler (D-D3). On timeout the HTTP returns 504; the underlying thread cannot
+# be killed (Pitfall 1) — workers=2 (D-D2) ensures previews stay responsive.
+# CORS_ALLOW_ORIGINS — comma-separated allowlist; empty string disables the CORSMiddleware
+# (the default — same-origin / iframe / strip-prefix all work without it). Sub-domain
+# embedding (Phase 5 future) sets this to enable cross-origin requests.
+SESSION_TTL_SECONDS: int = _env_int("SESSION_TTL_SECONDS", 3600)
+PROCESS_TIMEOUT_SECONDS: int = _env_int("PROCESS_TIMEOUT_SECONDS", 60)
+CORS_ALLOW_ORIGINS: str = os.environ.get("CORS_ALLOW_ORIGINS", "")

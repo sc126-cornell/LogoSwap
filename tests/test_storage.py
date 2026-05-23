@@ -192,12 +192,13 @@ def test_write_session_meta_is_atomic_on_simulated_crash(monkeypatch):
 def test_list_session_ids_unions_across_kinds():
     sid_a = storage.new_session()  # creates all 4 kinds
     sid_b = storage.new_session()
-    # Add a stray non-token dir under work — must NOT appear in the iterator
-    (config.DATA_DIR / "work" / "not-a-valid-token").mkdir(parents=True, exist_ok=True)
+    # Add a stray non-token dir under work — must NOT appear in the iterator.
+    # "short" is below the 16-char minimum so _SESSION_ID_RE rejects it.
+    (config.DATA_DIR / "work" / "short").mkdir(parents=True, exist_ok=True)
     ids = set(storage.list_session_ids())
     assert sid_a in ids
     assert sid_b in ids
-    assert "not-a-valid-token" not in ids
+    assert "short" not in ids
 
 
 def test_session_age_seconds_uses_max_mtime():

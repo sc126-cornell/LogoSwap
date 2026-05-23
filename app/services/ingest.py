@@ -31,6 +31,7 @@ from PIL import Image, UnidentifiedImageError
 from .. import config, storage
 from ..models import SessionInfo
 from . import pdf_engine
+from .integrity import compute_original_hash
 
 # PDF magic header. Real PDFs start with "%PDF-" at the very start, though the spec
 # tolerates a few junk/BOM bytes before it. We therefore require the header to appear
@@ -258,7 +259,15 @@ def _ingest_pdf(filename: str, data: bytes) -> SessionInfo:
     storage.write_original(session_id, safe_name, data)
     storage.write_work_copy(session_id, data)
     storage.write_pristine_copy(session_id, data)
-    storage.write_session_meta(session_id, page_count=n_pages, filename=safe_name)
+    # Phase 5 D-C1: hash is taken over the user's uploaded bytes (== originals/source.pdf
+    # content) and written atomically with the rest of meta.json. ``data`` is the in-
+    # memory upload payload — no disk read needed, no race with chmod 0o444.
+    storage.write_session_meta(
+        session_id,
+        page_count=n_pages,
+        filename=safe_name,
+        original_sha256=compute_original_hash(data),
+    )
 
     return SessionInfo(
         session_id=session_id,
@@ -301,7 +310,16 @@ def _ingest_image_to_pdf(filename: str, data: bytes, kind: str) -> SessionInfo:
     # pristine is the pipeline reset source.
     storage.write_work_copy(session_id, pdf_bytes)
     storage.write_pristine_copy(session_id, pdf_bytes)
-    storage.write_session_meta(session_id, page_count=1, filename=safe_name)
+    # Phase 5 D-C1 + D-C4: hash is taken over the user's RAW image bytes (= originals/
+    # contents), NOT the normalized A4 PDF. This keeps D-05 (originals invariant)
+    # aligned with the verification path — verify_original_hash also reads originals/,
+    # so both sides agree on "the bytes the user uploaded".
+    storage.write_session_meta(
+        session_id,
+        page_count=1,
+        filename=safe_name,
+        original_sha256=compute_original_hash(data),
+    )
 
     return SessionInfo(
         session_id=session_id,
