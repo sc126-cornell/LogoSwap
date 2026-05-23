@@ -48,6 +48,7 @@ const COPY = {
   regionLabel: (n) => `區域 ${n}`,
   // action group / status
   applyDisabledHint: "先框選至少一個區域,再套用移除",
+  preApplyHint: "請框選要修改的區域,可跨頁連續框選。",
   applying: "正在套用移除…",
   resultReady: "已套用變更,可以恢復原圖或是下載變更後檔案。",
   staleNotice: "框選已變更,請重新套用以更新結果",
@@ -419,7 +420,7 @@ function restoreOriginal() {
   if (wasResultView) {
     setViewMode("original");
   }
-  setActionStatus(""); // explicit restart — clear the action status entirely
+  setActionStatus(COPY.preApplyHint); // explicit restart → back to the pre-apply guidance
   renderList();
   renderOverlay();
   updateActionGroup();
@@ -631,7 +632,7 @@ async function applyRemoval() {
   } catch (err) {
     applying = false;
     resultFresh = false;
-    setActionStatus("");
+    setActionStatus(COPY.preApplyHint); // back to pre-apply guidance; error itself shown via notice
     showNotice(mapErrorCopy(err), true, applyRemoval);
     updateActionGroup();
   }
@@ -776,7 +777,7 @@ export function initRegions({ session_id }) {
   overlay.hidden = false;
 
   hideNotice();
-  setActionStatus("");
+  setActionStatus(COPY.preApplyHint); // initial guidance shown next to the 套用變更 button
   ensureDims(0);
   renderList();
   renderOverlay();
