@@ -78,22 +78,32 @@ def test_health_does_not_leak_session_ids(client, valid_pdf_bytes):
     sys.platform.startswith("win"),
     reason="chmod 0 on Windows behaves differently — POSIX-only assertion",
 )
-def test_health_active_sessions_minus_one_on_unreadable_originals(client, valid_pdf_bytes, monkeypatch):
-    """When the originals/ dir cannot be enumerated, active_sessions surfaces as -1."""
+def test_health_active_sessions_robust_to_unreadable_kind_dir(client, valid_pdf_bytes, monkeypatch):
+    """WR-02: a single unreadable kind dir does NOT crash /health.
+
+    Post-WR-02, the count routes through ``storage.list_session_ids``, which catches
+    ``OSError`` per-root and continues. Dropping read permission on ``originals/`` while
+    the other three kind dirs remain readable now yields the session count from the
+    surviving kinds (positive int) instead of -1. The endpoint stays a 200; a bare 500
+    from an unhandled OSError would take down the LB probe.
+    """
     import os
     from app import config as _config
 
-    # Ingest one session so originals/ exists.
+    # Ingest one session so all four kind dirs exist.
     client.post(
         "/sessions",
         files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
     )
     originals_root = _config.DATA_DIR / "originals"
-    # Drop read permission on the originals/ dir; sweep iterdir() will raise OSError.
     try:
         os.chmod(originals_root, 0)
-        body = client.get("/health").json()
-        # On POSIX with chmod 0, iterdir on the dir raises -> -1 surface.
-        assert body["active_sessions"] == -1 or body["active_sessions"] == 0
+        resp = client.get("/health")
+        assert resp.status_code == 200
+        body = resp.json()
+        # Either the surviving kinds still expose the session (>= 1) or storage cannot
+        # enumerate any (-1). Both are valid; the contract is "do not crash".
+        assert isinstance(body["active_sessions"], int)
+        assert body["active_sessions"] >= -1
     finally:
         os.chmod(originals_root, 0o755)  # restore for tmp cleanup

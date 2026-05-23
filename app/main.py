@@ -243,11 +243,13 @@ async def health() -> dict:
     * ``status`` — "ok" (the historical liveness signal).
     * ``uptime_seconds`` — wall-clock seconds since THIS worker imported the
       module. Per-worker, not per-app — that is intentional (Pitfall 7).
-    * ``active_sessions`` — count of well-formed session dirs under
-      ``originals/``. Sessions are only counted when their directory name
-      matches the server-token alphabet (``_SESSION_ID_RE``) so any orphan dir
-      a misbehaving admin/test left behind is excluded. Returns -1 if the
-      directory cannot be enumerated.
+    * ``active_sessions`` — count of well-formed session ids known to storage
+      via :func:`storage.list_session_ids` (the canonical "well-formed session"
+      surface; WR-02). The enumeration covers all four kind dirs (originals /
+      work / outputs / pristine), filters by the server-token alphabet, and
+      de-duplicates — so a session is counted even during the image-ingest
+      race window where ``originals/`` is empty but ``work/`` / ``pristine/``
+      already exist. Returns -1 if enumeration fails.
     * ``data_dir_bytes`` / ``data_dir_pct`` — filesystem-level disk usage of the
       mount that backs ``DATA_DIR`` (NOT per-session usage; Pitfall 8).
 
@@ -255,17 +257,15 @@ async def health() -> dict:
     (T-05-08 — /health is unauthenticated; treat its body as public).
     """
     uptime = max(0.0, time.time() - _START_TIME)
-    originals_root = Path(config.DATA_DIR) / "originals"
-    active_sessions = 0
-    if originals_root.is_dir():
-        try:
-            active_sessions = sum(
-                1
-                for entry in originals_root.iterdir()
-                if entry.is_dir() and storage._SESSION_ID_RE.fullmatch(entry.name)
-            )
-        except OSError:
-            active_sessions = -1
+    # WR-02: route through storage.list_session_ids so the count uses the canonical
+    # "well-formed session" surface (covers all four kind dirs + the token-alphabet
+    # allowlist + de-dup) instead of an originals/-only scan that would silently
+    # undercount during the image-ingest race window where originals/{sid} is empty
+    # while work/{sid} + pristine/{sid} already exist.
+    try:
+        active_sessions = sum(1 for _ in storage.list_session_ids())
+    except OSError:
+        active_sessions = -1
     data_dir_bytes = 0
     data_dir_pct = 0.0
     try:
