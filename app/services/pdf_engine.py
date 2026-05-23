@@ -222,6 +222,14 @@ TEXT_REMOVE = fitz.PDF_REDACT_TEXT_REMOVE
 LINE_ART_REMOVE_IF_COVERED = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED
 IMAGE_NONE = fitz.PDF_REDACT_IMAGE_NONE
 
+# A4 page dimensions in PDF points (1 pt = 1/72"). D-01 of Phase 4:
+# all standalone image uploads (PNG/JPG/TIFF) normalize to a single-page portrait A4
+# PDF with the image fit-in-page + centered + keep_proportion=True. Constants are
+# exported by name so callers in ingest.py do NOT import fitz and the AGPL seam stays
+# confined to this module.
+A4_WIDTH_PT = 595.0
+A4_HEIGHT_PT = 842.0
+
 
 def map_tuple_to_rect(
     rect_tuple: tuple[float, float, float, float],
@@ -428,6 +436,35 @@ def get_drawings_fully_inside(
         if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             hits.append(drawing)
     return hits
+
+
+def image_to_a4_pdf(image_bytes: bytes) -> bytes:
+    """Wrap an already-normalized RGB image (PNG/JPEG bytes) into a single-page A4 PDF.
+
+    Phase 4 D-01 (standalone image normalization, UPLOAD-03): standalone PNG/JPG/TIFF
+    uploads become portrait A4 (595×842 pt) single-page PDFs with the image fit-in-page,
+    keep_proportion=True (contain + center), and white page background as the fill.
+
+    The caller (``ingest._ingest_image_to_pdf``) must hand bytes that Pillow has already
+    decoded, CMYK→RGB-converted (D-03 / Pitfall D black-box defence), and re-encoded as
+    PNG or JPEG. JPEG bytes pass through PyMuPDF as a JPEG XObject byte-exact, so a small
+    input stays small (RESEARCH Pattern 3 verified). The wrapping PDF uses
+    ``garbage=4, deflate=True, clean=True`` so the output never bloats over the input
+    image size (Pitfall 9).
+
+    This helper lives in pdf_engine.py because it must call ``fitz.open() + new_page +
+    insert_image`` — those touch fitz, and the AGPL seam (threat T-02-03) requires every
+    fitz call to be inside this module. ``insert_image`` with ``keep_proportion=True``
+    is the same parameter already verified by ``place_logo`` (LOGO-02), so the
+    fit/center semantics are not re-verified here.
+    """
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=A4_WIDTH_PT, height=A4_HEIGHT_PT)
+        page.insert_image(page.rect, stream=image_bytes, keep_proportion=True)
+        return doc.tobytes(garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
 
 
 def save_doc(

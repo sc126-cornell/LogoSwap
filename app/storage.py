@@ -23,7 +23,15 @@ from pathlib import Path
 from . import config
 
 # Subdirectory kinds under DATA_DIR.
-_KINDS = ("originals", "work", "outputs")
+#
+# Phase 4: ``pristine`` is the immutable post-ingest PDF snapshot that the pipeline
+# reset-from-pristine step copies into ``work/`` at every /process run. For PDF
+# uploads it is byte-identical to ``originals/source.pdf``; for image uploads
+# (PNG/JPG/TIFF, UPLOAD-03) the user's raw image bytes live in ``originals/`` while
+# ``pristine/`` holds the normalized A4 PDF — so the reset step never has to open a
+# non-PDF stream as a PDF (which would crash). originals/ stays SHA-256-invariant
+# (D-05) because pipeline no longer touches it.
+_KINDS = ("originals", "work", "outputs", "pristine")
 
 # A session id is ALWAYS a server-issued ``secrets.token_urlsafe`` token, whose alphabet
 # is URL-safe base64: A-Z a-z 0-9 plus ``-`` and ``_`` (no padding). ``token_urlsafe(16)``
@@ -59,6 +67,10 @@ def validate_session_id(session_id: str) -> str:
 # client filename is stored in SessionInfo, not used on disk.
 _ORIGINAL_NAME = "source.pdf"
 _WORK_NAME = "doc.pdf"
+# Phase 4: pristine PDF snapshot used as the pipeline's reset-from-pristine source.
+# Same basename as the work copy (doc.pdf) but under a separate ``pristine/`` subdir,
+# so the pristine and work paths are structurally distinct (the pipeline asserts this).
+_PRISTINE_NAME = "doc.pdf"
 # Tiny per-session sidecar holding metadata determined ONCE at ingest (page count,
 # original display filename) so the hot GET /sessions/{id} lookup never re-parses the
 # PDF and never mislabels a storage/read failure as a client "corrupt_pdf" (WR-03).
@@ -129,6 +141,19 @@ def work_path(session_id: str) -> Path:
     return subdir("work", session_id) / _WORK_NAME
 
 
+def pristine_path(session_id: str) -> Path:
+    """Path to the immutable post-ingest PDF snapshot used as the reset-from-pristine source.
+
+    For a PDF upload, this is byte-identical to :func:`original_path`. For an image
+    upload (Phase 4 UPLOAD-03), ``originals/`` stores the user's raw image bytes
+    (PNG/JPG/TIFF) — those are NOT a PDF, so the pipeline cannot reset its work copy
+    from them directly. We therefore write a normalized A4 PDF here at ingest time
+    and the pipeline reads THIS path for the reset, so the D-05 SHA-256 invariant on
+    ``originals/`` stays intact (the pipeline no longer touches originals/).
+    """
+    return subdir("pristine", session_id) / _PRISTINE_NAME
+
+
 def outputs_dir(session_id: str) -> Path:
     """Directory reserved for generated output PDFs (Phase 2+)."""
     return subdir("outputs", session_id)
@@ -191,6 +216,21 @@ def write_original(session_id: str, filename: str, data: bytes) -> Path:
 def write_work_copy(session_id: str, data: bytes) -> Path:
     """Write the editable work copy under ``work/`` (stays writable)."""
     dest = work_path(session_id)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with open(dest, "wb") as fh:
+        fh.write(data)
+    return dest
+
+
+def write_pristine_copy(session_id: str, data: bytes) -> Path:
+    """Write the pristine post-ingest PDF snapshot under ``pristine/`` (Phase 4).
+
+    The pipeline reads this path to reset the work copy at the start of every /process
+    run (WR-01 / deferred-mutation D-05). For PDF uploads ``data`` is byte-identical to
+    what was written under ``originals/``; for image uploads (UPLOAD-03) ``data`` is
+    the normalized A4 PDF produced by :func:`pdf_engine.image_to_a4_pdf`.
+    """
+    dest = pristine_path(session_id)
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, "wb") as fh:
         fh.write(data)

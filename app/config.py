@@ -55,6 +55,23 @@ MAX_PAGES: int = _env_int("MAX_PAGES", 30)
 # rather than refusing to render. 40 MP * 4 bytes ~= 160 MB upper bound per render.
 MAX_RENDER_PIXELS: int = _env_int("MAX_RENDER_PIXELS", 40 * 1_000_000)
 
+# Phase 4 ingest: Pillow decompression-bomb budget (89,478,485 px ≈ 89 MP). The default
+# matches Pillow 12.x's built-in ``Image.MAX_IMAGE_PIXELS``; exposing it as an env-driven
+# setting lets ops tune it without monkey-patching Pillow's global state at runtime. The
+# value is intentionally HIGHER than MAX_RENDER_PIXELS (40 MP) because ingest does NOT
+# expand pixels into a pixmap — it embeds the image as a stream inside an A4 PDF and the
+# render layer's ``fit_dpi_to_pixel_budget`` later applies the render-side cap. This is
+# the only Phase 4 image-specific ingest cap; size/page caps stay at the unified
+# MAX_UPLOAD_BYTES / MAX_PAGES values (D-04).
+MAX_INGEST_IMAGE_PIXELS: int = _env_int("MAX_INGEST_IMAGE_PIXELS", 89_478_485)
+
+# Phase 4 image ingest: JPEG re-encode quality used when the Pillow chain re-emits a
+# JPEG (e.g. after CMYK→RGB conversion or alpha flattening for a JPEG-sniffed upload).
+# 90 = visually lossless ceiling — chosen because downstream uses may include printing
+# or approval workflows. JPEG-sniffed bytes that need no conversion are passed through
+# byte-exact and this constant has no effect on them.
+JPEG_REENCODE_QUALITY: int = _env_int("JPEG_REENCODE_QUALITY", 90)
+
 # Per-job region cap (Phase 2 DoS mitigation T-02-04). A /process JobSpec carrying an
 # unbounded ``regions`` list could drive arbitrarily many redact/extract passes; reject
 # over this cap with a 422 rather than doing the work. 200 is generous for manual framing.
