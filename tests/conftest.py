@@ -32,6 +32,133 @@ def _build_pdf(num_pages: int, *, width: float = 200, height: float = 300) -> by
         doc.close()
 
 
+# --- Phase 4 in-memory image fixture builders (UPLOAD-03) ----------------------------
+#
+# Mirrors ``_build_pdf``'s "build bytes in-memory, return bytes, never commit binaries"
+# pattern. Every test image is constructed via Pillow at fixture time so the repo stays
+# binary-free and the fixtures are deterministic (same seed colours, same byte output
+# across machines for the same Pillow version).
+
+def _build_png(
+    width: int = 400,
+    height: int = 300,
+    mode: str = "RGB",
+    color: tuple = (200, 100, 50),
+) -> bytes:
+    """Return bytes of a single-frame PNG image (default 400x300 RGB orange)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new(mode, (width, height), color)
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _build_jpeg(
+    width: int = 400,
+    height: int = 300,
+    color: tuple = (200, 100, 50),
+    quality: int = 90,
+) -> bytes:
+    """Return bytes of a single-frame JPEG image (RGB, given quality)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("RGB", (width, height), color)
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=quality)
+    return buf.getvalue()
+
+
+def _build_tiff(
+    width: int = 400,
+    height: int = 300,
+    mode: str = "RGB",
+    color: tuple = (200, 100, 50),
+    num_frames: int = 1,
+) -> bytes:
+    """Return bytes of a TIFF image.
+
+    For ``num_frames > 1`` produces a genuine multi-page TIFF via ``save_all=True`` +
+    ``append_images=[…]`` — Pillow's documented multi-page TIFF construction.
+    """
+    from io import BytesIO
+
+    from PIL import Image
+
+    base = Image.new(mode, (width, height), color)
+    buf = BytesIO()
+    if num_frames <= 1:
+        base.save(buf, format="TIFF")
+    else:
+        # Build N-1 extra frames with slightly perturbed colour so they are distinct.
+        extra = []
+        for i in range(1, num_frames):
+            shift = (i * 17) % 200
+            if mode == "RGB":
+                extra_color = (
+                    (color[0] + shift) % 256,
+                    (color[1] + shift) % 256,
+                    (color[2] + shift) % 256,
+                )
+            else:
+                extra_color = color
+            extra.append(Image.new(mode, (width, height), extra_color))
+        base.save(buf, format="TIFF", save_all=True, append_images=extra)
+    return buf.getvalue()
+
+
+def _build_cmyk_tiff(width: int = 400, height: int = 300) -> bytes:
+    """Return bytes of a CMYK TIFF (CMYK PNG is not a Pillow-supported combo)."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.new("CMYK", (width, height), (100, 100, 100, 50))
+    buf = BytesIO()
+    img.save(buf, format="TIFF")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def png_bytes() -> bytes:
+    """A small single-frame RGB PNG."""
+    return _build_png()
+
+
+@pytest.fixture
+def jpeg_bytes() -> bytes:
+    """A small single-frame RGB JPEG (default Pillow quality=90)."""
+    return _build_jpeg()
+
+
+@pytest.fixture
+def tiff_bytes() -> bytes:
+    """A small single-frame RGB TIFF."""
+    return _build_tiff()
+
+
+@pytest.fixture
+def multipage_tiff_bytes() -> bytes:
+    """A multi-page (3-frame) RGB TIFF — used to assert the multi_page_tiff_unsupported reject path."""
+    return _build_tiff(num_frames=3)
+
+
+@pytest.fixture
+def cmyk_tiff_bytes() -> bytes:
+    """A CMYK TIFF — used to assert the D-03 CMYK→RGB ingest conversion."""
+    return _build_cmyk_tiff()
+
+
+@pytest.fixture
+def fake_png_bytes() -> bytes:
+    """A non-image byte payload uploaded with a .png filename — sniff-failure probe."""
+    return b"NOT_A_REAL_PNG_AT_ALL_DEFINITELY_BYTES" * 8
+
+
 @pytest.fixture
 def valid_pdf_bytes() -> bytes:
     """A valid 2-page vector PDF."""

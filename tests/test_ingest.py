@@ -97,3 +97,64 @@ def test_ingest_too_many_pages_rejected_with_limit_in_message(over_page_pdf_byte
         ingest.ingest_upload("many.pdf", over_page_pdf_bytes)
     assert exc.value.code == "too_many_pages"
     assert "30" in exc.value.message
+
+
+# --- Phase 4 Task 04-01-01: pdf_engine.image_to_a4_pdf + storage pristine ------------
+
+
+def test_image_to_a4_pdf_produces_single_a4_page(png_bytes):
+    """A normalized RGB PNG passes through pdf_engine.image_to_a4_pdf into a 1-page A4 PDF.
+
+    Behavior 1 of Task 04-01-01: page_count == 1, page width/height == 595/842 pt (D-01).
+    """
+    from app.services import pdf_engine
+
+    pdf_bytes = pdf_engine.image_to_a4_pdf(png_bytes)
+    assert isinstance(pdf_bytes, bytes) and pdf_bytes.startswith(b"%PDF-")
+
+    doc = pdf_engine.open_pdf(pdf_bytes)
+    try:
+        assert pdf_engine.page_count(doc) == 1
+        dims = pdf_engine.page_dimensions(doc, 0)
+        assert dims["page_w_pt"] == pdf_engine.A4_WIDTH_PT == 595.0
+        assert dims["page_h_pt"] == pdf_engine.A4_HEIGHT_PT == 842.0
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_image_to_a4_pdf_jpeg_passthrough_is_compact(jpeg_bytes):
+    """Behavior 3: a small (~few KB) JPEG round-trips through image_to_a4_pdf to a
+    reasonably compact PDF (well under 200KB) — proves garbage/deflate/clean are on
+    and JPEG passthrough is not bloating the output.
+    """
+    from app.services import pdf_engine
+
+    pdf_bytes = pdf_engine.image_to_a4_pdf(jpeg_bytes)
+    # The test JPEG is ~few KB; the wrapped PDF must stay well under 200 KB.
+    assert len(pdf_bytes) < 200_000, (
+        f"image_to_a4_pdf inflated a small JPEG to {len(pdf_bytes)} bytes — "
+        "garbage/deflate/clean not enabled?"
+    )
+
+
+def test_storage_pristine_directory_exists_after_new_session():
+    """Behavior 4: storage.new_session() must create the pristine/ subdir alongside originals/work/outputs."""
+    from app import storage
+
+    sid = storage.new_session()
+    assert storage.pristine_path(sid).parent.is_dir()
+
+
+def test_storage_write_pristine_copy_writes_bytes_and_distinct_path():
+    """Behavior 5: write_pristine_copy persists bytes; pristine/work/original paths are all distinct."""
+    from app import storage
+
+    sid = storage.new_session()
+    payload = b"%PDF-pristine-test-bytes\n"
+    written = storage.write_pristine_copy(sid, payload)
+    assert written.is_file()
+    assert written.read_bytes() == payload
+
+    assert storage.pristine_path(sid) != storage.work_path(sid)
+    assert storage.pristine_path(sid) != storage.original_path(sid)
+    assert storage.work_path(sid) != storage.original_path(sid)
