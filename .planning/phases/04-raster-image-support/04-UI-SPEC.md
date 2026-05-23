@@ -1,11 +1,12 @@
 ---
 phase: 4
 slug: raster-image-support
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 inherits: ".planning/phases/01-input-preview/01-UI-SPEC.md"
 created: 2026-05-23
+reviewed_at: 2026-05-23
 ---
 
 # Phase 4 — UI Design Contract (Delta-only)
