@@ -237,6 +237,18 @@ IMAGE_PIXELS = fitz.PDF_REDACT_IMAGE_PIXELS
 A4_WIDTH_PT = 595.0
 A4_HEIGHT_PT = 842.0
 
+# Zero-area drawing detection (Phase 4 hotfixes #04-03 — PMC.pdf — and #04-04/#04-05
+# — DC.pdf). 0.01 pt ≈ 0.0035 mm — far below any humanly-visible feature, but
+# large enough to absorb floating-point noise from PDF coordinate parsing.
+#
+# Shared by ``get_drawings_fully_inside`` (the residual-content REMOVAL assertion)
+# and ``cover_zero_area_artefacts`` (the cross-renderer hairline-mask) so they
+# agree on what counts as zero-area. A drift between the two would split residual
+# detection from artefact masking — either (a) Adobe-rendered hairlines survive
+# when the residual check ignores a wider epsilon, or (b) ``residual_content``
+# false positives when the cover routine ignores a wider one. IN-01.
+_DEGENERATE_BBOX_EPS = 0.01
+
 
 def map_tuple_to_rect(
     rect_tuple: tuple[float, float, float, float],
@@ -493,9 +505,6 @@ def get_drawings_fully_inside(
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
     query = (q.x0, q.y0, q.x1, q.y1)
-    # Sub-point threshold: 0.01 pt ≈ 0.0035 mm — far below any humanly-visible feature, but
-    # large enough to absorb floating-point noise from PDF coordinate parsing.
-    _DEGENERATE_EPS = 0.01
     hits = []
     for drawing in page.get_drawings():
         d_rect = drawing.get("rect")
@@ -506,8 +515,9 @@ def get_drawings_fully_inside(
         # Skip zero-area FILL drawings only (type='f'). Covers PMC.pdf POINT fills and
         # DC.pdf flat-bbox glyph fills. STROKES (type='s' / 'fs') stay in the check even
         # when bbox is flat — PyMuPDF removes coverable strokes correctly, so a residual
-        # stroke is a real visible-line failure.
-        is_zero_area = (dr.width < _DEGENERATE_EPS or dr.height < _DEGENERATE_EPS)
+        # stroke is a real visible-line failure. Threshold is the module-level
+        # _DEGENERATE_BBOX_EPS so the cover routine sees the same set (IN-01).
+        is_zero_area = (dr.width < _DEGENERATE_BBOX_EPS or dr.height < _DEGENERATE_BBOX_EPS)
         if is_zero_area and drawing.get("type") == "f":
             continue
         if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
@@ -543,7 +553,11 @@ def cover_zero_area_artefacts(
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
     query = (q.x0, q.y0, q.x1, q.y1)
-    _DEGENERATE_EPS = 0.01
+    # ±0.5 pt halo: well below any visible feature, large enough to mask anti-aliasing
+    # of the underlying zero-area stroke. Single-consumer constant — kept local because
+    # ``get_drawings_fully_inside`` doesn't need a halo (it isn't painting anything).
+    # The shared zero-area threshold lives at module scope as ``_DEGENERATE_BBOX_EPS``
+    # (IN-01) so the two routines see the SAME set of zero-area drawings.
     _COVER_PAD = 0.5
     covered = 0
     for drawing in page.get_drawings():
@@ -554,7 +568,7 @@ def cover_zero_area_artefacts(
         dr.normalize()
         if drawing.get("type") != "f":
             continue
-        if not (dr.width < _DEGENERATE_EPS or dr.height < _DEGENERATE_EPS):
+        if not (dr.width < _DEGENERATE_BBOX_EPS or dr.height < _DEGENERATE_BBOX_EPS):
             continue
         if not _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             continue
