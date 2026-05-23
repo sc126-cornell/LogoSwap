@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Phase 5 Plan 02 complete — hardening slice landed (SHA-256 verify + janitor + /process timeout + 前端 UX)
-last_updated: "2026-05-24T00:00:00.000Z"
-last_activity: 2026-05-24 -- Phase 5 Plan 02 executed (hardening slice)
+status: ready_to_complete
+stopped_at: Milestone v1.0 完整交付 — LogoSwap LIVE at https://logoswap.scottchen0622.com (Zeabur + Cloudflare DNS + Let's Encrypt TLS;AGPL §13 三件套就位)。等待 /gsd-complete-milestone 歸檔
+last_updated: "2026-05-24T12:00:00.000Z"
+last_activity: 2026-05-24 -- Phase 5 上線 + Cloudflare 自訂網域 + Dockerfile PATH hotfix push
 progress:
   total_phases: 5
   completed_phases: 5
@@ -18,17 +18,27 @@ progress:
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-05-23)
+See: .planning/PROJECT.md (updated 2026-05-24 — milestone v1.0 complete)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 5 — ubuntu
+**Current focus:** Milestone v1.0 上線完成 — 等 `/gsd-complete-milestone` 歸檔
 
 ## Current Position
 
-Phase: 5 (ubuntu) — COMPLETE
-Plan: 2 of 2 (05-01 + 05-02 both complete)
-Status: Phase 5 Plan 02 (hardening slice) complete — SHA-256 verify + janitor + /process timeout + 前端 UX. Phase 5 success criteria #1/#2/#3 all landed. STRIDE 27/27 closed.
-Last activity: 2026-05-24 -- Phase 5 Plan 02 executed (hardening slice)
+Milestone: **v1.0 — LIVE** at https://logoswap.scottchen0622.com
+Phase: 5 of 5 (all phases COMPLETE)
+Plans: 11 of 11 complete
+Status: Phase 5 完整交付 + 上線。Zeabur (Tencent Tokyo 2C 2GB K3s, IP 43.163.207.206) + Cloudflare DNS-only (灰色雲) + Let's Encrypt TLS 自動續發。AGPL §13 三件套(public GitHub https://github.com/sc126-cornell/LogoSwap + LICENSE AGPL-3.0 + UI footer source link)同步就位。
+Last activity: 2026-05-24 -- 上線 + Cloudflare 自訂網域生效 + Dockerfile PATH hotfix push (bfb93bd)
+
+**Phase 5 post-execute hotfix 收口記錄(自 ad72796 後 12 個 hotfix commit):**
+
+- 9 code-review fix(6abca8e..63fc4ce):CR-01/CR-02 + WR-01..07
+- 1 inline test hotfix(cfded81):integrity AGPL-seam test 改 AST(避免 docstring false-positive)
+- 2 UAT hotfix(db4e1c3 + c0e4233):rename「更換檔案」→「開啟新檔」+ 移除 1h TTL sticky bar;Dockerfile 加 GITHUB_OWNER build-arg
+- 2 deploy hotfix(0c63ac8 + bfb93bd):repo rename logoswap → LogoSwap PascalCase URLs;Dockerfile ENV PATH=/install/bin(Zeabur 第一次 build 抓出的 runtime bug)
+- 測試:243 → 291 passed + 3 platform-skipped(零回歸)
+- STRIDE:Phase 5 新增 10 個 threats 全 closed(6 mitigate + 4 explicit accept);累積 27/27
 
 **Hotfix 收口記錄(自 137a592 後 13 個 commit):**
 

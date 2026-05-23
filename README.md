@@ -6,6 +6,13 @@ PyMuPDF 處理。
 
 ---
 
+## 🌐 線上版本
+
+**Production:** https://logoswap.scottchen0622.com
+(Zeabur PaaS 部署 + Cloudflare DNS + Let's Encrypt TLS,上線於 2026-05-24)
+
+---
+
 ## License & Source(AGPL §13 揭露)
 
 LogoSwap 以 **GNU AGPLv3** 授權。當本工具於網路服務形態提供給使用者時(無論

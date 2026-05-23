@@ -23,12 +23,13 @@
 - [x] 使用者可將選定的 logo 放到框選位置,維持長寬比、置中、隨頁面旋轉正立;支援「自動依框選形狀」逐區挑選(Phase 3 — LOGO-02)
 - [x] 使用者可上傳**圖片型(點陣/掃描)PDF** 與**獨立影像檔**(PNG/JPG/TIFF)(Phase 4 — UPLOAD-02/03;hotfix 收口含 RGBA 合成白底、pristine 預覽資料源、megapixel 硬上限)
 - [x] 對點陣圖/影像內容,框選區域以白色填滿(Phase 4 — REMOVE-02;含 Adobe-hairline / CAD-glyph zero-area artefact 物理覆蓋)
+- [x] 可以 Docker 部署為網頁服務,處理大型與旋轉頁面、暫存檔自動清理、原始檔 SHA-256 驗證(Phase 5 — DEPLOY-01/02;**live 2026-05-24** at https://logoswap.scottchen0622.com via Zeabur PaaS,Cloudflare DNS,AGPL §13 三件套就位)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 可在 Ubuntu 伺服器以 Docker + Nginx 部署,處理大型與旋轉頁面、暫存檔清理(Phase 5 — DEPLOY-01/02)
+_None — milestone v1.0 全部交付,正等待 `/gsd-complete-milestone` 歸檔。_
 
 ### Out of Scope
 
@@ -91,4 +92,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-23 after Phase 3 completion (incl. UAT-driven hotfixes + code review/fix)*
+*Last updated: 2026-05-24 after Phase 5 完成 + 上線 (Zeabur + Cloudflare DNS + AGPL §13 公開合規) — milestone v1.0 完整交付。*

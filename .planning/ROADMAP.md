@@ -127,3 +127,15 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 3. 商標置入 | 2/2 | Complete    | 2026-05-23 |
 | 4. 點陣圖與圖片型檔案支援 | 2/2 | Complete   | 2026-05-23 |
 | 5. 部署與穩固化(Ubuntu) | 2/2 | Complete | 2026-05-24 |
+
+---
+
+## Milestone v1.0 — DELIVERED ✓
+
+**上線時間:** 2026-05-24
+**Production URL:** https://logoswap.scottchen0622.com
+**部署架構:** Zeabur PaaS(Tencent Tokyo 2C 2GB K3s,IP 43.163.207.206)+ Cloudflare DNS(灰色雲)+ Let's Encrypt 自動 TLS
+**Repo:** https://github.com/sc126-cornell/LogoSwap(public,AGPL §13 三件套合規)
+**累計交付:** 5 phases / 11 plans / 291 passed + 3 skipped(Phase 1 baseline 0 → Phase 5 結尾)/ STRIDE 27/27 closed
+
+下一步:`/gsd-complete-milestone` 歸檔 v1.0 + 標 git tag。
