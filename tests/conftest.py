@@ -159,6 +159,99 @@ def fake_png_bytes() -> bytes:
     return b"NOT_A_REAL_PNG_AT_ALL_DEFINITELY_BYTES" * 8
 
 
+# --- Phase 4-02 raster-redact PDF fixture builders (REMOVE-02 + UPLOAD-02) -----------
+#
+# These build PDFs whose page content is dominated by RASTER image XObjects (mimicking
+# supplier-supplied scan PDFs / OCR'd PDFs) so the raster-dispatch branch in pipeline +
+# the IMAGE_PIXELS path in redact have realistic substrates. Like ``_build_pdf`` /
+# ``_build_png`` they build in memory and return bytes — no committed binaries.
+
+def _build_image_only_pdf(width: int = 800, height: int = 600) -> bytes:
+    """A single-page A4 PDF whose ONLY content is one embedded raster image.
+
+    Mimics "整頁掃描 PDF" — no text, no vectors, just one image XObject covering the
+    image area (PyMuPDF's ``insert_image(page.rect, keep_proportion=True)`` letterboxes
+    a non-A4-aspect image inside the page). The test harness imports fitz directly
+    (sibling of ``_build_pdf``), so this stays independent of production code paths.
+    """
+    img_bytes = _build_png(width=width, height=height)
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=595.0, height=842.0)
+        page.insert_image(page.rect, stream=img_bytes, keep_proportion=True)
+        return doc.tobytes(garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
+
+
+def _build_dual_layer_ocr_pdf(
+    text_words: tuple[str, ...] = ("SUPPLIER", "WORDMARK"),
+    img_width: int = 800,
+    img_height: int = 600,
+) -> bytes:
+    """A PDF with BOTH a raster background image AND an overlaid text layer.
+
+    Mimics a scanned PDF that has been OCR'd — Pitfall 3 dual-layer leak target. The
+    image is inserted on top of the page via ``insert_image`` (the typical scanned-PDF
+    storage), then text is inserted via ``page.insert_text``. A single
+    ``apply_redactions`` call with ``images=IMAGE_PIXELS + text=TEXT_REMOVE`` should
+    clear BOTH layers (Phase 4 D-06; RESEARCH verified).
+    """
+    img_bytes = _build_png(width=img_width, height=img_height)
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=595.0, height=842.0)
+        page.insert_image(page.rect, stream=img_bytes, keep_proportion=True)
+        # Place text at fixed coords inside the image area for predictable framing.
+        x, y = 100.0, 400.0
+        for word in text_words:
+            page.insert_text((x, y), word)
+            x += 100.0
+        return doc.tobytes(garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
+
+
+def _build_mixed_vector_raster_pdf() -> bytes:
+    """A PDF whose page has BOTH vector content (text + line) on the lower half AND a
+    raster image XObject on the upper half.
+
+    Used to verify per-region dispatch picks the right branch for each rect: an upper
+    rect overlaps the image XObject (raster branch); a lower rect does not (vector
+    branch). Page is 400x600pt — fits both halves comfortably without overlap.
+    """
+    img_bytes = _build_png(width=200, height=150)
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=400.0, height=600.0)
+        # Upper half: raster image (200x150 keep-proportion'd into a 400x300 region).
+        page.insert_image(fitz.Rect(0, 0, 400, 300), stream=img_bytes, keep_proportion=True)
+        # Lower half: vector text + line.
+        page.insert_text((40, 400), "VECTOR_BELOW")
+        page.draw_line(fitz.Point(20, 500), fitz.Point(380, 500))
+        return doc.tobytes(garbage=4, deflate=True, clean=True)
+    finally:
+        doc.close()
+
+
+@pytest.fixture
+def image_only_pdf_bytes() -> bytes:
+    """An A4 PDF whose only content is one embedded PNG image (no text, no vectors)."""
+    return _build_image_only_pdf()
+
+
+@pytest.fixture
+def dual_layer_ocr_pdf_bytes() -> bytes:
+    """An A4 PDF with an embedded image AND an overlaid text layer (mock OCR'd scan)."""
+    return _build_dual_layer_ocr_pdf()
+
+
+@pytest.fixture
+def mixed_vector_raster_pdf_bytes() -> bytes:
+    """A 400x600pt PDF with raster content in the upper half and vector in the lower."""
+    return _build_mixed_vector_raster_pdf()
+
+
 @pytest.fixture
 def valid_pdf_bytes() -> bytes:
     """A valid 2-page vector PDF."""

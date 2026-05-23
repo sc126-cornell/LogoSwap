@@ -529,3 +529,58 @@ def test_fitz_import_confined_to_engine_seam():
         if imports_fitz:
             offenders.append(os.path.basename(path))
     assert offenders == ["pdf_engine.py"], f"fitz imported outside the seam: {offenders}"
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4-02 Task 01: IMAGE_PIXELS constant + rect_overlaps_image helper
+# --------------------------------------------------------------------------------------
+
+
+def test_image_pixels_constant_exported():
+    """IMAGE_PIXELS is re-exported by pdf_engine so callers stay fitz-free (Phase 4 D-08)."""
+    import fitz
+
+    assert pdf_engine.IMAGE_PIXELS == fitz.PDF_REDACT_IMAGE_PIXELS == 2
+
+
+def test_rect_overlaps_image_positive(image_only_pdf_bytes):
+    """A rect landing inside the embedded image area returns True (Pattern 4)."""
+    import fitz
+
+    doc = pdf_engine.open_pdf(image_only_pdf_bytes)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        # The image is keep_proportion'd into A4 (595x842) from 800x600 ratio
+        # — letterboxed up/down; centre rect lands firmly inside the image XObject.
+        center_rect = fitz.Rect(200, 300, 400, 500)
+        assert pdf_engine.rect_overlaps_image(page, center_rect) is True
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_rect_overlaps_image_negative_vector_pdf(valid_pdf_bytes):
+    """A vector-only PDF has no image XObjects, so the probe always returns False."""
+    import fitz
+
+    doc = pdf_engine.open_pdf(valid_pdf_bytes)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        any_rect = fitz.Rect(10, 10, 100, 100)
+        assert pdf_engine.rect_overlaps_image(page, any_rect) is False
+    finally:
+        pdf_engine.close(doc)
+
+
+def test_rect_overlaps_image_mixed_dispatch(mixed_vector_raster_pdf_bytes):
+    """Mixed PDF: upper-half rect overlaps the image (True), lower-half rect does not (False)."""
+    import fitz
+
+    doc = pdf_engine.open_pdf(mixed_vector_raster_pdf_bytes)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        upper_rect = fitz.Rect(50, 50, 350, 250)  # in raster region
+        lower_rect = fitz.Rect(30, 350, 380, 550)  # in vector region
+        assert pdf_engine.rect_overlaps_image(page, upper_rect) is True
+        assert pdf_engine.rect_overlaps_image(page, lower_rect) is False
+    finally:
+        pdf_engine.close(doc)
