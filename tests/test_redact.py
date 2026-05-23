@@ -292,6 +292,89 @@ def test_get_drawings_fully_inside_skips_zero_width_flat_fill_cad_glyph():
         doc.close()
 
 
+def test_cover_zero_area_artefacts_paints_white_over_filtered_residues():
+    """Hotfix #04-05: zero-area FILL artefacts inside the user rect must be physically
+    covered with opaque white, so third-party PDF renderers (Adobe Reader / Chrome PDF.js
+    / Edge Pdfium) don't render them as 1-px hairlines.
+
+    Boundary-crossing CAD STROKES (type='s') and any drawing OUTSIDE the user rect must
+    NOT be covered. The cover is a real ``draw_rect(fill=(1,1,1))`` so it WILL appear in
+    ``get_drawings()`` AFTER this routine — but the post-redact assertion that gates this
+    routine runs BEFORE, so it never trips.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Inject the same shape DC.pdf produces: a zero-WIDTH filled vertical line inside
+        # the user rect AT (50, 60)-(50, 70) — well within the rect (40, 50, 90, 80).
+        # We use page.draw_line with a stroke type='s'; for type='f' we craft via PDF
+        # content stream is overkill — directly use page.add_line_drawing? Easier:
+        # write the page contents to inject a degenerate filled path.
+        # Practical alternative: monkey-patch get_drawings to inject the shape and verify
+        # the cover routine paints over it.
+        orig = page.get_drawings
+        def _with_zero_area():
+            return list(orig()) + [{
+                "rect": fitz.Rect(50.0, 60.0, 50.0, 70.0),  # W=0, H=10 (vertical fill)
+                "type": "f", "fill": (0.0, 0.0, 0.0), "color": None,
+                "items": [("l", fitz.Point(50, 60), fitz.Point(50, 70))],
+            }, {
+                "rect": fitz.Rect(60.0, 65.0, 70.0, 70.0),  # boundary-crossing real STROKE
+                "type": "s", "fill": None, "color": (0.0, 0.0, 0.0),
+                "items": [("l", fitz.Point(60, 65), fitz.Point(70, 70))],
+            }]
+        page.get_drawings = _with_zero_area
+        user_rect = (40.0, 50.0, 90.0, 80.0)
+
+        covered = pdf_engine.cover_zero_area_artefacts(page, user_rect)
+        assert covered == 1, f"expected exactly 1 zero-area fill covered, got {covered}"
+
+        # Verify a white-filled rect was drawn near the artefact's bbox (paint inside the
+        # user rect, near x=50, y=60..70).
+        page.get_drawings = orig  # restore real list to see what we actually drew
+        actual = page.get_drawings()
+        white_covers = [
+            d for d in actual
+            if d.get("type") == "f"
+            and d.get("fill") == (1.0, 1.0, 1.0)
+            and 49.0 <= d["rect"].x0 <= 51.0
+            and 59.0 <= d["rect"].y0 <= 61.0
+        ]
+        assert white_covers, f"no white cover painted; got drawings: {[(d.get('type'), d.get('fill'), d['rect']) for d in actual]}"
+    finally:
+        doc.close()
+
+
+def test_cover_zero_area_artefacts_skips_strokes_and_out_of_rect_fills():
+    """Hotfix #04-05 counter-check: strokes are NOT covered (REMOVE_IF_COVERED handles them
+    correctly) and fills OUTSIDE the user rect are also NOT covered.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        orig = page.get_drawings
+        def _with_mixed():
+            return list(orig()) + [
+                # Zero-area STROKE inside rect — must NOT be covered (strokes excluded).
+                {"rect": fitz.Rect(50.0, 60.0, 50.0, 70.0), "type": "s",
+                 "fill": None, "color": (0.0, 0.0, 0.0), "items": []},
+                # Zero-area FILL outside rect — must NOT be covered.
+                {"rect": fitz.Rect(120.0, 100.0, 120.0, 110.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+            ]
+        page.get_drawings = _with_mixed
+        user_rect = (40.0, 50.0, 90.0, 80.0)
+
+        covered = pdf_engine.cover_zero_area_artefacts(page, user_rect)
+        assert covered == 0, f"strokes and out-of-rect fills must be skipped; covered={covered}"
+    finally:
+        doc.close()
+
+
 def test_get_drawings_fully_inside_keeps_zero_bbox_stroke_visible_line():
     """Hotfix #04-04 counter-check: a STROKE (``type='s'``) with bbox H=0 is a real visible
     line (pen ink renders even when bbox collapses) and MUST still be reported as a residual.

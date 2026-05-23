@@ -511,6 +511,66 @@ def get_drawings_fully_inside(
     return hits
 
 
+def cover_zero_area_artefacts(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> int:
+    """Paint opaque white over each zero-area fill drawing fully inside ``rect``. Return count.
+
+    Phase 4 hotfix #5 — surfaced by DC.pdf supplier CAD PDF. ``LINE_ART_REMOVE_IF_COVERED``
+    leaves zero-area filled paths (``type='f'`` with W=0 or H=0) in the content stream
+    because PyMuPDF treats them as non-coverable. PyMuPDF itself renders nothing for them
+    (zero pixels), so ``get_drawings_fully_inside`` correctly filters them out of the
+    residual assertion — BUT third-party PDF renderers (Adobe Reader / Chrome PDF.js /
+    Edge Pdfium) render zero-width fills as 1-pixel HAIRLINES, surfacing as "weird marks"
+    over the placed logo.
+
+    Surgical fix: cover each zero-area artefact with a thin opaque white rectangle. Only
+    drawings that are (a) ``type='f'`` AND (b) zero-area AND (c) fully inside ``rect`` are
+    covered — boundary-crossing CAD construction lines (which CR-02 explicitly preserves)
+    are NOT touched.
+
+    Must be called AFTER the residual assertion so the white covers don't trip
+    ``get_drawings_fully_inside``.
+
+    The cover rect is the artefact's bbox padded by ±0.5 pt (well below any visible
+    feature, large enough to mask anti-aliasing of the underlying zero-area stroke), and
+    clamped to ``rect`` so we never paint outside the user's framed area.
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    query = (q.x0, q.y0, q.x1, q.y1)
+    _DEGENERATE_EPS = 0.01
+    _COVER_PAD = 0.5
+    covered = 0
+    for drawing in page.get_drawings():
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        if drawing.get("type") != "f":
+            continue
+        if not (dr.width < _DEGENERATE_EPS or dr.height < _DEGENERATE_EPS):
+            continue
+        if not _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            continue
+        # Cover artefact's bbox + halo, clamped to the user rect so we never bleed outside.
+        cover = fitz.Rect(
+            max(dr.x0 - _COVER_PAD, query[0]),
+            max(dr.y0 - _COVER_PAD, query[1]),
+            min(dr.x1 + _COVER_PAD, query[2]),
+            min(dr.y1 + _COVER_PAD, query[3]),
+        )
+        if cover.width <= 0 or cover.height <= 0:
+            # Degenerate cover (user rect collapsed) — skip; the artefact is by definition
+            # outside the visible page area too.
+            continue
+        # fill = pure white, color=None means no stroke (we don't want a 1px border).
+        page.draw_rect(cover, fill=(1, 1, 1), color=None, width=0)
+        covered += 1
+    return covered
+
+
 def image_to_a4_pdf(image_bytes: bytes) -> bytes:
     """Wrap an already-normalized RGB image (PNG/JPEG bytes) into a single-page A4 PDF.
 

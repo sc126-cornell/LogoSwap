@@ -161,6 +161,15 @@ def remove_region_vector(page, rect) -> bool:
             "移除後仍偵測到殘留內容(文字或向量),無法保證真正移除。",
         )
 
+    # Phase 4 hotfix #5: cross-renderer cleanup of zero-area FILL artefacts that
+    # LINE_ART_REMOVE_IF_COVERED leaves in the content stream. PyMuPDF doesn't render them,
+    # but Adobe Reader / Chrome PDF.js render them as 1-px hairlines — visible as "weird
+    # marks" over the placed logo on supplier CAD PDFs (DC.pdf UAT). Done AFTER the
+    # residual assertion so the white covers do not trip ``get_drawings_fully_inside``.
+    # Strokes (type='s') are preserved — REMOVE_IF_COVERED already handles them and any
+    # boundary-crossing CAD line stays untouched by this routine.
+    pdf_engine.cover_zero_area_artefacts(page, user_rect)
+
     return True
 
 
