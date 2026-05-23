@@ -10,7 +10,7 @@
 ### 上傳與輸入 (UPLOAD)
 
 - [x] **UPLOAD-01**: 使用者可上傳單一向量 PDF 進行處理
-- [ ] **UPLOAD-02**: 使用者可上傳圖片型(點陣/掃描)PDF 進行處理
+- [x] **UPLOAD-02**: 使用者可上傳圖片型(點陣/掃描)PDF 進行處理
 - [x] **UPLOAD-03**: 使用者可上傳獨立影像檔(PNG/JPG/TIFF),系統將其正規化為可處理的單頁文件
 - [x] **UPLOAD-04**: 系統保留原始檔案不被修改,所有結果輸出為新檔
 
@@ -27,7 +27,7 @@
 ### 移除 (REMOVE)
 
 - [x] **REMOVE-01**: 對向量內容,框選區域內的供應商商標物件與文字被真正移除(移除後無法再被選取或抽取),而非覆蓋
-- [ ] **REMOVE-02**: 對點陣圖/影像內容,框選區域以白色填滿(以周圍底色填滿列為加值,見 v2)
+- [x] **REMOVE-02**: 對點陣圖/影像內容,框選區域以白色填滿(以周圍底色填滿列為加值,見 v2)
 - [x] **REMOVE-03**: 移除與後續置入的結果精準落在使用者框選的位置(所見即所得)
 - [x] **REMOVE-04**: 使用者可在套用前預覽移除前後的效果(before/after),確認沒有誤刪或殘留
 
@@ -86,9 +86,9 @@
 | OUTPUT-01 | Phase 2 | Complete |
 | LOGO-01 | Phase 3 | Complete |
 | LOGO-02 | Phase 3 | Complete |
-| UPLOAD-02 | Phase 4 | Pending |
+| UPLOAD-02 | Phase 4 | Complete |
 | UPLOAD-03 | Phase 4 | Complete |
-| REMOVE-02 | Phase 4 | Pending |
+| REMOVE-02 | Phase 4 | Complete |
 
 **Coverage:**
 - v1 requirements: 15 total

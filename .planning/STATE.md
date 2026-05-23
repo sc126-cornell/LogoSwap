@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 4 plan 04-01 complete (image ingest vertical slice landed)
-last_updated: "2026-05-23T09:30:00.000Z"
-last_activity: 2026-05-23 -- Phase 04 plan 04-01 complete
+stopped_at: Phase 4 complete (raster dispatch + image-only PDF + dual-layer OCR e2e closed)
+last_updated: "2026-05-23T08:53:20.000Z"
+last_activity: 2026-05-23 -- Phase 04 plan 04-02 complete (Phase 4 fully landed)
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 9
-  completed_plans: 8
-  percent: 88
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-23)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 04 — raster-image-support
+**Current focus:** Phase 5 — deployment & hardening(尚未規劃)
 
 ## Current Position
 
-Phase: 04 (raster-image-support) — EXECUTING
-Plan: 2 of 2 (04-01 complete; 04-02 raster redact dispatch pending)
-Status: Executing Phase 04
-Last activity: 2026-05-23 -- Phase 04 plan 04-01 complete
+Phase: 04 (raster-image-support) — COMPLETE
+Plan: 2 of 2 complete (04-01 + 04-02 both shipped)
+Status: Phase 4 closed; ready for Phase 5 planning (deployment / hardening)
+Last activity: 2026-05-23 -- Phase 04 plan 04-02 complete (Phase 4 fully landed)
 
-Progress: [████████░░] 88%
+Progress: [██████████] 100% (Phase 1–4 all complete, Phase 5 not yet planned)
 
 ## Performance Metrics
 
@@ -60,6 +60,7 @@ Progress: [████████░░] 88%
 | Phase 03 P01 | ~25 min | 2 tasks | 14 files |
 | Phase 03 P02 | 15min | 2 tasks | 7 files |
 | Phase 04 P01 | ~50 min | 3 tasks | 13 files |
+| Phase 04 P02 | ~11 min | 3 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -90,6 +91,7 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3-01]: logo_id resolves only as a manifest dict key + is_relative_to(LOGOS_DIR) assert (T-03-01); logo.py/logos.py fitz-free; ONE shared stale machine
 - [Phase ?]: [Phase 3-02]: place_logo is the only new fitz call (pdf_engine.py); insert AFTER apply_redactions, keep_proportion=True center+contain (LOGO-02), one global logo dedups to a single xref (D-01); no logo_id = pure removal; original SHA-256 unchanged (D-05); pipeline stays fitz-free
 - [Phase 4-01]: image_to_a4_pdf is the only new fitz call (pdf_engine.py); ingest dispatch on four magic headers; image magics MUST match at offset 0 (PDF-only allows ≤8 leading offset, D-12); Pillow chain verify/load CMYK→RGB + n_frames check; pipeline reset source switched originals→pristine (D-05 invariant on originals/ now STRICTER — pipeline never touches originals/); AGPL seam still 1 file
+- [Phase 4-02]: IMAGE_PIXELS + rect_overlaps_image new in pdf_engine.py (AGPL seam); redact.remove_region renamed to remove_region_vector + sibling remove_region_raster (fill=None, IMAGE_PIXELS, text-only residual assertion — RESEARCH推翻 CONTEXT 初步 fill=(1,1,1) 傾向 because fill=(1,1,1) leaves a type='fs' drawing surviving get_drawings_fully_inside); pipeline.process_job per-region dispatch by rect_overlaps_image (D-05); raster branch keeps text residual (Pitfall 3 dual-layer OCR closed) but skips drawings residual (allowed legitimate vectors); Phase 4 fully closed — UPLOAD-02 + REMOVE-02 + success-criteria #3 (logo on image) all e2e verified
 
 ### Pending Todos
 
@@ -111,6 +113,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-23T09:30:00.000Z
-Stopped at: Phase 4 plan 04-01 complete (image ingest vertical slice landed)
-Resume file: .planning/phases/04-raster-image-support/04-01-SUMMARY.md
+Last session: 2026-05-23T08:53:20.000Z
+Stopped at: Phase 4 complete (raster dispatch + image-only PDF + dual-layer OCR e2e closed)
+Resume file: .planning/phases/04-raster-image-support/04-02-SUMMARY.md
