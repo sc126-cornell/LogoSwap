@@ -46,6 +46,12 @@ _INGEST_STATUS: dict[str, int] = {
     "too_many_pages": 413,
     "corrupt_pdf": 422,
     "empty_file": 400,
+    # Phase 4 (UPLOAD-03): image ingest failure codes. The mirror dict lives in
+    # api/sessions.py; tests/test_ingest.py::test_ingest_status_dicts_in_sync keeps
+    # the two in lockstep so a future addition cannot drift silently.
+    "unsupported_image_format": 415,
+    "multi_page_tiff_unsupported": 415,
+    "corrupt_image": 422,
 }
 
 

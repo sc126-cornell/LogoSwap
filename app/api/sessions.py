@@ -24,6 +24,11 @@ _CODE_STATUS: dict[str, int] = {
     "too_many_pages": 413,
     "corrupt_pdf": 422,
     "empty_file": 400,
+    # Phase 4 (UPLOAD-03): image ingest failure codes. Mirrors main._INGEST_STATUS;
+    # tests/test_ingest.py::test_ingest_status_dicts_in_sync enforces parity.
+    "unsupported_image_format": 415,
+    "multi_page_tiff_unsupported": 415,
+    "corrupt_image": 422,
 }
 
 

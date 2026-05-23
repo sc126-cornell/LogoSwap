@@ -102,31 +102,35 @@ def process_job(session_id: str, job_spec) -> dict:
     document is always closed.
     """
     work = storage.work_path(session_id)
-    original = storage.original_path(session_id)
+    pristine = storage.pristine_path(session_id)
 
-    # Deferred-mutation invariant (D-05 / threat T-02-05): we only ever open the work copy
-    # for writing; the original is never touched. Assert the paths differ as a structural
-    # guard so a future refactor cannot silently point this at the immutable source.
-    if Path(work).resolve() == Path(original).resolve():
+    # Deferred-mutation invariant (D-05 / threat T-02-05 / Phase 4 reset-from-pristine):
+    # the work copy is the editing substrate; the pristine PDF is the immutable reset
+    # source. Assert the paths differ as a structural guard so a future refactor cannot
+    # silently point this at the reset source. (originals/ is also untouched — for image
+    # uploads originals/ holds raw PNG/JPG/TIFF bytes that are NOT a PDF, so the pipeline
+    # must never try to open them; for PDF uploads originals/ stays SHA-256-invariant.)
+    if Path(work).resolve() == Path(pristine).resolve():
         raise PipelineError(
             "work_copy_misconfigured",
-            "內部錯誤:工作副本路徑與原始檔相同,已中止以保護原始檔。",
+            "內部錯誤:工作副本路徑與初始 PDF 副本相同,已中止以保護工作流程。",
         )
 
-    # WR-01: reset the work copy from the PRISTINE original before redacting, so every apply
-    # (and every "重新套用") is computed from the unmutated document. Without this, a prior
-    # successful run leaves the work copy already-redacted, and a second apply with a different
-    # region set would operate on that stale substrate (accumulating removals / masking the
-    # real result). copyfile copies CONTENT only — the work copy stays writable even though the
-    # original is chmod 0o444 — and never mutates the original (read-only source). This keeps
-    # the work copy a faithful, re-derivable projection of (original + current region set).
-    if not Path(original).is_file():
+    # WR-01: reset the work copy from the PRISTINE PDF snapshot before redacting, so every
+    # apply (and every "重新套用") is computed from the unmutated document. Without this, a
+    # prior successful run leaves the work copy already-redacted, and a second apply with a
+    # different region set would operate on that stale substrate (accumulating removals /
+    # masking the real result). copyfile copies CONTENT only — the work copy stays writable
+    # and never mutates the read-only pristine source. Phase 4: pristine/ is guaranteed to be
+    # a valid PDF (PDF uploads write it byte-identical to originals/; image uploads write the
+    # normalized A4 PDF here), so this open + reset never fails on a non-PDF stream.
+    if not Path(pristine).is_file():
         raise PipelineError(
             "work_copy_misconfigured",
-            "內部錯誤:找不到原始檔,無法重設工作副本。",
+            "內部錯誤:找不到初始 PDF 副本,無法重設工作副本。",
         )
     Path(work).parent.mkdir(parents=True, exist_ok=True)
-    shutil.copyfile(original, work)
+    shutil.copyfile(pristine, work)
 
     # The client's ``dpi`` is the REQUESTED render DPI (the ceiling the overlay measured
     # against). It is NOT trusted as the per-page scale: render may have reduced the
