@@ -158,3 +158,127 @@ def test_storage_write_pristine_copy_writes_bytes_and_distinct_path():
     assert storage.pristine_path(sid) != storage.work_path(sid)
     assert storage.pristine_path(sid) != storage.original_path(sid)
     assert storage.work_path(sid) != storage.original_path(sid)
+
+
+# --- Phase 4 Task 04-01-02: _sniff_kind dispatch + Pillow chain + pipeline reset ----
+
+
+def test_sniff_kind_dispatches_four_magics():
+    """Behavior 1: _sniff_kind returns the right kind for each of the four magic headers."""
+    sk = ingest._sniff_kind
+    assert sk(b"%PDF-1.7\nsome PDF content") == "pdf"
+    assert sk(b"\x89PNG\r\n\x1a\n" + b"PNG payload") == "png"
+    assert sk(b"\xff\xd8\xff\xe0" + b"JPEG body") == "jpeg"
+    assert sk(b"II*\x00" + b"TIFF LE body") == "tiff"
+    assert sk(b"MM\x00*" + b"TIFF BE body") == "tiff"
+    assert sk(b"random_bytes_no_magic_at_all_what_so_ever") is None
+
+
+def test_sniff_kind_pdf_tolerates_leading_offset_but_images_do_not():
+    """Behavior 2: PDF magic permits ≤8 leading offset (BOMs); image magics MUST match at offset 0."""
+    sk = ingest._sniff_kind
+    # PDF with UTF-8 BOM (3 bytes leading) -> still pdf
+    assert sk(b"\xef\xbb\xbf%PDF-1.7") == "pdf"
+    # PNG with BOM is rejected (image magic does not tolerate leading offset)
+    assert sk(b"\xef\xbb\xbf\x89PNG\r\n\x1a\n") is None
+    # PDF too far past the leading window -> rejected
+    assert sk(b"X" * 9 + b"%PDF-") is None
+
+
+def test_extension_not_trusted_fake_png(client, fake_png_bytes):
+    """Behavior 3: a file uploaded as evil.png whose bytes are NOT a PNG is rejected as unsupported_type."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("evil.png", fake_png_bytes, "image/png")},
+    )
+    assert resp.status_code == 415
+    detail = resp.json()["detail"]
+    assert detail["code"] == "unsupported_type"
+
+
+def test_empty_file_message_mentions_image(client):
+    """Behavior 4: empty file upload returns 400 with message that mentions PDF or 影像."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("empty.pdf", b"", "application/octet-stream")},
+    )
+    assert resp.status_code == 400
+    detail = resp.json()["detail"]
+    assert detail["code"] == "empty_file"
+    # New copy mentions both PDF and 影像 (Phase 4 dropzone now accepts both).
+    assert "影像" in detail["message"]
+
+
+def test_corrupt_image_truncated_png(client):
+    """Behavior 5: PNG magic header + garbage payload passes sniff but fails Pillow verify → 422 corrupt_image."""
+    payload = b"\x89PNG\r\n\x1a\n" + b"garbage" * 200
+    resp = client.post(
+        "/sessions",
+        files={"file": ("broken.png", payload, "image/png")},
+    )
+    assert resp.status_code == 422
+    detail = resp.json()["detail"]
+    assert detail["code"] == "corrupt_image"
+
+
+def test_multi_page_tiff_rejected(client, multipage_tiff_bytes):
+    """Behavior 6: a 3-page TIFF is rejected with multi_page_tiff_unsupported 415."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("multi.tiff", multipage_tiff_bytes, "image/tiff")},
+    )
+    assert resp.status_code == 415
+    detail = resp.json()["detail"]
+    assert detail["code"] == "multi_page_tiff_unsupported"
+    assert "多頁 TIFF" in detail["message"]
+
+
+def test_ingest_status_dicts_in_sync():
+    """Behavior 8: main._INGEST_STATUS and api.sessions._CODE_STATUS must have identical contents."""
+    from app.api.sessions import _CODE_STATUS as api_dict
+    from app.main import _INGEST_STATUS as main_dict
+
+    assert set(main_dict.keys()) == set(api_dict.keys())
+    for k in main_dict:
+        assert main_dict[k] == api_dict[k]
+    # And every Phase-4 new code must exist with the right status
+    for k, expected in (
+        ("unsupported_image_format", 415),
+        ("multi_page_tiff_unsupported", 415),
+        ("corrupt_image", 422),
+    ):
+        assert main_dict[k] == expected
+        assert api_dict[k] == expected
+
+
+def test_pipeline_resets_work_from_pristine_not_originals(valid_pdf_bytes, client):
+    """Reset source must be pristine/, not originals/ (T-04-01-02 Step 5).
+
+    Upload a PDF, then delete originals/source.pdf manually after ingest. A subsequent
+    /process call must still succeed because the pipeline reads pristine/ — never
+    originals/ — for the reset. Without this change pipeline would 5xx on a missing
+    original even though work was viable.
+    """
+    from app import storage
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    # Make originals/ inaccessible by removing the file (chmod 0o444 → must remove
+    # write bit before unlink on Windows; on POSIX unlink works regardless of file mode
+    # as long as the directory is writable).
+    import os
+    import stat
+    orig = storage.original_path(sid)
+    os.chmod(orig, stat.S_IWRITE | stat.S_IREAD)
+    orig.unlink()
+    assert not orig.exists()
+
+    # A /process call should still succeed because pipeline resets from pristine/.
+    job = {"dpi": 200, "regions": [{"page": 0, "px_rect": [50.0, 50.0, 200.0, 150.0]}]}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
