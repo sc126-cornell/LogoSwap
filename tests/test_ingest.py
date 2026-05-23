@@ -99,6 +99,31 @@ def test_ingest_too_many_pages_rejected_with_limit_in_message(over_page_pdf_byte
     assert "30" in exc.value.message
 
 
+def test_ingest_image_over_pixel_cap_rejected_with_limit_in_message(monkeypatch, png_bytes):
+    # WR-03 (post-Phase-4 hotfix): Pillow's DecompressionBombError only raises at
+    # MAX_IMAGE_PIXELS * 2 — a heavily-compressed image whose byte-size sits under
+    # MAX_UPLOAD_BYTES can still decompress to ≥100 MP and exceed the wall-clock budget.
+    # ingest._ingest_image enforces config.MAX_INGEST_IMAGE_PIXELS as a HARD cap that
+    # raises IngestError("image_too_large_pixels", ...) BEFORE image_to_a4_pdf re-encodes.
+    # Shrink the limit so the standard 400x300 (= 120,000 pixel) fixture trips the cap.
+    monkeypatch.setattr(config, "MAX_INGEST_IMAGE_PIXELS", 100_000)
+    with pytest.raises(IngestError) as exc:
+        ingest.ingest_upload("huge.png", png_bytes)
+    assert exc.value.code == "image_too_large_pixels"
+    # The user-facing message surfaces the limit (Traditional-Chinese SPEC copy uses 像素).
+    assert "100,000" in exc.value.message
+    assert "像素" in exc.value.message
+
+
+def test_ingest_image_under_pixel_cap_accepted(monkeypatch, png_bytes):
+    # Counterpart to the over-cap test: when the pixel count is at-or-below the cap the
+    # image must still be accepted (proves the cap is a strict-greater-than check, not >=).
+    # 400x300 = 120,000; set the cap to 120,000 and the image passes.
+    monkeypatch.setattr(config, "MAX_INGEST_IMAGE_PIXELS", 120_000)
+    info = ingest.ingest_upload("ok.png", png_bytes)
+    assert info.page_count == 1
+
+
 # --- Phase 4 Task 04-01-01: pdf_engine.image_to_a4_pdf + storage pristine ------------
 
 
