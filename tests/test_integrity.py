@@ -88,13 +88,25 @@ def test_verify_treats_missing_meta_as_corrupted():
 def test_integrity_module_does_not_import_fitz():
     """AGPL seam guard: integrity.py must use stdlib only — no fitz import.
 
-    Statement-level check: read the module source and assert no `import fitz` /
-    `from fitz` line exists. Also assert that after importing the module, 'fitz' is
-    not in sys.modules attributable to it (transitive import via storage doesn't apply
-    because storage itself is fitz-free).
+    Statement-level (AST) check mirroring tests/test_redact.py::
+    test_fitz_import_confined_to_engine_seam — substring grep would false-positive on
+    docstring references like ``no ``import fitz`` ``, so we walk the AST and look at
+    actual Import / ImportFrom nodes only. This is the canonical AGPL-seam pattern in
+    this codebase.
     """
+    import ast
     import inspect
 
     src = inspect.getsource(integrity)
-    assert "import fitz" not in src, "integrity.py must not import fitz (AGPL seam)"
-    assert "from fitz" not in src, "integrity.py must not import from fitz (AGPL seam)"
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                assert alias.name != "fitz" and not alias.name.startswith("fitz."), (
+                    f"integrity.py must not import fitz (AGPL seam); got {alias.name}"
+                )
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            assert module != "fitz" and not module.startswith("fitz."), (
+                f"integrity.py must not import from fitz (AGPL seam); got {module}"
+            )
