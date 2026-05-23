@@ -326,7 +326,11 @@ def place_logo(
         xref=xref,
         keep_proportion=True,   # contain + center (LOGO-02) — verified
         overlay=True,           # paint ON TOP of the cleaned content — verified default
-        rotate=page.rotation % 360,  # keep the logo upright in the displayed (rotated) page
+        # `page.rotation` is already normalized by PyMuPDF to {0, 90, 180, 270}, so a `% 360`
+        # is a no-op. Explicit `int()` matches the seam convention (see `set_page_rotation`,
+        # `page_intrinsic_rotation`) so a future PyMuPDF release returning a float / numpy
+        # scalar cannot silently hand `insert_image` an unexpected numeric type.
+        rotate=int(page.rotation),  # keep the logo upright in the displayed (rotated) page
     )
 
 
