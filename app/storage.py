@@ -362,6 +362,14 @@ def session_age_seconds(session_id: str) -> float | None:
     deliberate: ``outputs/`` may be freshly produced from a /process run while
     ``originals/`` was written an hour ago — protecting the most-recent artifact prevents
     the janitor from deleting a session whose result was just downloaded.
+
+    WR-03 — mtime semantics: this uses each KIND DIR's ``stat().st_mtime``, not the inner
+    files'. On POSIX/NTFS the dir mtime updates on file create / unlink / rename but NOT
+    on overwrite-in-place. The pipeline lands the result via ``tempfile``-then-``replace``
+    (see ``app/services/pipeline.py``'s atomic-replace), which IS a rename → the outputs
+    dir mtime bumps on every /process run as required. If a future refactor switches to
+    ``open("rb+", ...)``-style overwrite-in-place, this helper would silently stop noticing
+    freshly produced results — track that constraint here so the dependency is explicit.
     """
     mtimes: list[float] = []
     for kind in _KINDS:
