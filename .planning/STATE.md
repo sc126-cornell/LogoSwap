@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
+status: completed
 stopped_at: Phase 4 complete (raster dispatch + image-only PDF + dual-layer OCR e2e closed)
-last_updated: "2026-05-23T08:53:20.000Z"
-last_activity: 2026-05-23 -- Phase 04 plan 04-02 complete (Phase 4 fully landed)
+last_updated: "2026-05-23T09:05:48.313Z"
+last_activity: 2026-05-23 -- Phase 04 marked complete
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 9
   completed_plans: 9
-  percent: 100
+  percent: 80
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-23)
 
 ## Current Position
 
-Phase: 04 (raster-image-support) — COMPLETE
+Phase: 04 — COMPLETE
 Plan: 2 of 2 complete (04-01 + 04-02 both shipped)
-Status: Phase 4 closed; ready for Phase 5 planning (deployment / hardening)
-Last activity: 2026-05-23 -- Phase 04 plan 04-02 complete (Phase 4 fully landed)
+Status: Phase 04 complete
+Last activity: 2026-05-23 -- Phase 04 marked complete
 
 Progress: [██████████] 100% (Phase 1–4 all complete, Phase 5 not yet planned)
 
