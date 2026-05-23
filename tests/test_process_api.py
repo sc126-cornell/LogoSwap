@@ -763,6 +763,51 @@ def test_corrupted_session_blocked_from_process(client, valid_pdf_bytes):
     assert proc.json()["detail"]["code"] == "session_corrupted"
 
 
+def test_corrupted_session_blocked_from_get_result_download(client, valid_pdf_bytes):
+    """CR-02: GET /result must short-circuit to 410 session_corrupted when .corrupted is set.
+
+    Reproduces the contract gap: a process run completes (output PDF on disk), THEN a later
+    tamper-detect writes the .corrupted sentinel; without the gate GET /result would
+    happily stream the stale pre-tamper output. The gate runs after _require_session so a
+    crafted sid still returns 404 (no oracle).
+    """
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    px_rect, dpi = _region_px_for(client, sid, 0)
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": dpi, "regions": [{"page": 0, "px_rect": px_rect}]},
+    )
+    assert proc.status_code == 200
+    # Sanity: download works pre-corruption.
+    pre = client.get(f"/sessions/{sid}/result")
+    assert pre.status_code == 200
+
+    storage.mark_session_corrupted(sid)
+
+    post = client.get(f"/sessions/{sid}/result")
+    assert post.status_code == 410, post.json()
+    assert post.json()["detail"]["code"] == "session_corrupted"
+
+
+def test_corrupted_session_blocked_from_result_page_image(client, valid_pdf_bytes):
+    """CR-02: GET /result/pages/{n}/image must short-circuit to 410 session_corrupted.
+
+    Renders the redacted work copy; without the gate it would still render the pre-tamper
+    state (mark_session_corrupted is a touch, not a clear). 410 keeps the fail-closed
+    semantic consistent across all three D-C3 surfaces (/process, /result, /result/pages).
+    """
+    sid = _upload(client, valid_pdf_bytes).json()["session_id"]
+    # Sanity: pre-corruption render works.
+    pre = client.get(f"/sessions/{sid}/result/pages/0/image")
+    assert pre.status_code == 200
+
+    storage.mark_session_corrupted(sid)
+
+    post = client.get(f"/sessions/{sid}/result/pages/0/image")
+    assert post.status_code == 410, post.json()
+    assert post.json()["detail"]["code"] == "session_corrupted"
+
+
 def test_legacy_session_without_sha256_treated_as_corrupted(client, valid_pdf_bytes):
     """Pitfall 4: ingest then strip original_sha256 from meta.json → /process rejects.
 

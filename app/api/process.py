@@ -50,6 +50,23 @@ def _require_session(session_id: str) -> None:
         )
 
 
+def _reject_if_corrupted(session_id: str) -> None:
+    # D-C3 contract (CR-02): once a session is marked .corrupted, ALL subsequent
+    # /process, GET /result, and GET /result/pages/{n}/image MUST short-circuit to 410.
+    # The earlier process run's pre-tamper output PDF + work copy are still on disk
+    # (mark_session_corrupted is a touch, not a clear); without this gate GET /result
+    # would happily stream the stale output that no longer matches the (tampered)
+    # source, violating the fail-closed contract.
+    if storage.is_session_corrupted(session_id):
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "session_corrupted",
+                "message": "此工作階段已標記為異常,請重新上傳檔案。",
+            },
+        )
+
+
 @router.post("/sessions/{session_id}/process")
 async def process_session(session_id: str, job: JobSpec) -> dict:
     """Redact the work copy per ``job`` and export the result PDF.
@@ -72,14 +89,7 @@ async def process_session(session_id: str, job: JobSpec) -> dict:
     # gate runs BEFORE the timeout wrapper so a poisoned sid cannot tie up a worker
     # waiting for verify (which would itself fail fast, but the short-circuit gives a
     # cleaner 410 with the right code).
-    if storage.is_session_corrupted(session_id):
-        raise HTTPException(
-            status_code=410,
-            detail={
-                "code": "session_corrupted",
-                "message": "此工作階段已標記為異常,請重新上傳檔案。",
-            },
-        )
+    _reject_if_corrupted(session_id)
 
     # D-D3 timeout: wrap process_job in asyncio.wait_for + asyncio.to_thread. Pipeline is
     # CPU-bound (PDF parse + redaction rewrite + save); to_thread runs it off the event
@@ -139,9 +149,12 @@ async def get_result_page_image(
 
     ``rotate`` (0/90/180/270) is applied transiently — symmetric with the 原圖 endpoint — so
     the work copy stays at its intrinsic rotation on disk while the after-image shows the same
-    rotated orientation the user framed on. A bad value -> 400.
+    rotated orientation the user framed on. A bad value -> 400. A session marked .corrupted
+    after a tamper-detect short-circuits to 410 session_corrupted (D-C3 / CR-02): without this
+    the endpoint would render the pre-tamper work copy.
     """
     _require_session(session_id)
+    _reject_if_corrupted(session_id)
     work = storage.work_path(session_id)
 
     try:
@@ -177,8 +190,11 @@ async def download_result(session_id: str) -> FileResponse:
     404 ``result_not_ready`` if no process run has produced an output yet. The on-disk path
     is the FIXED session-scoped output file (threat T-02-06: the CJK display name is used
     only in the Content-Disposition header via RFC-5987 ``filename*=``, never as a path).
+    A session marked .corrupted (D-C3 / CR-02) short-circuits to 410 session_corrupted so
+    we never stream the pre-tamper output PDF.
     """
     _require_session(session_id)
+    _reject_if_corrupted(session_id)
 
     out_name = pipeline.output_filename(session_id)
     out_file = storage.outputs_dir(session_id) / out_name
