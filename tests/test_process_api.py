@@ -696,6 +696,243 @@ def test_dual_layer_ocr_text_leak_closed_end_to_end(client, dual_layer_ocr_pdf_b
         pdf_engine.close(doc)
 
 
+# --------------------------------------------------------------------------------------
+# Phase 5 Plan 05-02 Task 3: /process timeout + corrupted gate + janitor triggers
+# --------------------------------------------------------------------------------------
+
+
+def test_meta_original_sha256_written_at_ingest(client, valid_pdf_bytes):
+    """D-C1: POST /sessions → meta.json contains 64-char hex original_sha256."""
+    import hashlib as _hashlib
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    meta = storage.read_session_meta(sid)
+    assert meta is not None
+    assert "original_sha256" in meta
+    assert len(meta["original_sha256"]) == 64
+    # And matches the uploaded bytes (this is the property the verify check enforces)
+    assert meta["original_sha256"] == _hashlib.sha256(valid_pdf_bytes).hexdigest()
+
+
+def test_original_tampered_returns_503(client, valid_pdf_bytes):
+    """End-to-end: ingest → tamper originals → POST /process → 503 original_tampered."""
+    import os as _os
+    import stat as _stat
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+
+    orig = storage.original_path(sid)
+    _os.chmod(orig, _stat.S_IWRITE | _stat.S_IREAD)
+    orig.write_bytes(b"%PDF-1.7\nTAMPERED\n%%EOF")
+    _os.chmod(orig, _stat.S_IRUSR | _stat.S_IRGRP | _stat.S_IROTH)
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code == 503, proc.json()
+    detail = proc.json()["detail"]
+    assert detail["code"] == "original_tampered"
+    assert "原始檔" in detail["message"] or "重新上傳" in detail["message"]
+
+
+def test_corrupted_session_blocked_from_process(client, valid_pdf_bytes):
+    """A session marked corrupted before /process short-circuits to 410 session_corrupted."""
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+    storage.mark_session_corrupted(sid)
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code == 410, proc.json()
+    assert proc.json()["detail"]["code"] == "session_corrupted"
+
+
+def test_legacy_session_without_sha256_treated_as_corrupted(client, valid_pdf_bytes):
+    """Pitfall 4: ingest then strip original_sha256 from meta.json → /process rejects.
+
+    Either "session_corrupted" (legacy fallback path) or "original_tampered" (verify
+    mismatch on a missing field) is acceptable — both semantics are "禁止使用,請重新上傳".
+    """
+    import json as _json
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+    # Strip the field — simulate a Phase 1–4 session meeting Phase 5 verify.
+    meta_path = storage.meta_path(sid)
+    meta = _json.loads(meta_path.read_text())
+    meta.pop("original_sha256", None)
+    meta_path.write_text(_json.dumps(meta))
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code in {410, 503}, proc.json()
+    assert proc.json()["detail"]["code"] in {"session_corrupted", "original_tampered"}
+
+
+def test_process_timeout_returns_504(client, valid_pdf_bytes, monkeypatch):
+    """D-D3: a /process exceeding PROCESS_TIMEOUT_SECONDS returns 504 processing_timeout.
+
+    Monkey-patch the config constant + the pipeline function so we don't actually wait
+    60 seconds. The route handler wraps process_job in asyncio.wait_for(asyncio.to_thread
+    (process_job, ...), timeout=config.PROCESS_TIMEOUT_SECONDS).
+    """
+    import time as _time
+
+    from app import config as _config
+    from app.services import pipeline as _pipeline
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+
+    # Shrink the timeout and make process_job sleep past it.
+    monkeypatch.setattr(_config, "PROCESS_TIMEOUT_SECONDS", 0.2)
+
+    def slow_process_job(session_id, job_spec):
+        _time.sleep(2.0)
+        return {"output_filename": "x.pdf", "page_count": 1, "regions": [], "logo_skipped": False}
+
+    monkeypatch.setattr(_pipeline, "process_job", slow_process_job)
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code == 504, proc.json()
+    assert proc.json()["detail"]["code"] == "processing_timeout"
+
+
+def test_process_corrupted_check_runs_before_timeout(client, valid_pdf_bytes, monkeypatch):
+    """The corrupted short-circuit must fire BEFORE the timeout wrapper — proving 410 is
+    immediate even if process_job would have run forever.
+    """
+    import time as _time
+
+    from app import config as _config
+    from app.services import pipeline as _pipeline
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+    storage.mark_session_corrupted(sid)
+
+    monkeypatch.setattr(_config, "PROCESS_TIMEOUT_SECONDS", 60)
+
+    def forever_process_job(session_id, job_spec):
+        _time.sleep(10)
+        return {}
+
+    monkeypatch.setattr(_pipeline, "process_job", forever_process_job)
+
+    t0 = _time.time()
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    elapsed = _time.time() - t0
+    assert proc.status_code == 410
+    assert proc.json()["detail"]["code"] == "session_corrupted"
+    assert elapsed < 1.0, f"corrupted short-circuit took {elapsed}s (must be ≪ timeout)"
+
+
+def test_sessions_post_calls_janitor_at_end(client, valid_pdf_bytes, monkeypatch):
+    """D-B1 trigger (b): /sessions POST end calls janitor.sweep_expired_sessions()."""
+    from app.api import sessions as sessions_api
+
+    calls = {"n": 0}
+
+    def counting_sweep(now=None):
+        calls["n"] += 1
+        return 0
+
+    monkeypatch.setattr(sessions_api.janitor, "sweep_expired_sessions", counting_sweep)
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    assert resp.status_code == 201
+    assert calls["n"] >= 1
+
+
+def test_process_post_calls_janitor_at_end(client, valid_pdf_bytes, monkeypatch):
+    """D-B1 trigger (c): /process end calls janitor.sweep_expired_sessions() in finally."""
+    from app.api import process as process_api
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+
+    calls = {"n": 0}
+
+    def counting_sweep(now=None):
+        calls["n"] += 1
+        return 0
+
+    monkeypatch.setattr(process_api.janitor, "sweep_expired_sessions", counting_sweep)
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code == 200
+    assert calls["n"] >= 1
+
+
+def test_janitor_failure_does_not_taint_process_request(client, valid_pdf_bytes, monkeypatch):
+    """janitor.sweep raise → /process still returns 200 (try/except swallows in finally)."""
+    from app.api import process as process_api
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("ok.pdf", valid_pdf_bytes, "application/pdf")},
+    )
+    sid = resp.json()["session_id"]
+
+    def raising_sweep(now=None):
+        raise OSError("simulated janitor failure")
+
+    monkeypatch.setattr(process_api.janitor, "sweep_expired_sessions", raising_sweep)
+
+    proc = client.post(
+        f"/sessions/{sid}/process",
+        json={"dpi": 200, "regions": []},
+    )
+    assert proc.status_code == 200, proc.json()
+
+
+# --------------------------------------------------------------------------------------
+# Phase 4 Task 04-02-03 (carried) — image_upload_through_to_raster_dispatch
+# --------------------------------------------------------------------------------------
+
+
 def test_image_upload_through_to_raster_dispatch(client, png_bytes):
     """Vertical slice 04-01 → 04-02 end-to-end: PNG upload normalized to A4 PDF in
     ingest, framed region falls inside the image XObject → raster dispatch runs →
