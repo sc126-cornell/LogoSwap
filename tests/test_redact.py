@@ -188,6 +188,86 @@ def test_remove_region_boundary_crossing_line_survives_job_succeeds():
         pdf_engine.close(doc)
 
 
+def test_get_drawings_fully_inside_skips_zero_area_point_cad_marker():
+    """Hotfix #04-03: a degenerate POINT drawing (W=H=0) must be SKIPPED by the residual check.
+
+    CAD exports (AutoCAD, Pillow-ELECTRA, etc.) routinely emit "snap-target" / "moveto-only"
+    drawings whose bbox collapses to a single point — they render to nothing visible but show
+    up in ``page.get_drawings()``. ``LINE_ART_REMOVE_IF_COVERED`` does NOT remove them
+    (PyMuPDF treats zero-area items as non-coverable), so they survive apply_redactions and
+    would falsely trip the residual assertion (422 residual_content). Real-world repro:
+    PMC.pdf supplier CAD drawing surfaced in UAT Scenario 6.
+
+    Direct unit test on the wrapper because PyMuPDF's high-level draw_* APIs refuse to
+    produce zero-radius shapes; CAD tools emit them via raw content streams.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Real drawing inside the query rect to prove the wrapper still finds non-degenerate
+        # survivors when the degenerate one is filtered.
+        page.draw_rect(fitz.Rect(60, 50, 70, 60), color=(0, 0, 0), fill=(0, 0, 0))
+
+        # Monkey-patch get_drawings to add a degenerate point at (95, 55) — matches the exact
+        # shape of the residual artefact observed on PMC.pdf:
+        #   rect=(65.34, 744.84, 65.34, 744.84), type='f', fill=(0,0,0), items=1
+        orig = page.get_drawings
+        def _with_marker():
+            drawings = list(orig())
+            drawings.append({
+                "rect": fitz.Rect(95.0, 55.0, 95.0, 55.0),  # W=0, H=0 — degenerate point
+                "type": "f",
+                "fill": (0.0, 0.0, 0.0),
+                "color": None,
+                "items": [("m", fitz.Point(95.0, 55.0))],
+            })
+            return drawings
+        page.get_drawings = _with_marker
+
+        # Query rect covers both the real rect drawing AND the degenerate point.
+        query = (50.0, 40.0, 100.0, 70.0)
+        hits = pdf_engine.get_drawings_fully_inside(page, query)
+        # Real rect drawing must STILL be reported (sanity).
+        assert any(
+            (d["rect"].width > 0.5 or d["rect"].height > 0.5) for d in hits
+        ), f"non-degenerate drawing must still be found; got {hits}"
+        # The degenerate point must NOT appear in residuals.
+        assert not any(
+            d["rect"].width < 0.01 and d["rect"].height < 0.01 for d in hits
+        ), f"zero-area point leaked into residual: {hits}"
+    finally:
+        doc.close()
+
+
+def test_get_drawings_fully_inside_still_catches_flat_bbox_stroke():
+    """Hotfix #04-03 counter-check: a flat-bbox STROKE (W>0, H=0 — a real horizontal line) that
+    lies fully inside the query rect MUST still be reported by ``get_drawings_fully_inside``.
+
+    The hotfix filters only POINT-degenerate drawings (BOTH dims near zero). A flat stroke is
+    a real visible line — losing it from the residual assertion would silently let a
+    fully-covered line slip past as if removed.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Horizontal line entirely inside the query rect — bbox: W>0, H=0 (flat-bbox stroke).
+        page.draw_line(fitz.Point(60, 50), fitz.Point(80, 50), color=(0, 0, 0), width=0.5)
+        query = (50.0, 40.0, 90.0, 60.0)
+        flat_hits = pdf_engine.get_drawings_fully_inside(page, query)
+        assert len(flat_hits) >= 1, (
+            f"flat-bbox stroke (W>0, H=0) must still be counted as a residual; got {flat_hits}"
+        )
+        # And the flat stroke itself must be in the hits (sanity).
+        flat = [d for d in flat_hits if d["rect"].width > 0.5 and d["rect"].height < 0.5]
+        assert flat, f"the flat-bbox stroke specifically must be in hits; got {flat_hits}"
+    finally:
+        doc.close()
+
+
 def test_apply_redactions_refuses_text_none():
     # Defence-in-depth: the seam refuses the forbidden PDF_REDACT_TEXT_NONE mode.
     import fitz  # test harness may import fitz directly

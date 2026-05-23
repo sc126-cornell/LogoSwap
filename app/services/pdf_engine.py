@@ -468,12 +468,24 @@ def get_drawings_fully_inside(
     redaction rect, and intentionally leaves a path that only crosses the boundary. So a path
     that is still fully inside the user rect AFTER apply_redactions is a genuine survivor (a
     real failure), whereas a boundary-crossing line is an expected, legitimate survivor and
-    must NOT trip the assertion. The check is degenerate-aware so a flat-bbox stroke fully
-    within the rect is still counted.
+    must NOT trip the assertion. The check is degenerate-aware for flat-bbox strokes — a
+    horizontal line has bbox height=0 and a vertical line has bbox width=0, and we still
+    count those (a real survivor with visible ink).
+
+    EXCLUDED: **zero-area POINTS** (both width AND height ≤ ε). CAD exports (AutoCAD, Pillow
+    -ELECTRA, etc.) routinely emit degenerate "snap-target" / "moveto-only" / "marker" drawings
+    whose bbox is a single point — they render to nothing visible but are still enumerated by
+    ``page.get_drawings()``. ``LINE_ART_REMOVE_IF_COVERED`` does NOT remove them (PyMuPDF
+    treats zero-area items as non-coverable), so they survive apply_redactions and would
+    falsely trip the residual assertion. They carry no recoverable supplier content (zero
+    pixels rendered), so filtering them out is safe. #hotfix-04-03 — surfaced by PMC.pdf UAT.
     """
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
     query = (q.x0, q.y0, q.x1, q.y1)
+    # Sub-point threshold: 0.01 pt ≈ 0.0035 mm — far below any humanly-visible feature, but
+    # large enough to absorb floating-point noise from PDF coordinate parsing.
+    _DEGENERATE_EPS = 0.01
     hits = []
     for drawing in page.get_drawings():
         d_rect = drawing.get("rect")
@@ -481,6 +493,10 @@ def get_drawings_fully_inside(
             continue
         dr = fitz.Rect(d_rect)
         dr.normalize()
+        # Skip degenerate POINTS (both dims near zero). Keep flat-bbox STROKES (only one dim
+        # near zero) — those are real lines and a survivor in the user rect is a real failure.
+        if dr.width < _DEGENERATE_EPS and dr.height < _DEGENERATE_EPS:
+            continue
         if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             hits.append(drawing)
     return hits
