@@ -13,7 +13,7 @@
 - [x] **Phase 1: 輸入與預覽骨幹** - 上傳向量 PDF、伺服器端渲染、瀏覽器多頁預覽,原始檔保留 (completed 2026-05-22)
 - [x] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載
  (completed 2026-05-22)
-- [x] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比) (completed 2026-05-23)
+- [x] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比) (completed 2026-05-23)
 - [ ] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白
 - [ ] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理
 
@@ -90,8 +90,11 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 04-01: 輸入分類(向量/點陣/掃描)、獨立影像檔正規化為單頁 PDF、圖片型偵測
-- [ ] 04-02: 點陣圖移除分支(填白)、與既有移除/置入/匯出流程整合
+**Wave 1**
+- [ ] 04-01-PLAN.md — 影像 ingest 垂直切片:PNG/JPG/TIFF magic-header dispatch + Pillow 驗證鏈(verify / n_frames / CMYK→RGB / load)+ pdf_engine.image_to_a4_pdf(fit 置中 A4 portrait,JPEG 直通)+ pristine_pdf 第三目錄(解決 reset-from-pristine invariant)+ dropzone accept 擴張 + 三個新錯誤碼繁中文案(UPLOAD-03)
+
+**Wave 2** *(blocked on 04-01)*
+- [ ] 04-02-PLAN.md — Raster 移除分支 + per-region dispatch:pdf_engine.IMAGE_PIXELS 常數 + rect_overlaps_image helper + redact.remove_region_vector / _raster 拆分(raster 分支 fill=None + 只 text 殘留斷言)+ pipeline.process_job 1 行 dispatch + 雙層 OCR text leak 封堵 + image-only PDF 端到端 + logo 置入(UPLOAD-02 + REMOVE-02)
 
 ### Phase 5: 部署與穩固化(Ubuntu)
 **Goal**: 打包為可在 Ubuntu 伺服器執行的網頁服務(Docker + Nginx),處理大型與旋轉頁面、暫存檔清理,並確保原始檔不被竄改。
