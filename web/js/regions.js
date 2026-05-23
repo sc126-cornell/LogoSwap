@@ -534,6 +534,19 @@ function hideNotice() {
 }
 
 // ---- View swap (internal) ----------------------------------------------------------
+// WR-04: a failed RESULT-image fetch (server crashed mid-redaction, caching layer 404, network
+// blip) must surface a region-panel notice with retry — NOT the global page-render error state
+// (which hides every other state and leaves the user stranded with no path back to the
+// original). The handler below is passed into showResultImage's optional onError so the result
+// path has its own error surface, decoupled from renderPage's pageImage.onerror. Retry replays
+// the current view mode so the user can attempt the result fetch again without re-applying.
+function onResultImageError() {
+  showNotice(COPY.resultRenderFailed, true, () => {
+    // Retry: only meaningful while the result is still fresh and the view mode is still result.
+    if (resultFresh && viewMode === "result") setViewMode("result");
+  });
+}
+
 // The before/after toggle BUTTONS were removed (UAT) — but viewMode still drives which image is
 // shown: apply -> "result" (the after-image), any edit/clear -> back to "original". No manual
 // toggle; the framing lock (onPointerDown) keeps a fresh result safe.
@@ -549,9 +562,11 @@ function setViewMode(mode) {
   if (showingResult) {
     // Swap the page image to the result render (via the viewer helper + api URL).
     // Pass the current page's rotation so the after-image matches the rotated orientation the
-    // user framed on (symmetric with the 原圖 render).
+    // user framed on (symmetric with the 原圖 render). WR-04: an onError keeps a failed result
+    // fetch off the global page-render error state.
     showResultImage(
-      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
+      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation()),
+      onResultImageError
     );
     // Hide the overlay in result view: framing is locked after apply (see onPointerDown), so the
     // after-image stays clean with no rects and no draw surface.
@@ -686,8 +701,11 @@ function onPageChanged(detail) {
   if (dragStart) cleanupDrag({});
   // Paging while viewing the result: re-fetch the correct page's after-image; else show original.
   if (viewMode === "result" && resultFresh) {
+    // WR-04: same onError as setViewMode — a failed per-page after-image fetch must surface a
+    // region-panel notice, not the global page-render error state.
     showResultImage(
-      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation())
+      api.resultImageURL(sessionId, currentPage, resultVersion, getCurrentRotation()),
+      onResultImageError
     );
     if (overlay) overlay.hidden = true;
   } else if (viewMode === "result" && !resultFresh) {

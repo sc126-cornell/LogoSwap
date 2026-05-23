@@ -392,9 +392,23 @@ export function getViewerState() {
   };
 }
 
-/** Restore the ORIGINAL page render for the current page (原圖), at its user rotation. */
+/** Restore the ORIGINAL page render for the current page (原圖), at its user rotation.
+ *
+ * WR-04: showResultImage() may have replaced pageImage.onerror with a region-panel notice
+ * handler so a failed RESULT-image fetch doesn't burn the whole stage. When the view swaps
+ * back to the original, the original-image failure mode SHOULD again be the global
+ * page-render error state. We reinstall the page-render onerror here (matched against the
+ * CURRENT renderToken so a stale failure from a superseded render still bails out). Without
+ * this restoration, a subsequent ORIGINAL fetch failure would fire the result-failure handler.
+ */
 export function showOriginalImage() {
   if (state.sessionId === null) return;
+  const myToken = renderToken;
+  pageImage.onerror = () => {
+    if (myToken !== renderToken) return; // stale error from a superseded page render
+    showPageLoader(false);
+    showPageError();
+  };
   pageImage.src = api.pageImageURL(
     state.sessionId,
     state.pageIndex,
@@ -403,9 +417,21 @@ export function showOriginalImage() {
   );
 }
 
-/** Show the 移除結果 (after) render for the current page. `url` is built by api.resultImageURL. */
-export function showResultImage(url) {
+/** Show the 移除結果 (after) render for the current page. `url` is built by api.resultImageURL.
+ *
+ * Optional ``onError`` overrides the <img>'s onerror for this swap, so a failed RESULT-image
+ * fetch surfaces a region-panel notice (regions.js' showNotice/resultRenderFailed) instead of
+ * the global page-render error state (WR-04). Without it the onerror attached by renderPage()
+ * stayed attached across the src swap: a transient result fetch failure (server crashed
+ * mid-redaction, caching 404) burned the whole UI down to the page-render error state and
+ * the user was stranded (no path back to the original view). Every caller SHOULD pass an
+ * onError; we keep it optional only to preserve the historical signature.
+ */
+export function showResultImage(url, onError) {
   if (state.sessionId === null || !url) return;
+  if (typeof onError === "function") {
+    pageImage.onerror = onError;
+  }
   pageImage.src = url;
 }
 
