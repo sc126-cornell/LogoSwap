@@ -468,17 +468,23 @@ def get_drawings_fully_inside(
     redaction rect, and intentionally leaves a path that only crosses the boundary. So a path
     that is still fully inside the user rect AFTER apply_redactions is a genuine survivor (a
     real failure), whereas a boundary-crossing line is an expected, legitimate survivor and
-    must NOT trip the assertion. The check is degenerate-aware for flat-bbox strokes — a
-    horizontal line has bbox height=0 and a vertical line has bbox width=0, and we still
-    count those (a real survivor with visible ink).
+    must NOT trip the assertion.
 
-    EXCLUDED: **zero-area POINTS** (both width AND height ≤ ε). CAD exports (AutoCAD, Pillow
-    -ELECTRA, etc.) routinely emit degenerate "snap-target" / "moveto-only" / "marker" drawings
-    whose bbox is a single point — they render to nothing visible but are still enumerated by
-    ``page.get_drawings()``. ``LINE_ART_REMOVE_IF_COVERED`` does NOT remove them (PyMuPDF
-    treats zero-area items as non-coverable), so they survive apply_redactions and would
-    falsely trip the residual assertion. They carry no recoverable supplier content (zero
-    pixels rendered), so filtering them out is safe. #hotfix-04-03 — surfaced by PMC.pdf UAT.
+    EXCLUDED: **zero-area FILL drawings only** (``type == 'f'`` with width OR height ≤ ε).
+    Two real-world cases surfaced these as false positives:
+
+    - **PMC.pdf (#hotfix-04-03):** snap-target / moveto-only POINT fills (W=H=0).
+    - **DC.pdf (#hotfix-04-04):** CAD glyph stroke fragments rendered as filled paths with
+      W=0 (vertical flat-bbox fills, ~1700 of them in a single page's title block).
+
+    Empirically verified: ``LINE_ART_REMOVE_IF_COVERED`` correctly removes zero-bbox-area
+    STROKES (``type='s'`` from e.g. ``page.draw_line()`` with default pen — bbox H=0 but the
+    stroke pen still renders a visible line, and PyMuPDF removes it). However the same mode
+    does NOT remove zero-area FILLS (``type='f'``) — a fill with no extent paints nothing
+    and PyMuPDF treats it as non-coverable. So a surviving zero-area fill carries no
+    recoverable supplier content (zero pixels), but a surviving stroke could still be a
+    visible line and must remain in the residual check. Filtering is therefore restricted
+    to ``type == 'f'``.
     """
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
@@ -493,9 +499,12 @@ def get_drawings_fully_inside(
             continue
         dr = fitz.Rect(d_rect)
         dr.normalize()
-        # Skip degenerate POINTS (both dims near zero). Keep flat-bbox STROKES (only one dim
-        # near zero) — those are real lines and a survivor in the user rect is a real failure.
-        if dr.width < _DEGENERATE_EPS and dr.height < _DEGENERATE_EPS:
+        # Skip zero-area FILL drawings only (type='f'). Covers PMC.pdf POINT fills and
+        # DC.pdf flat-bbox glyph fills. STROKES (type='s' / 'fs') stay in the check even
+        # when bbox is flat — PyMuPDF removes coverable strokes correctly, so a residual
+        # stroke is a real visible-line failure.
+        is_zero_area = (dr.width < _DEGENERATE_EPS or dr.height < _DEGENERATE_EPS)
+        if is_zero_area and drawing.get("type") == "f":
             continue
         if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             hits.append(drawing)

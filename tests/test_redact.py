@@ -241,29 +241,79 @@ def test_get_drawings_fully_inside_skips_zero_area_point_cad_marker():
         doc.close()
 
 
-def test_get_drawings_fully_inside_still_catches_flat_bbox_stroke():
-    """Hotfix #04-03 counter-check: a flat-bbox STROKE (W>0, H=0 — a real horizontal line) that
-    lies fully inside the query rect MUST still be reported by ``get_drawings_fully_inside``.
+def test_get_drawings_fully_inside_skips_zero_width_flat_fill_cad_glyph():
+    """Hotfix #04-04: a vertical flat-bbox FILL (W=0, H>0) must be SKIPPED — DC.pdf case.
 
-    The hotfix filters only POINT-degenerate drawings (BOTH dims near zero). A flat stroke is
-    a real visible line — losing it from the residual assertion would silently let a
-    fully-covered line slip past as if removed.
+    CAD-rendered PDFs (e.g. AutoCAD exporting Chinese glyphs as filled paths) emit ~1700+
+    drawings per title block where each stroke is a filled path with zero width. PyMuPDF's
+    ``LINE_ART_REMOVE_IF_COVERED`` will not remove them (zero-area items are not coverable),
+    and they render zero pixels (a fill with no area paints nothing). The residual assertion
+    must filter them out, otherwise CAD supplier PDFs fail with 422 residual_content even
+    though every visible glyph IS gone. Real-world repro: DC.pdf, NINGBO DAN-CHIEF NETWORK
+    title block.
     """
     import fitz
 
     doc = fitz.open()
     try:
         page = doc.new_page(width=200, height=300)
-        # Horizontal line entirely inside the query rect — bbox: W>0, H=0 (flat-bbox stroke).
-        page.draw_line(fitz.Point(60, 50), fitz.Point(80, 50), color=(0, 0, 0), width=0.5)
+        # Real drawing — proves the wrapper still detects non-degenerate survivors.
+        page.draw_rect(fitz.Rect(60, 50, 70, 60), color=(0, 0, 0), fill=(0, 0, 0))
+
+        # Inject CAD glyph-stroke shapes via monkey-patch: vertical W=0 fill + horizontal
+        # H=0 fill, both inside the query rect.
+        orig = page.get_drawings
+        def _with_zero_area_fills():
+            drawings = list(orig())
+            drawings.append({
+                "rect": fitz.Rect(65.0, 52.0, 65.0, 58.0),  # W=0, H=6 (vertical)
+                "type": "f", "fill": (0.0, 0.0, 0.0), "color": None,
+                "items": [("m", fitz.Point(65.0, 52.0))],
+            })
+            drawings.append({
+                "rect": fitz.Rect(62.0, 55.0, 68.0, 55.0),  # W=6, H=0 (horizontal)
+                "type": "f", "fill": (0.0, 0.0, 0.0), "color": None,
+                "items": [("m", fitz.Point(62.0, 55.0))],
+            })
+            return drawings
+        page.get_drawings = _with_zero_area_fills
+
+        query = (50.0, 40.0, 100.0, 70.0)
+        hits = pdf_engine.get_drawings_fully_inside(page, query)
+        # Real rect drawing must STILL be found.
+        assert any(
+            (d["rect"].width > 0.5 and d["rect"].height > 0.5) for d in hits
+        ), f"non-degenerate drawing must still be found; got {hits}"
+        # Neither zero-area glyph stroke must appear.
+        assert not any(
+            d["rect"].width < 0.01 or d["rect"].height < 0.01 for d in hits
+        ), f"zero-area glyph strokes leaked into residual: {hits}"
+    finally:
+        doc.close()
+
+
+def test_get_drawings_fully_inside_keeps_zero_bbox_stroke_visible_line():
+    """Hotfix #04-04 counter-check: a STROKE (``type='s'``) with bbox H=0 is a real visible
+    line (pen ink renders even when bbox collapses) and MUST still be reported as a residual.
+
+    ``page.draw_line()`` with default pen produces a stroke whose bbox is collapsed in one
+    dim, but the stroke is visibly rendered AND ``LINE_ART_REMOVE_IF_COVERED`` correctly
+    removes it. So a surviving zero-bbox stroke is a true failure — we must NOT filter it
+    along with the zero-area fills the hotfix is targeting.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Default-width draw_line — produces type='s' with bbox H=0.
+        page.draw_line(fitz.Point(60, 50), fitz.Point(80, 50))
         query = (50.0, 40.0, 90.0, 60.0)
-        flat_hits = pdf_engine.get_drawings_fully_inside(page, query)
-        assert len(flat_hits) >= 1, (
-            f"flat-bbox stroke (W>0, H=0) must still be counted as a residual; got {flat_hits}"
+        hits = pdf_engine.get_drawings_fully_inside(page, query)
+        stroke_hits = [d for d in hits if d.get("type") == "s"]
+        assert stroke_hits, (
+            f"zero-bbox STROKE (type='s') must still be counted as a residual; got {hits}"
         )
-        # And the flat stroke itself must be in the hits (sanity).
-        flat = [d for d in flat_hits if d["rect"].width > 0.5 and d["rect"].height < 0.5]
-        assert flat, f"the flat-bbox stroke specifically must be in hits; got {flat_hits}"
     finally:
         doc.close()
 
