@@ -14,3 +14,10 @@ CLAUDE.md
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Editor atomic-write leftovers (e.g. `foo.py.tmp.PID.HASH`).
+# Some editors do a "write to .tmp.* then rename" save; if the rename is
+# interrupted (or the user opens two editors on the same file), the
+# leftover survives. These files have also been seen to confuse the AGPL
+# seam grep (a stale `pdf_engine.py.tmp.*` keeps an extra `import fitz`).
+*.tmp.*
