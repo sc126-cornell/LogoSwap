@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-05-24T12:30:00.000Z",
+  "phase": "5",
+  "phase_name": "ubuntu",
+  "phase_dir": ".planning/phases/05-ubuntu",
+  "plan": null,
+  "task": null,
+  "total_tasks": null,
+  "status": "milestone_close_pending",
+  "milestone": "v1.0",
+  "milestone_status": "DELIVERED — LIVE at https://logoswap.scottchen0622.com",
+  "completed_tasks": [
+    {"id": "Phase 1", "name": "輸入與預覽骨幹", "status": "done"},
+    {"id": "Phase 2", "name": "框選與真正移除(向量) + 下載", "status": "done"},
+    {"id": "Phase 3", "name": "商標置入", "status": "done"},
+    {"id": "Phase 4", "name": "點陣圖與圖片型檔案支援", "status": "done"},
+    {"id": "Phase 5", "name": "部署與穩固化(Ubuntu)", "status": "done", "live": "https://logoswap.scottchen0622.com"}
+  ],
+  "remaining_tasks": [
+    {"id": "milestone-close", "name": "/gsd-complete-milestone v1.0 歸檔 + git tag", "status": "not_started"},
+    {"id": "uat-deferred-1", "name": "50MB CAD PDF 觸發 504 timeout 實機驗證", "status": "deferred"},
+    {"id": "uat-deferred-2", "name": "本機 Python 套裝 `python -m app` 跨平台跑", "status": "deferred"},
+    {"id": "uat-deferred-3", "name": "Ubuntu 公司入口網站 nginx 嵌入(長期)", "status": "deferred"}
+  ],
+  "blockers": [],
+  "human_actions_pending": [],
+  "decisions": [
+    {"decision": "Repo 轉 public (sc126-cornell/LogoSwap)", "rationale": "AGPL §13 公開部署的合規前提", "phase": "5"},
+    {"decision": "GitHub repo 名稱 logoswap → LogoSwap (PascalCase)", "rationale": "與系統名稱對齊", "phase": "5"},
+    {"decision": "Cloudflare DNS 用 灰色雲 (DNS-only) 而非 橘色雲 (Proxied)", "rationale": "讓 Zeabur 自動發 Let's Encrypt;CDN/DDoS 對內部工具過度設計", "phase": "5"},
+    {"decision": "Dockerfile 加 ENV PATH=/install/bin:$PATH", "rationale": "pip install --target /install 把 uvicorn 放 /install/bin,不在 slim 預設 PATH 內 — Zeabur 第一次 build 抓到的", "phase": "5"},
+    {"decision": "移除 1h TTL sticky bar", "rationale": "UAT 反饋:實際處理常見 1 分鐘內,提示過度強調反成噪音", "phase": "5"},
+    {"decision": "Button rename 「更換檔案」→「開啟新檔」", "rationale": "UAT 直觀度反饋", "phase": "5"}
+  ],
+  "uncommitted_files": [],
+  "next_action": "執行 /gsd-complete-milestone — 跑 milestone audit + 寫 v1.0 release notes + 標 git tag v1.0 + 準備 v2 roadmap(或進 maintenance mode)",
+  "context_notes": "milestone v1.0 完整交付。Phase 1–5 全綠,11/11 plans 完成,291 tests pass + 3 platform-skipped 零回歸,STRIDE 27/27 closed。Production LIVE 於 https://logoswap.scottchen0622.com(Zeabur on user-owned Tencent Tokyo K3s + Cloudflare DNS + Let's Encrypt TLS + AGPL §13 三件套合規)。Repo public 於 https://github.com/sc126-cornell/LogoSwap。Memory 已更新 deployment_licensing + Dockerfile PATH pitfall。下次 session 自然路徑是 /gsd-complete-milestone 歸檔 + 標 tag,或開啟 v2 規劃(BATCH-01 批次 / INTEG-01 入口網站嵌入 / AUTH-01 登入 / ADV-01..04 進階編輯)。"
+}
