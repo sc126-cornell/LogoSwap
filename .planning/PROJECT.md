@@ -21,13 +21,14 @@
 - [x] 使用者可下載處理後的 PDF,原始檔案不被破壞(Phase 2 — OUTPUT-01;deferred-mutation 三目錄)
 - [x] 系統提供固定的我司商標庫(`logos/` + `manifest.json`),使用者可瀏覽並挑選 logo(Phase 3 — LOGO-01)
 - [x] 使用者可將選定的 logo 放到框選位置,維持長寬比、置中、隨頁面旋轉正立;支援「自動依框選形狀」逐區挑選(Phase 3 — LOGO-02)
+- [x] 使用者可上傳**圖片型(點陣/掃描)PDF** 與**獨立影像檔**(PNG/JPG/TIFF)(Phase 4 — UPLOAD-02/03;hotfix 收口含 RGBA 合成白底、pristine 預覽資料源、megapixel 硬上限)
+- [x] 對點陣圖/影像內容,框選區域以白色填滿(Phase 4 — REMOVE-02;含 Adobe-hairline / CAD-glyph zero-area artefact 物理覆蓋)
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
 
-- [ ] 使用者可上傳**圖片型(點陣/掃描)PDF** 與**獨立影像檔**(PNG/JPG/TIFF)(Phase 4 — UPLOAD-02/03)
-- [ ] 對點陣圖/影像內容,框選區域以白色填滿(Phase 4 — REMOVE-02)
+- [ ] 可在 Ubuntu 伺服器以 Docker + Nginx 部署,處理大型與旋轉頁面、暫存檔清理(Phase 5 — DEPLOY-01/02)
 
 ### Out of Scope
 
@@ -62,7 +63,7 @@
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | 由使用者手動框選決定移除區域(非自動偵測) | 商標樣式多變,手動框選最可靠且有彈性 | ✓ Validated (Phase 2) |
-| 點陣圖移除採填白/底色(非 inpainting) | 降低技術複雜度,且符合使用者可接受的結果 | — Phase 4 |
+| 點陣圖移除採填白/底色(非 inpainting) | 降低技術複雜度,且符合使用者可接受的結果 | ✓ Validated (Phase 4 UAT) |
 | 移除後貼上固定商標庫中的我司 logo 圖檔 | 公司 logo 固定,系統預存最方便挑選 | ✓ Validated (Phase 3) |
 | 以 PyMuPDF 為核心 PDF 處理函式庫 | 使用者指定,且 redaction 符合「真正移除」需求 | ✓ Validated (Phase 2);fitz 嚴格限制在 `pdf_engine.py`(AGPL seam) |
 | v1 為獨立工具、內網免登入 | 先交付核心價值,整合與權限控管延後 | ✓ Validated |

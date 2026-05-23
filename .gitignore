@@ -21,3 +21,6 @@ desktop.ini
 # leftover survives. These files have also been seen to confuse the AGPL
 # seam grep (a stale `pdf_engine.py.tmp.*` keeps an extra `import fitz`).
 *.tmp.*
+
+# GSD transient lock files (workflow concurrency guards).
+.planning/*.lock

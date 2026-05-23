@@ -14,7 +14,7 @@
 - [x] **Phase 2: 框選與真正移除(向量)+ 下載** - 座標對應骨幹、矩形框選、向量/文字真正移除、前後對照、下載
  (completed 2026-05-22)
 - [x] **Phase 3: 商標置入** - 固定商標庫、挑選並置入我司 logo(維持長寬比) (completed 2026-05-23)
-- [x] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白 (completed 2026-05-23)
+- [x] **Phase 4: 點陣圖與圖片型檔案支援** - 圖片型 PDF 與獨立影像檔、移除區域填白 (completed 2026-05-23;hotfix 收口 review/fix + validate + secure + UAT pass,243 tests / 17 STRIDE threats closed)
 - [ ] **Phase 5: 部署與穩固化(Ubuntu)** - Docker/Nginx 部署、大型/旋轉頁面、暫存清理
 
 ## Phase Details
