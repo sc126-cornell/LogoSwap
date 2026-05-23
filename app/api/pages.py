@@ -48,13 +48,19 @@ async def get_page_image(
     the page's intrinsic ``/Rotate`` for this render only — it is NOT persisted. A missing
     session or out-of-range page returns 404; a bad ``rotate`` returns 400.
 
-    This is the 原圖 (BEFORE) preview, so it renders the IMMUTABLE original — NOT the work copy
-    (which the pipeline redacts in place as the 移除結果 substrate). Rendering the work copy here
-    made 原圖 show the redacted result after an apply (UAT bug). Geometry is identical between
-    the two files, so the six coordinate-seam headers are unaffected.
+    This is the 原圖 (BEFORE) preview, so it renders the IMMUTABLE pristine PDF — NOT the work
+    copy (which the pipeline redacts in place as the 移除結果 substrate). Rendering the work
+    copy here made 原圖 show the redacted result after an apply (Phase 1 UAT bug).
+
+    Source is ``pristine_path`` (Phase 4): for PDF uploads pristine bytes equal the user's
+    raw PDF (PDF == work == pristine), so this is equivalent to the Phase 1–3 behaviour. For
+    IMAGE uploads (PNG/JPG/TIFF), pristine is the normalized A4 PDF — using originals/ here
+    would render the raw image bytes at native pixel dimensions (e.g. 3965×9836 pt),
+    desynchronizing the frontend's px_rect coordinate space from the /process backend (which
+    measures against work, which equals pristine geometry). #hotfix-04-02.
     """
     _require_session(session_id)
-    source = storage.original_path(session_id)
+    source = storage.pristine_path(session_id)
 
     try:
         user_rotation = render.validate_rotation(rotate)
@@ -96,9 +102,13 @@ async def get_page_meta(
     endpoint). A bad value returns 400.
     """
     _require_session(session_id)
-    # Preview metadata comes from the immutable original (same geometry as the work copy), keeping
-    # the 原圖 image + /meta consistent and never reflecting in-place redactions.
-    source = storage.original_path(session_id)
+    # Preview metadata comes from the IMMUTABLE pristine PDF (Phase 4): pristine never changes
+    # after ingest, so /meta never reflects in-place redactions, and pristine carries the SAME
+    # geometry the /process pipeline measures against. For PDF uploads pristine == originals
+    # bytes (no behaviour change vs Phase 1–3); for IMAGE uploads pristine is the normalized A4
+    # PDF (originals/ is raw PNG/JPG/TIFF bytes — wrong geometry, would desynchronize the
+    # frontend px_rect coordinate space from the /process backend). #hotfix-04-02.
+    source = storage.pristine_path(session_id)
 
     try:
         user_rotation = render.validate_rotation(rotate)

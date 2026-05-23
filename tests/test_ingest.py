@@ -404,6 +404,80 @@ def test_rgba_transparent_png_composites_onto_white(client):
         pdf_engine.close(doc)
 
 
+def test_image_upload_meta_geometry_matches_work_pipeline(client, png_bytes):
+    """UAT hotfix #2: /pages/{n}/meta and /process must agree on page geometry for image uploads.
+
+    Before this fix, /pages/meta read from ``originals/`` (= raw PNG bytes for image uploads),
+    returning page dims = native image pixel dims (e.g. 3965×9836 pt). /process measures against
+    work/ (the normalized A4 PDF, 595×842 pt). Frame coordinates drawn in /meta's space get
+    clamped to /process's A4 space, producing degenerate (zero-size) rects → ``pick_logo_id_for_rect``
+    returns None → ``logo_skipped=true``. The user sees "所選商標無法置入" with redaction also
+    misaligned. Pristine carries the A4 geometry post-hotfix.
+    """
+    resp = client.post(
+        "/sessions",
+        files={"file": ("mindmap.png", png_bytes, "image/png")},
+    )
+    assert resp.status_code == 201, resp.json()
+    sid = resp.json()["session_id"]
+
+    meta = client.get(f"/sessions/{sid}/pages/0/meta")
+    assert meta.status_code == 200
+    meta_json = meta.json()
+
+    # Image uploads always normalize to A4 portrait (D-01): 595 × 842 PDF points.
+    assert meta_json["page_w_pt"] == 595.0, f"expected A4 width 595 pt, got {meta_json['page_w_pt']}"
+    assert meta_json["page_h_pt"] == 842.0, f"expected A4 height 842 pt, got {meta_json['page_h_pt']}"
+
+
+def test_image_upload_auto_logo_places_with_center_frame(client):
+    """UAT hotfix #2 e2e: auto_logo must place (not skip) for a frame drawn in /meta coordinates.
+
+    Repro of the user-reported "所選商標無法置入" issue (#hotfix-04-02): RGBA mind-map PNG
+    uploaded, frame drawn in the /meta coordinate space sent to /process, expect ``logo_skipped:
+    false`` and the result PDF to contain TWO image XObjects (the source image + the placed logo).
+    """
+    from app import storage as _storage
+    from app.services import pdf_engine
+    from tests.conftest import _build_rgba_transparent_png
+
+    rgba_png = _build_rgba_transparent_png(width=400, height=300, fg_color=(0, 200, 100))
+
+    resp = client.post(
+        "/sessions",
+        files={"file": ("mindmap.png", rgba_png, "image/png")},
+    )
+    assert resp.status_code == 201
+    sid = resp.json()["session_id"]
+
+    # Get the meta the frontend would use to size the page stage + clamp px_rect.
+    meta = client.get(f"/sessions/{sid}/pages/0/meta").json()
+    img_w, img_h = meta["img_w"], meta["img_h"]
+
+    # Draw a centered, roughly square frame in /meta coordinates — the frontend's source of truth.
+    pad_x, pad_y = img_w // 4, img_h // 4
+    px_rect = [pad_x, pad_y, img_w - pad_x, img_h - pad_y]
+
+    job = {"dpi": meta["dpi"], "regions": [{"page": 0, "px_rect": px_rect}], "auto_logo": True}
+    proc = client.post(f"/sessions/{sid}/process", json=job)
+    assert proc.status_code == 200, proc.json()
+
+    body = proc.json()
+    assert body["logo_skipped"] is False, (
+        f"auto_logo must NOT skip for a non-degenerate centered frame; got {body}"
+    )
+    assert body["regions"][0]["removed"] is True
+
+    # Result PDF must carry TWO image XObjects: the source image + the placed logo.
+    work_pdf = _storage.work_path(sid).read_bytes()
+    doc = pdf_engine.open_pdf(work_pdf)
+    try:
+        n_imgs = len(doc[0].get_images())
+        assert n_imgs == 2, f"expected 2 image XObjects (source + logo), got {n_imgs}"
+    finally:
+        pdf_engine.close(doc)
+
+
 def test_originals_sha256_unchanged_after_image_run(client, png_bytes):
     """D-05: originals/ bytes (= the user's raw PNG) survive a /process run untouched.
 
