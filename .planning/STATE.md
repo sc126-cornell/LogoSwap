@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-05-23T15:34:59.145Z"
-last_activity: 2026-05-23 -- Phase 5 planning complete
+stopped_at: Phase 5 Plan 01 complete — deploy slice ready (Dockerfile + /health + AGPL §13)
+last_updated: "2026-05-23T16:01:00.000Z"
+last_activity: 2026-05-23 -- Phase 5 Plan 01 executed (deploy slice)
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 11
-  completed_plans: 9
-  percent: 82
+  completed_plans: 10
+  percent: 91
 ---
 
 # Project State
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-23)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 5 — deployment & hardening(尚未規劃)
+**Current focus:** Phase 5 — ubuntu
 
 ## Current Position
 
-Phase: 04 — COMPLETE + HOTFIX CLOSED
-Plan: 2 of 2 complete (04-01 + 04-02 both shipped)
-Status: Ready to execute
-Last activity: 2026-05-23 -- Phase 5 planning complete
+Phase: 5 (ubuntu) — EXECUTING
+Plan: 2 of 2 (05-01 complete, 05-02 next)
+Status: Phase 5 Plan 01 (deploy slice) complete; Plan 02 (hardening) pending
+Last activity: 2026-05-23 -- Phase 5 Plan 01 executed (deploy slice)
 
 **Hotfix 收口記錄(自 137a592 後 13 個 commit):**
 
@@ -82,6 +82,7 @@ Progress: [██████████] 100% (Phase 1–4 all complete, Phase
 | Phase 03 P02 | 15min | 2 tasks | 7 files |
 | Phase 04 P01 | ~50 min | 3 tasks | 13 files |
 | Phase 04 P02 | ~11 min | 3 tasks | 7 files |
+| Phase 05 P01 | ~25 min | 3 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -113,6 +114,13 @@ Recent decisions affecting current work:
 - [Phase ?]: [Phase 3-02]: place_logo is the only new fitz call (pdf_engine.py); insert AFTER apply_redactions, keep_proportion=True center+contain (LOGO-02), one global logo dedups to a single xref (D-01); no logo_id = pure removal; original SHA-256 unchanged (D-05); pipeline stays fitz-free
 - [Phase 4-01]: image_to_a4_pdf is the only new fitz call (pdf_engine.py); ingest dispatch on four magic headers; image magics MUST match at offset 0 (PDF-only allows ≤8 leading offset, D-12); Pillow chain verify/load CMYK→RGB + n_frames check; pipeline reset source switched originals→pristine (D-05 invariant on originals/ now STRICTER — pipeline never touches originals/); AGPL seam still 1 file
 - [Phase 4-02]: IMAGE_PIXELS + rect_overlaps_image new in pdf_engine.py (AGPL seam); redact.remove_region renamed to remove_region_vector + sibling remove_region_raster (fill=None, IMAGE_PIXELS, text-only residual assertion — RESEARCH推翻 CONTEXT 初步 fill=(1,1,1) 傾向 because fill=(1,1,1) leaves a type='fs' drawing surviving get_drawings_fully_inside); pipeline.process_job per-region dispatch by rect_overlaps_image (D-05); raster branch keeps text residual (Pitfall 3 dual-layer OCR closed) but skips drawings residual (allowed legitimate vectors); Phase 4 fully closed — UPLOAD-02 + REMOVE-02 + success-criteria #3 (logo on image) all e2e verified
+- [Phase 5-01]: AGPL §13 three-artifact set ships in lockstep (LICENSE + README GitHub URL + UI footer); any single artifact missing breaks compliance — atomic deliverable in Task 3 commit bb11c0d
+- [Phase 5-01]: App image deliberately excludes nginx (D-A1); reverse proxy / TLS belongs to the deployment target (Zeabur LB / Ubuntu portal nginx); image stays clean uvicorn-only ASGI
+- [Phase 5-01]: HEALTHCHECK uses stdlib urllib (Pitfall 2 — python:3.12-slim ships without curl/wget); CMD via sh -c so $PORT (Zeabur) + conditional ${APP_BASE_PATH:+--root-path …} (D-A2) expand at start
+- [Phase 5-01]: /health upgraded to 5 fields (status, uptime_seconds, active_sessions, data_dir_bytes, data_dir_pct); guarded against session_id leak (T-05-08 — /health is unauthenticated); active_sessions filtered by storage._SESSION_ID_RE for defense in depth
+- [Phase 5-01]: _START_TIME captured at module top — spawn-safe per-worker semantic (Pitfall 7); each uvicorn worker reports its own uptime; lifespan(app) skeleton present so Plan 05-02 fills body only, never the FastAPI constructor
+- [Phase 5-01]: Desktop entry app/__main__.py defaults host to 127.0.0.1 (T-05-09 — loopback only); only Dockerfile CMD binds 0.0.0.0; UVICORN_NO_BROWSER=1 suppresses auto-open
+- [Phase 5-01]: <OWNER> placeholder reserved in README (5 places) + index.html footer (1 place); substitution is a deploy-ops gate before public-GitHub push, NOT in plan scope
 
 ### Pending Todos
 
@@ -134,6 +142,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-23T14:45:13.405Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-ubuntu/05-CONTEXT.md
+Last session: 2026-05-23T16:01:00.000Z
+Stopped at: Phase 5 Plan 01 (deploy slice) complete — 3/3 tasks, 243/243 tests pass
+Resume file: .planning/phases/05-ubuntu/05-02-PLAN.md

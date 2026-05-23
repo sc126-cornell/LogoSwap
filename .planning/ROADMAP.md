@@ -110,7 +110,7 @@ Plans:
 Plans:
 
 **Wave 1**
-- [ ] 05-01-PLAN.md — 部署 slice:多階段 Dockerfile + uvicorn workers + APP_BASE_PATH(FastAPI root_path)+ /health 加強(uptime/active_sessions/disk)+ app/__main__.py 桌面入口 + AGPL §13 三件套(LICENSE + README 三部署目標 + UI footer GitHub 連結)
+- [x] 05-01-PLAN.md — 部署 slice:多階段 Dockerfile + uvicorn workers + APP_BASE_PATH(FastAPI root_path)+ /health 加強(uptime/active_sessions/disk)+ app/__main__.py 桌面入口 + AGPL §13 三件套(LICENSE + README 三部署目標 + UI footer GitHub 連結) (completed 2026-05-23;3 tasks, 10 files, 243/243 tests pass)
 
 **Wave 2** *(blocked on 05-01)*
 - [ ] 05-02-PLAN.md — 穩固化 slice:originals/ SHA-256 baseline + verify + .corrupted sentinel + /process 60s timeout(asyncio.wait_for + to_thread)+ 暫存 janitor(三點同步觸發 + 1h TTL + cross-platform chmod fix)+ 前端三個新錯誤訊息
@@ -125,5 +125,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. 輸入與預覽骨幹 | 2/2 | Complete   | 2026-05-22 |
 | 2. 框選與真正移除(向量)+ 下載 | 3/3 | Complete   | 2026-05-22 |
 | 3. 商標置入 | 2/2 | Complete    | 2026-05-23 |
-| 4. 點陣圖與圖片型檔案支援 | 0/2 | Not started | - |
-| 5. 部署與穩固化(Ubuntu) | 0/2 | Not started | - |
+| 4. 點陣圖與圖片型檔案支援 | 2/2 | Complete   | 2026-05-23 |
+| 5. 部署與穩固化(Ubuntu) | 1/2 | In progress | - |
