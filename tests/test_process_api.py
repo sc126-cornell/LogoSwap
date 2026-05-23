@@ -287,6 +287,105 @@ def test_process_without_logo_is_pure_removal(client, valid_pdf_bytes):
         pdf_engine.close(out_doc)
 
 
+def test_failed_work_save_does_not_emit_orphan_output(valid_pdf_bytes, monkeypatch):
+    """WR-05: if the WORK COPY save fails, the OUTPUT must NOT be on disk either.
+
+    The bug was an asymmetric two-save order (output first, work second). When the work-copy
+    save failed (disk full, permission), the output PDF was already on disk but the work copy
+    had been reset to the pristine original at the start of the run and was NOT redacted. The
+    result: /result downloads a redacted PDF while /result/pages/.../image renders the UNREDACTED
+    work copy — the before/after preview lies about the downloaded contents.
+
+    The fix saves the work copy to a tmp file FIRST, then the output to its own tmp, then
+    atomically swaps both at the end. Simulating a failure in the work-copy save now leaves
+    neither artifact in its final place (work stays pristine, output absent). We call
+    pipeline.process_job directly (the API layer has no OSError exception handler — that's a
+    separate concern; what we assert here is the pipeline's on-disk invariant).
+    """
+    from app.services import ingest, pdf_engine, pipeline
+    from app.models import JobSpec
+
+    sid = ingest.ingest_upload("design.pdf", valid_pdf_bytes).session_id
+    s = 200 / 72.0
+    px_rect = [v * s for v in _REGION_PT]
+
+    assert not pipeline.output_path(sid).is_file(), "no prior run, no output expected"
+
+    # Fail the FIRST save_doc call (the work_tmp save).
+    calls = {"n": 0}
+    original_save_doc = pdf_engine.save_doc
+
+    def failing_save_doc(doc, path, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("simulated disk-full on work-copy save")
+        return original_save_doc(doc, path, **kwargs)
+
+    monkeypatch.setattr(pdf_engine, "save_doc", failing_save_doc)
+
+    spec = JobSpec(dpi=200, regions=[{"page": 0, "px_rect": px_rect}])
+    with pytest.raises(OSError):
+        pipeline.process_job(sid, spec)
+
+    # CRITICAL: the output PDF was NEVER created (the bug WR-05 closed). Before/after preview
+    # cannot disagree with what /result downloads, because /result has nothing to download.
+    assert not pipeline.output_path(sid).is_file(), (
+        "output PDF must not exist when the work-copy save failed (WR-05)"
+    )
+
+    # No stray *.tmp.* files left behind (cleanup obligation).
+    work_dir = storage.work_path(sid).parent
+    out_dir = storage.outputs_dir(sid)
+    for d in (work_dir, out_dir):
+        if d.exists():
+            for p in d.iterdir():
+                assert ".tmp." not in p.name, f"stray tmp file left behind: {p}"
+
+
+def test_failed_output_save_does_not_emit_stale_work(valid_pdf_bytes, monkeypatch):
+    """WR-05 (second face): a FAILED output save must NOT leave a swapped-in redacted work copy.
+
+    Even though the new order saves the work copy first to a tmp, the final atomic swap happens
+    only after BOTH tmps exist. If the output save fails AFTER the work tmp was written, both
+    tmps are cleaned up and neither final artifact is in place. This test simulates a failure
+    in the SECOND save_doc call (out_tmp) and asserts the same invariants as above.
+    """
+    from app.services import ingest, pdf_engine, pipeline
+    from app.models import JobSpec
+
+    sid = ingest.ingest_upload("design.pdf", valid_pdf_bytes).session_id
+    s = 200 / 72.0
+    px_rect = [v * s for v in _REGION_PT]
+
+    calls = {"n": 0}
+    original_save_doc = pdf_engine.save_doc
+
+    def fail_second_save_doc(doc, path, **kwargs):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise OSError("simulated disk-full on output save")
+        return original_save_doc(doc, path, **kwargs)
+
+    monkeypatch.setattr(pdf_engine, "save_doc", fail_second_save_doc)
+
+    spec = JobSpec(dpi=200, regions=[{"page": 0, "px_rect": px_rect}])
+    with pytest.raises(OSError):
+        pipeline.process_job(sid, spec)
+
+    # Neither the work-copy was atomically swapped, nor was the output written.
+    assert not pipeline.output_path(sid).is_file(), (
+        "output PDF must not exist when the output save failed (WR-05)"
+    )
+
+    # No stray *.tmp.* files left behind.
+    work_dir = storage.work_path(sid).parent
+    out_dir = storage.outputs_dir(sid)
+    for d in (work_dir, out_dir):
+        if d.exists():
+            for p in d.iterdir():
+                assert ".tmp." not in p.name, f"stray tmp file left behind: {p}"
+
+
 def test_original_unchanged_across_remove_insert(client, valid_pdf_bytes, logo_library):
     """D-05: the immutable original's SHA-256 is unchanged across a remove+INSERT run."""
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]

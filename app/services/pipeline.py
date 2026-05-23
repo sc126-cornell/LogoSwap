@@ -274,30 +274,78 @@ def process_job(session_id: str, job_spec) -> dict:
             )
 
         # Save the redacted result to BOTH the work copy (the result-render substrate) and
-        # the outputs file for download. Save to a temp path then replace the work copy so a
-        # crash mid-save cannot corrupt it (the original is untouched regardless). Pitfall 9:
-        # garbage=4, deflate=True, clean=True undoes redaction bloat.
+        # the outputs file for download. Pitfall 9: garbage=4, deflate=True, clean=True undoes
+        # redaction bloat.
         out_name = output_filename(session_id)
         out_dir = storage.outputs_dir(session_id)
         out_dir.mkdir(parents=True, exist_ok=True)
         out_file = out_dir / out_name
-        # The download output is saved WITH the user rotation baked (the page rotations set above).
-        pdf_engine.save_doc(doc, out_file)
 
-        # Reset each rotated page back to its intrinsic rotation BEFORE saving the work copy, so
-        # the work copy (the 移除結果 substrate) stays at intrinsic rotation. The result-render
-        # endpoint re-applies the user rotation transiently, exactly like the 原圖 endpoint —
-        # keeping the before/after toggle symmetric and avoiding a double rotation.
+        # WR-05: save the WORK COPY FIRST, then bake the user rotation and save the OUTPUT.
+        # The two saves are asymmetric (work stays at intrinsic rotation so the result-render
+        # endpoint can re-apply rotation transiently, symmetric with 原圖; output keeps rotation
+        # baked for download). The PRIOR order (output first, then reset rotations, then work)
+        # left a stale-work failure mode: if saving the work copy failed (disk full, permission),
+        # the output PDF was already on disk but the work copy had been reset to the pristine
+        # original at the start (shutil.copyfile, line ~129) and was NOT redacted. /result then
+        # downloaded a redacted PDF while /result/pages/.../image (which renders the work copy)
+        # showed the UNREDACTED page — before/after preview lied about the download contents.
+        #
+        # Reorder + write-to-tmp + atomic swap-at-end keeps the two artifacts in lockstep:
+        #   1. Reset each rotated page back to its intrinsic rotation.
+        #   2. Save the work copy to a tmp file.
+        #   3. Re-apply the user rotation for the output bake.
+        #   4. Save the output PDF to a tmp file.
+        #   5. Atomically swap BOTH tmp files into place outside the open doc.
+        # If steps 2 or 4 fail, neither final artifact has been written: the work copy is still
+        # the pristine original from the start-of-run reset and there is NO output file (so
+        # /result returns the same 404 result_not_ready as before any apply). The before/after
+        # preview can never disagree with the downloaded artifact.
+
+        # Step 1: reset rotated pages to intrinsic (the work copy substrate is symmetric with 原圖).
         for page_idx, intrinsic in intrinsic_by_page.items():
             pdf_engine.set_page_rotation(pdf_engine.get_page(doc, page_idx), intrinsic)
 
+        # Step 2: save the work copy first. If THIS fails, we bail with no half-state on disk.
         work_tmp = Path(work).with_suffix(".redacted.tmp.pdf")
         pdf_engine.save_doc(doc, work_tmp)
+
+        # Step 3: re-apply the user rotation onto the in-memory doc for the download bake.
+        for page_idx, user_deg in rotations.items():
+            if user_deg % 360 == 0:
+                continue
+            pdf_engine.set_page_rotation(
+                pdf_engine.get_page(doc, page_idx),
+                (intrinsic_by_page[page_idx] + user_deg) % 360,
+            )
+
+        # Step 4: save the output to its own tmp so a failure here leaves no half-written
+        # out_file on disk either.
+        out_tmp = out_file.with_suffix(".swap.tmp.pdf")
+        try:
+            pdf_engine.save_doc(doc, out_tmp)
+        except Exception:
+            # If the output save fails, clean up BOTH tmps so we leave no stray *.tmp.* files
+            # behind. The work copy on disk is still the pristine original from the start-of-run
+            # reset, so the run as a whole is a clean failure (no output, work unchanged).
+            try:
+                Path(work_tmp).unlink()
+            except OSError:
+                pass
+            try:
+                out_tmp.unlink()
+            except OSError:
+                pass
+            raise
     finally:
         pdf_engine.close(doc)
 
-    # Atomically replace the work copy with the redacted version (outside the open doc).
+    # Step 5: atomically swap both tmp files into place. .replace is atomic on the same
+    # filesystem; the worst-case partial state (work swapped, out_file not yet replaced) leaves
+    # the output absent, which the download endpoint surfaces as 404 result_not_ready — never
+    # the inverse stale-work failure WR-05 closed.
     Path(work_tmp).replace(work)
+    Path(out_tmp).replace(out_file)
 
     return {
         "output_filename": out_name,
