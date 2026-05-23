@@ -186,9 +186,14 @@ function renderList() {
   clearAllBtn.hidden = resultFresh;
   clearAllBtn.disabled = list.length === 0;
 
-  // Empty-state vs the row list.
+  // The empty-state copy ("尚未框選任何區域") is about the WHOLE document, so only show it when
+  // total === 0 — otherwise the header says "已框選 N 個區域" while the body says "尚未框選",
+  // which contradicts itself for a multi-page job (user is on a page with no regions but framed
+  // others elsewhere). The row list shows the CURRENT page's regions; on a page with none and
+  // a non-zero total, both blocks stay hidden and only the header count + scope are visible.
+  const total = totalRegionCount();
   const isEmpty = list.length === 0;
-  regionEmptyEl.hidden = !isEmpty;
+  regionEmptyEl.hidden = total > 0;
   regionListEl.hidden = isEmpty;
 
   // Rebuild rows (createElement only).
