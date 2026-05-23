@@ -1,0 +1,30 @@
+# Source control / local venvs / caches — never enter the image.
+.git/
+.gitignore
+.venv/
+.venv*/
+__pycache__/
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Planning + test artefacts — image is runtime-only.
+.planning/
+tests/
+
+# Transient data — /data is a runtime VOLUME, not baked.
+data/
+*.log
+*.tmp.*
+
+# Project tooling / instructions — operator reads from repo, not from image.
+CLAUDE.md
+
+# Build files themselves — Docker already reads these from the build context root.
+Dockerfile
+.dockerignore
+docker-compose.example.yml
+zeabur.json
+
+# NOTE: LICENSE, README.md, requirements.txt, app/, web/, logos/ MUST stay in the
+# image (AGPL §13 disclosure + runtime).
