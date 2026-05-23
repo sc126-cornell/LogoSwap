@@ -63,14 +63,24 @@ def sweep_expired_sessions(now: float | None = None) -> int:
             # delete_session is best-effort and itself swallows OSError, but we still
             # wrap in try/except for any unforeseen failure (test monkeypatch coverage).
             storage.delete_session(sid)
-            # Confirm at least one of the 4-kind dirs is gone before counting a success.
-            # (delete_session is fire-and-log; a permission error inside _on_rm_error
-            # could leave the dir partially present.)
-            if not any(
-                (config.DATA_DIR / kind / sid).exists()
+            # Count only confirmed full deletes (all 4 kind dirs gone). WR-04: on Windows,
+            # an open file handle inside work/{sid}/ can defeat _on_rm_error's chmod retry,
+            # leaving the session in a partial state (e.g. originals/outputs/pristine
+            # reclaimed but work survives with the stuck file). Log that case explicitly
+            # so ops sees the half-state instead of the sweep silently returning 0.
+            remaining = [
+                kind
                 for kind in ("originals", "work", "outputs", "pristine")
-            ):
+                if (config.DATA_DIR / kind / sid).exists()
+            ]
+            if not remaining:
                 deleted += 1
+            else:
+                logger.warning(
+                    "janitor: partial delete for %s — kinds still present: %s",
+                    sid,
+                    ",".join(remaining),
+                )
         except Exception as err:  # noqa: BLE001 — never raise out of the sweep
             logger.warning("janitor: failed on %s: %s", sid, err)
     return deleted
