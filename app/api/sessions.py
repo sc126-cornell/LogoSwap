@@ -12,7 +12,7 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 
 from .. import config, storage
 from ..models import SessionInfo
-from ..services import ingest, pdf_engine
+from ..services import ingest, janitor, pdf_engine
 from ..services.ingest import IngestError
 
 router = APIRouter(tags=["sessions"])
@@ -74,6 +74,15 @@ async def create_session(file: UploadFile = File(...)) -> SessionInfo:
         return ingest.ingest_upload(file.filename or "upload.pdf", data)
     except IngestError as err:
         raise _ingest_http_error(err) from err
+    finally:
+        # D-B1 trigger (b): POST /sessions end calls janitor sweep. Wrapped in try/except
+        # so a janitor failure (concurrent rmtree race, transient I/O error) does not
+        # taint the response — the upload either succeeded (201) or already raised the
+        # appropriate IngestError. The sweep is best-effort cleanup, not a precondition.
+        try:
+            janitor.sweep_expired_sessions()
+        except Exception:
+            pass
 
 
 @router.get("/sessions/{session_id}", response_model=SessionInfo)

@@ -23,6 +23,7 @@ process model / DoS T-02-04). The typed pipeline/redact errors are mapped to str
 
 from __future__ import annotations
 
+import asyncio
 from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Query, Response
@@ -31,7 +32,7 @@ from fastapi.responses import FileResponse
 
 from .. import config, storage
 from ..models import JobSpec
-from ..services import pipeline, render
+from ..services import janitor, pipeline, render
 from ..services.redact import RedactError
 from ..services.render import RenderError
 
@@ -62,9 +63,57 @@ async def process_session(session_id: str, job: JobSpec) -> dict:
     — it passes the whole validated ``JobSpec`` through to ``pipeline.process_job``.
     """
     _require_session(session_id)
-    # process_job opens the work copy, maps+clamps, redacts, saves work + outputs. It is
-    # CPU-bound (PDF parse + redaction rewrite), so run it off the event loop.
-    return await run_in_threadpool(pipeline.process_job, session_id, job)
+
+    # D-C3 short-circuit: a session previously detected as tampered (work/{sid}/.corrupted
+    # sentinel present) returns 410 immediately — no parse, no thread, no timeout. This
+    # gate runs BEFORE the timeout wrapper so a poisoned sid cannot tie up a worker
+    # waiting for verify (which would itself fail fast, but the short-circuit gives a
+    # cleaner 410 with the right code).
+    if storage.is_session_corrupted(session_id):
+        raise HTTPException(
+            status_code=410,
+            detail={
+                "code": "session_corrupted",
+                "message": "此工作階段已標記為異常,請重新上傳檔案。",
+            },
+        )
+
+    # D-D3 timeout: wrap process_job in asyncio.wait_for + asyncio.to_thread. Pipeline is
+    # CPU-bound (PDF parse + redaction rewrite + save); to_thread runs it off the event
+    # loop, wait_for caps wall-clock time, and finally re-runs the janitor sweep.
+    #
+    # Pitfall 1 (RESEARCH §"thread cannot be killed"): asyncio.wait_for(asyncio.to_thread
+    # (...)) makes the HTTP response return 504 immediately on timeout, but the underlying
+    # thread KEEPS RUNNING until process_job naturally exits — Python has no thread.kill().
+    # Worst case is ~10–30s after a 60s timeout (MAX_RENDER_PIXELS=40MP +
+    # MAX_PAGES=30 collapse the worst case from "minutes" to "tens of seconds"). UVICORN_
+    # WORKERS=2 (D-D2) ensures the OTHER worker continues serving /preview / /health /
+    # /sessions while one worker's thread drains. Upgrade path (deferred to v1.x if real
+    # abuse appears): ProcessPoolExecutor for true process-level kill.
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(pipeline.process_job, session_id, job),
+            timeout=config.PROCESS_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError as err:
+        raise HTTPException(
+            status_code=504,
+            detail={
+                "code": "processing_timeout",
+                "message": (
+                    f"處理逾時(超過 {config.PROCESS_TIMEOUT_SECONDS} 秒),"
+                    "請改用較小檔案或減少框選區域數量。"
+                ),
+            },
+        ) from err
+    finally:
+        # D-B1 trigger (c): /process end calls janitor sweep. try/except guarantees a
+        # janitor failure cannot taint the response (T-05-05 mitigation; the sweep itself
+        # already swallows OSError, but defense in depth).
+        try:
+            janitor.sweep_expired_sessions()
+        except Exception:
+            pass
 
 
 @router.get("/sessions/{session_id}/result/pages/{page_no}/image")

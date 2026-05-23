@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config, storage
 from .api import logos, pages, process, sessions
+from .services import janitor
 from .services.ingest import IngestError
 from .services.logo import LogoError
 from .services.pdf_engine import PdfEngineError
@@ -43,9 +44,15 @@ _START_TIME: float = time.time()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Skeleton — Plan 05-02 fills in `janitor.sweep_expired_sessions()` here.
-    # Keeping the signature now means 05-02 only edits the body, never the
-    # FastAPI constructor call below.
+    # D-B1 trigger (a): app startup runs the janitor once so any session left over from
+    # a prior process (crash, manual restart, deploy) gets reclaimed before the first
+    # request lands. Wrapped in try/except so a startup janitor failure (broken
+    # filesystem, missing DATA_DIR on first boot) cannot prevent the app from coming up
+    # — uvicorn would otherwise 503 the entire process.
+    try:
+        janitor.sweep_expired_sessions()
+    except Exception:
+        pass
     yield
 
 
@@ -54,6 +61,25 @@ app = FastAPI(
     root_path=config.APP_BASE_PATH,
     lifespan=lifespan,
 )
+
+# Optional CORS middleware (Plan 05-02 D-A1 / Claude discretion):
+# CORS_ALLOW_ORIGINS empty (the default) → same-origin / iframe / strip-prefix all work
+# without CORS. Future sub-domain embedding (Phase 5 deferred path) sets the env var to
+# a comma-separated allowlist; the middleware is added only when the list is non-empty
+# to keep the deployment minimal and avoid leaking "Access-Control-*" headers when not
+# needed.
+if config.CORS_ALLOW_ORIGINS:
+    from fastapi.middleware.cors import CORSMiddleware
+
+    _origins = [o.strip() for o in config.CORS_ALLOW_ORIGINS.split(",") if o.strip()]
+    if _origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=_origins,
+            allow_credentials=False,
+            allow_methods=["GET", "POST"],
+            allow_headers=["*"],
+        )
 
 # Routers (thin handlers; logic in services/).
 app.include_router(sessions.router)
@@ -111,10 +137,28 @@ async def _handle_invalid_session_id(_request: Request, exc: InvalidSessionId) -
 # true-removal guarantee could not be met for a region; a bad page index in the JobSpec is a
 # client request error. Both are 4xx (input/processing problems), never a bare 500 that would
 # leak internals or kill a worker (threat T-02-08).
+#
+# Phase 5 (Plan 05-02) extends the dict with three integrity / timeout codes:
+#   * original_tampered    503 — SHA-256 baseline mismatch (Plan 05-02 D-C3, T-05-04 surface
+#                                 acknowledgment); the integrity module has already written
+#                                 the .corrupted sentinel, so retries 410.
+#   * session_corrupted    410 — meta.json missing original_sha256 OR sentinel already set;
+#                                 Gone (not Forbidden / Not Found) is the precise semantic:
+#                                 the resource USED to exist but is now intentionally retired.
+#                                 process.py also raises this directly via HTTPException for
+#                                 the pre-check short-circuit; the mapping here is defense in
+#                                 depth for any code path that re-raises through PipelineError.
+#   * processing_timeout   504 — /process exceeded PROCESS_TIMEOUT_SECONDS (Plan 05-02 D-D3).
+#                                 process.py raises HTTPException directly (asyncio path); the
+#                                 mapping is for defense in depth if a future re-raise path
+#                                 surfaces the same code through PipelineError.
 _PROCESS_STATUS: dict[str, int] = {
     "residual_content": 422,
     "page_out_of_range": 422,
     "work_copy_misconfigured": 500,  # internal invariant breach (should never happen)
+    "original_tampered": 503,
+    "session_corrupted": 410,
+    "processing_timeout": 504,
 }
 
 

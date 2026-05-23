@@ -48,6 +48,29 @@ body {
   height: 100%;
 }
 
+/* ---------- Session TTL hint (Phase 5 Plan 05-02 D-B2) ---------- *
+ * Polite live-region inserted under the page-stage after a successful upload to surface
+ * the 1-hour session TTL ("此次處理 1 小時內完成下載 — 逾時需重新上傳。"). Replaced with the
+ * expired-session message on a GET /sessions/{id} 404 (友善訊息). Token-only — no raw hex
+ * — so the dual-theme reskin (Phase 1) applies automatically. Inherits the same small,
+ * muted typography as the AGPL footer because both are passive informational text, not
+ * actions.
+ */
+
+.app-session-hint {
+  margin: 0;
+  padding: var(--space-xs) var(--space-lg);
+  background: var(--color-panel);
+  border-top: 1px solid var(--color-border);
+  font-size: var(--font-size-small);
+  color: var(--color-text-muted);
+  text-align: center;
+}
+
+.app-session-hint[hidden] {
+  display: none;
+}
+
 /* ---------- AGPL §13 footer (Phase 5) ---------- *
  * Token-only styling — :root + [data-theme=dark] overrides reskin it automatically.
  * Accent color is reserved for the primary CTA (Phase 1 rule), so the link uses
