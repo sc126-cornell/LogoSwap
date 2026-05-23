@@ -35,7 +35,14 @@ WORKDIR /app
 
 COPY --from=builder /install /install
 
-ENV PYTHONPATH=/install \
+# PATH must include /install/bin because `pip install --target /install` puts package
+# executables (the `uvicorn` script in particular) under /install/bin, NOT under the
+# default /usr/local/bin that `python:3.12-slim` searches. Without this the CMD line
+# `uvicorn app.main:app ...` fails at container start with "uvicorn: not found". This
+# surfaced as a Zeabur build-success / runtime-fail on first deploy attempt — the unit
+# tests cannot catch it because they exercise the Python module directly.
+ENV PATH="/install/bin:$PATH" \
+    PYTHONPATH=/install \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     APP_BASE_PATH="" \
