@@ -272,6 +272,27 @@ _DEGENERATE_BBOX_EPS = 0.01
 # appropriate boundary.
 _WHITE_FILL_EPS = 0.005
 
+# Dispatch threshold for the dCt-residue fix (hotfix #06). When
+# ``remove_region_vector`` finds at least this many ZERO-AREA ``type='f'`` filled
+# paths fully inside the user rect AFTER apply_redactions, it switches the
+# zero-area cleanup strategy from per-artefact white covers
+# (:func:`cover_zero_area_artefacts`) to a single solid-white image XObject
+# overlay (:func:`replace_region_with_white_raster`).
+#
+# Why the dispatch exists: the cover routine paints one ±0.5 pt white rectangle
+# PER zero-area path. When the underlying source paths form a recognizable shape
+# (e.g. a supplier logo decomposed into CAD glyph strokes — the 3013A-13A-C6-...
+# reproduction file has 1742 such paths tracing a "dCt" logo), the UNION of the
+# per-artefact covers reproduces that shape, and re-colouring the covers any
+# non-white colour recovers the original mark — a leak this dispatcher closes
+# for the high-density case.
+#
+# Chosen as 100 from empirical separation: legitimate DC.pdf-class CAD artefacts
+# at line corners surface as a handful (single-digit to low-tens) of zero-area
+# fills; supplier-logo decomposition produces hundreds to thousands. The gap is
+# wide enough that the threshold is robust to a 5–10x shift in either direction.
+ZERO_AREA_RASTER_THRESHOLD = 100
+
 
 def map_tuple_to_rect(
     rect_tuple: tuple[float, float, float, float],
@@ -673,6 +694,120 @@ def cover_zero_area_artefacts(
         page.draw_rect(cover, fill=(1, 1, 1), color=None, width=0)
         covered += 1
     return covered
+
+
+def count_zero_area_fills_fully_inside(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> int:
+    """Count ``type='f'`` drawings with ZERO-area bbox that are fully inside ``rect``.
+
+    Dispatcher input for the dCt-residue fix (hotfix #06): :func:`remove_region_vector`
+    calls this after ``apply_redactions`` to decide whether the zero-area residue
+    cleanup should use the per-artefact cover strategy (:func:`cover_zero_area_artefacts`,
+    sparse case) or the single-image-overlay strategy
+    (:func:`replace_region_with_white_raster`, dense case crossing
+    :data:`ZERO_AREA_RASTER_THRESHOLD`).
+
+    Contract — counts ONLY drawings that are:
+
+    - ``type='f'`` (filled path; strokes are not the leak source — the existing cover
+      routine already filters them out for the same reason).
+    - Zero-area (bbox width OR height below :data:`_DEGENERATE_BBOX_EPS`, the shared
+      threshold the cover routine also reads — IN-01 keeps the two functions
+      aligned on what counts as zero-area).
+    - Fully inside ``rect`` (matches the cover routine's containment filter, so the
+      count here equals the count of covers the cover routine WOULD paint).
+
+    Boundary-crossing CAD construction lines are intentionally NOT counted: they
+    are the CR-02 case (kept by ``LINE_ART_REMOVE_IF_COVERED`` and never covered
+    by the cover routine), and including them here would skew the dispatch toward
+    raster fallback for any framed rect that grazes a CAD through-line.
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    query = (q.x0, q.y0, q.x1, q.y1)
+    count = 0
+    for drawing in page.get_drawings():
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        if drawing.get("type") != "f":
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        if not (dr.width < _DEGENERATE_BBOX_EPS or dr.height < _DEGENERATE_BBOX_EPS):
+            continue
+        if not _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            continue
+        count += 1
+    return count
+
+
+def replace_region_with_white_raster(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> None:
+    """Insert a single solid-white image XObject covering ``rect`` (dCt-residue fix).
+
+    The dense-case zero-area cleanup path (hotfix #06): when the residual zero-area
+    ``type='f'`` count crosses :data:`ZERO_AREA_RASTER_THRESHOLD`, the per-artefact
+    cover routine (:func:`cover_zero_area_artefacts`) would paint hundreds of small
+    ±0.5 pt white rectangles whose UNION reproduces the underlying supplier-logo
+    shape — a recoverable leak (re-colour the covers and the original mark
+    returns). This routine paints a single solid-white image XObject covering the
+    entire rect instead: no per-stroke geometry, no per-rect granularity, nothing
+    to re-colour back into a shape.
+
+    Implementation notes
+    --------------------
+
+    The pixmap is generated at a small fixed resolution (32×32 RGB white). PDF
+    readers scale it to fit ``rect`` using bilinear interpolation, which is
+    visually indistinguishable from a per-pixel render for a solid colour. After
+    ``deflate=True`` save compression the on-disk resource is well under 100
+    bytes — the compressed stream of a constant-byte pixmap is essentially a
+    deflate header plus a tiny run-length.
+
+    The image is inserted with ``overlay=True`` (default), placing it ABOVE the
+    existing content stream — including the zero-area source paths PyMuPDF
+    cannot remove. Render order is therefore:
+    ``[zero-area sources] → [residual covers, if any] → [this white image]``,
+    and the image is the topmost layer.
+
+    LIMITATION (be honest)
+    ----------------------
+
+    The zero-area BLACK source paths remain in the content stream. They are not
+    deleted — only visually superseded by the image overlay. Recovering the
+    original supplier mark requires:
+
+      1. Removing this image XObject (one structural edit in a PDF editor), AND
+      2. Expanding the zero-area path bboxes to non-zero width/height
+         (per-path geometry surgery).
+
+    This is strictly harder than the failure mode it replaces — the prior
+    ``cover_zero_area_artefacts`` leak recovers the mark by simply re-colouring
+    the per-artefact covers, no geometry surgery needed. True deletion of
+    zero-area sources requires content-stream surgery (a candidate hotfix for a
+    future iteration if higher assurance is required).
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    if q.width <= 0 or q.height <= 0:
+        # Degenerate rect — caller already short-circuited on empty rects in
+        # remove_region_vector via _is_empty(). Defence in depth here.
+        return
+    # 32×32 white pixmap. fitz.Pixmap(colorspace, bbox, alpha) created without
+    # samples=... contains uninitialised bytes; clear_with(255) sets every byte
+    # to 0xff, producing pure white in RGB. alpha=False keeps the resource
+    # small and avoids alpha-channel handling in third-party renderers.
+    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 32, 32), False)
+    try:
+        pix.clear_with(255)
+        page.insert_image(q, pixmap=pix, overlay=True)
+    finally:
+        # Pixmap holds a C-allocated buffer; drop the reference promptly so the
+        # garbage collector can reclaim it without waiting for the next gc cycle.
+        del pix
 
 
 def image_to_a4_pdf(image_bytes: bytes) -> bytes:

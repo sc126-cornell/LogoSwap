@@ -500,6 +500,238 @@ def test_cover_zero_area_artefacts_skips_strokes_and_out_of_rect_fills():
         doc.close()
 
 
+# --------------------------------------------------------------------------------------
+# Hotfix #06 — dCt-residue: dense-zero-area dispatch (count helper, raster overlay,
+# remove_region_vector dispatcher)
+# --------------------------------------------------------------------------------------
+
+
+def test_zero_area_raster_threshold_constant_exported():
+    """Hotfix #06: ``ZERO_AREA_RASTER_THRESHOLD`` must be a positive integer the dispatcher
+    in ``remove_region_vector`` can reference without importing fitz (AGPL seam).
+    """
+    assert isinstance(pdf_engine.ZERO_AREA_RASTER_THRESHOLD, int)
+    assert pdf_engine.ZERO_AREA_RASTER_THRESHOLD > 0
+
+
+def test_count_zero_area_fills_fully_inside_counts_only_inside_zero_area_fills():
+    """Hotfix #06 counter helper: counts ONLY ``type='f'`` drawings with zero-area bbox
+    that are FULLY INSIDE the rect. Excludes strokes, non-zero-area fills, and
+    drawings that cross or lie outside the rect.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        orig = page.get_drawings
+        def _mixed():
+            return list(orig()) + [
+                # Counted: zero-W type='f' inside rect (W=0, fully inside).
+                {"rect": fitz.Rect(50.0, 60.0, 50.0, 70.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+                # Counted: zero-H type='f' inside rect.
+                {"rect": fitz.Rect(50.0, 65.0, 60.0, 65.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+                # SKIPPED: non-zero-area fill inside rect.
+                {"rect": fitz.Rect(55.0, 60.0, 65.0, 75.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+                # SKIPPED: zero-area STROKE inside rect.
+                {"rect": fitz.Rect(50.0, 70.0, 50.0, 80.0), "type": "s",
+                 "fill": None, "color": (0.0, 0.0, 0.0), "items": []},
+                # SKIPPED: zero-area fill OUTSIDE rect.
+                {"rect": fitz.Rect(120.0, 100.0, 120.0, 110.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+                # SKIPPED: zero-area fill CROSSING rect boundary (x0 < user_rect.x0).
+                {"rect": fitz.Rect(35.0, 60.0, 35.0, 70.0), "type": "f",
+                 "fill": (0.0, 0.0, 0.0), "color": None, "items": []},
+            ]
+        page.get_drawings = _mixed
+        user_rect = (40.0, 50.0, 90.0, 80.0)
+
+        count = pdf_engine.count_zero_area_fills_fully_inside(page, user_rect)
+        assert count == 2, f"expected exactly 2 (zero-W fill inside + zero-H fill inside); got {count}"
+    finally:
+        doc.close()
+
+
+def test_replace_region_with_white_raster_inserts_image_xobject():
+    """Hotfix #06 raster overlay: ``replace_region_with_white_raster`` inserts exactly
+    one image XObject covering ``rect``, and that image has the white-fill helper's
+    invariants (no per-artefact white DRAWINGS appear afterwards — the helper that
+    detects the legacy cover pattern returns []).
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        user_rect = (40.0, 50.0, 90.0, 80.0)
+
+        # Pre-condition: no images on this freshly-made page.
+        assert page.get_images(full=True) == []
+
+        pdf_engine.replace_region_with_white_raster(page, user_rect)
+
+        # Post-condition 1: exactly one image XObject inserted, and it lands inside
+        # (or covering) the user rect.
+        imgs = page.get_images(full=True)
+        assert len(imgs) == 1, f"expected exactly 1 image XObject inserted; got {len(imgs)}"
+        xref = imgs[0][0]
+        rects = page.get_image_rects(xref)
+        assert rects, "inserted image must have a placement rect"
+        placed = rects[0]
+        assert (placed.x0 <= user_rect[0] + 0.5 and placed.y0 <= user_rect[1] + 0.5
+                and placed.x1 >= user_rect[2] - 0.5 and placed.y1 >= user_rect[3] - 0.5), (
+            f"inserted image rect {placed} does not cover user rect {user_rect}"
+        )
+
+        # Post-condition 2: the white-fill DRAWING helper still returns []. The
+        # inserted resource is an image XObject, NOT a vector fill, so the helper
+        # (which only scans drawings) must not falsely detect it.
+        whitepaint = pdf_engine.get_white_fill_drawings_intersecting(page, user_rect)
+        assert whitepaint == [], f"image overlay must not register as a white-fill DRAWING: {whitepaint}"
+    finally:
+        doc.close()
+
+
+def test_replace_region_with_white_raster_skips_degenerate_rect():
+    """Defence in depth: a zero-area rect (W=0 or H=0 AFTER ``fitz.Rect.normalize()``)
+    is a silent no-op, never a crash. The caller in ``remove_region_vector`` already
+    short-circuits on empty rects via ``_is_empty``; this guards against a future
+    caller that doesn't.
+
+    Note: a negative-area rect like ``(60, 60, 50, 50)`` is NOT degenerate — fitz
+    ``Rect.normalize()`` swaps the coords to ``(50, 50, 60, 60)`` (a valid 10×10
+    rect), and the routine intentionally accepts that (matches fitz semantics).
+    Only true zero-width / zero-height inputs are no-ops.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Zero width — must be a no-op.
+        pdf_engine.replace_region_with_white_raster(page, (50.0, 60.0, 50.0, 70.0))
+        # Zero height — must be a no-op.
+        pdf_engine.replace_region_with_white_raster(page, (50.0, 60.0, 60.0, 60.0))
+        assert page.get_images(full=True) == [], (
+            "no image should be inserted for zero-area rects"
+        )
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_dense_zero_area_routes_to_raster_fallback(monkeypatch):
+    """Hotfix #06 dispatcher: when ``count_zero_area_fills_fully_inside`` reports a
+    count >= ``ZERO_AREA_RASTER_THRESHOLD``, ``remove_region_vector`` calls
+    ``replace_region_with_white_raster`` and DOES NOT call
+    ``cover_zero_area_artefacts``.
+
+    Verifies behaviour at the seam level by monkey-patching the seam attributes the
+    dispatcher reads; the underlying page state is otherwise the standard
+    ``ingested_session`` fixture (small synthetic content the existing tests already
+    exercise).
+    """
+    # The conftest fixture has < 100 zero-area fills by construction. To exercise the
+    # dense branch we force the counter to return a value above the threshold.
+    forced_count = pdf_engine.ZERO_AREA_RASTER_THRESHOLD + 50
+
+    # Spies — record which branch was taken.
+    raster_calls = []
+    cover_calls = []
+
+    def _forced_count(page, rect):
+        return forced_count
+
+    real_replace = pdf_engine.replace_region_with_white_raster
+    real_cover = pdf_engine.cover_zero_area_artefacts
+
+    def _spy_replace(page, rect):
+        raster_calls.append(rect)
+        return real_replace(page, rect)
+
+    def _spy_cover(page, rect):
+        cover_calls.append(rect)
+        return real_cover(page, rect)
+
+    # Patch the SEAM (the module ``redact`` reads), not ``pdf_engine`` directly —
+    # ``redact.pdf_engine.foo`` resolves via the imported module reference.
+    monkeypatch.setattr(redact.pdf_engine, "count_zero_area_fills_fully_inside", _forced_count)
+    monkeypatch.setattr(redact.pdf_engine, "replace_region_with_white_raster", _spy_replace)
+    monkeypatch.setattr(redact.pdf_engine, "cover_zero_area_artefacts", _spy_cover)
+
+    # Build a session and run the standard removal path.
+    from app.services import coords
+
+    # Reuse the standard ingest fixture via a lightweight inline build — we only need
+    # a page that has SOMETHING to remove so the no-op short-circuit doesn't fire.
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+
+        removed = redact.remove_region_vector(page, rect)
+        assert removed is True
+
+        # Dispatcher must have taken the raster path EXACTLY ONCE and skipped the cover path.
+        assert len(raster_calls) == 1, f"expected raster fallback exactly once; got {len(raster_calls)}"
+        assert cover_calls == [], f"cover_zero_area_artefacts must be skipped in dense branch; got {cover_calls}"
+
+        # And the image XObject is really on the page (post-condition the dispatcher relies on).
+        assert len(page.get_images(full=True)) == 1, "raster fallback must leave exactly 1 image XObject"
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_sparse_zero_area_keeps_per_artefact_cover(monkeypatch):
+    """Hotfix #06 dispatcher (counter-test): when the zero-area count is BELOW the
+    threshold, ``remove_region_vector`` keeps the existing
+    ``cover_zero_area_artefacts`` strategy and DOES NOT call the raster fallback.
+    """
+    raster_calls = []
+    cover_calls = []
+    real_replace = pdf_engine.replace_region_with_white_raster
+    real_cover = pdf_engine.cover_zero_area_artefacts
+
+    def _spy_replace(page, rect):
+        raster_calls.append(rect)
+        return real_replace(page, rect)
+
+    def _spy_cover(page, rect):
+        cover_calls.append(rect)
+        return real_cover(page, rect)
+
+    monkeypatch.setattr(redact.pdf_engine, "replace_region_with_white_raster", _spy_replace)
+    monkeypatch.setattr(redact.pdf_engine, "cover_zero_area_artefacts", _spy_cover)
+
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+
+        removed = redact.remove_region_vector(page, rect)
+        assert removed is True
+
+        # Sparse case (synthetic fixture has 0 zero-area fills): cover path runs once,
+        # raster fallback never.
+        assert raster_calls == [], f"raster fallback must NOT run in sparse case; got {raster_calls}"
+        assert len(cover_calls) == 1, f"cover path must run exactly once in sparse case; got {len(cover_calls)}"
+
+        # No image XObject should have been inserted in the sparse path.
+        assert page.get_images(full=True) == [], "sparse path must not insert any image"
+    finally:
+        doc.close()
+
+
 def test_get_drawings_fully_inside_keeps_zero_bbox_stroke_visible_line():
     """Hotfix #04-04 counter-check: a STROKE (``type='s'``) with bbox H=0 is a real visible
     line (pen ink renders even when bbox collapses) and MUST still be reported as a residual.
