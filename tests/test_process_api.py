@@ -268,7 +268,27 @@ def test_process_invalid_rotation_value_is_422(client, valid_pdf_bytes):
 
 
 def test_process_without_logo_is_pure_removal(client, valid_pdf_bytes):
-    """D-01: a /process with no logo_id produces NO embedded image — Phase-2 behavior unchanged."""
+    """D-01 (REVISED by hotfix #06): a /process with no logo_id places NO LOGO image.
+
+    Original D-01 (Phase 2): no logo_id ⇒ ``page.get_images() == []`` everywhere.
+
+    Revised by hotfix #06 (dCt-residue, Option A raster fallback): no logo_id ⇒ no
+    LOGO image; the only image XObject that may appear on a page is a raster
+    fallback overlay placed by ``remove_region_vector`` when post-redaction
+    zero-area ``type='f'`` residue density crosses
+    ``ZERO_AREA_RASTER_THRESHOLD`` inside the framed rect. The overlay is a
+    32×32 solid-white image XObject; ITS PRESENCE does NOT imply a logo was
+    placed.
+
+    For the standard ``valid_pdf_bytes`` fixture (no supplier-CAD-glyph zero-area
+    decomposition), the dense branch never fires and ``page.get_images() == []``
+    still holds — i.e. this test's assertion is unchanged in spirit, only its
+    docstring is revised to acknowledge the new contract. The dense-branch
+    behaviour is pinned end-to-end by
+    ``tests/test_redact.py::test_remove_region_vector_dense_real_zero_area_paths_end_to_end``
+    (which builds a real >=100 zero-area fixture and asserts exactly one raster
+    fallback image is inserted per region).
+    """
     sid = _upload(client, valid_pdf_bytes).json()["session_id"]
     px_rect, dpi = _region_px_for(client, sid, 0)
     resp = client.post(
@@ -282,7 +302,16 @@ def test_process_without_logo_is_pure_removal(client, valid_pdf_bytes):
     try:
         for page_no in range(pdf_engine.page_count(out_doc)):
             page = pdf_engine.get_page(out_doc, page_no)
-            assert page.get_images() == [], "no logo_id must mean no embedded image (D-01)"
+            # Standard fixture is below the dense threshold → still no images.
+            # Any image that appears MUST be a raster fallback overlay (asserted
+            # by the dense-branch integration test elsewhere); a LOGO image is
+            # specifically the contract this test guards against.
+            assert page.get_images() == [], (
+                "no logo_id must mean no LOGO image (D-01 as revised by hotfix #06); "
+                "any image present would be a raster fallback overlay — but the "
+                "standard fixture is below the dense-residue threshold and should "
+                "produce no image at all"
+            )
     finally:
         pdf_engine.close(out_doc)
 

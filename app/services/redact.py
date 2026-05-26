@@ -3,6 +3,39 @@
 Given an open page and the unrotated-page ``Rect`` the coordinate mapper produced, the
 two entry points TRULY remove the content inside it (not a cover):
 
+TRUE_REMOVAL_LIMITATION (hotfix #06 / dCt-residue, 2026-05-26)
+--------------------------------------------------------------
+
+One narrow case violates the "true removal at the content-stream level" guarantee:
+when a supplier mark is rendered as a CAD-glyph decomposition (the supplier ships
+each character/stroke as a separate ``type='f'`` filled path with W=0 or H=0
+"zero-area" bbox), PyMuPDF's ``apply_redactions`` does NOT remove those zero-area
+items in ANY graphics mode — verified for both ``LINE_ART_REMOVE_IF_COVERED``
+and ``LINE_ART_REMOVE_IF_TOUCHED``. The sources remain in the content stream.
+
+When :func:`remove_region_vector` detects DENSE zero-area residue
+(``pdf_engine.ZERO_AREA_RASTER_THRESHOLD`` or more fully-inside the user rect
+after ``apply_redactions``), it overlays a single solid-white image XObject on
+the user rect (:func:`pdf_engine.replace_region_with_white_raster`) — the
+underlying zero-area BLACK source paths remain in the content stream but are
+visually superseded by an opaque image. This is an OVERLAY, not a delete, and
+should be understood as a defence-in-depth measure for the cases PyMuPDF's API
+cannot reach. The third-party-renderer hairline failure mode that motivated
+:func:`pdf_engine.cover_zero_area_artefacts` is also resolved by the overlay
+because the image is opaque across the whole rect.
+
+Recovering a supplier mark from a dense-residue output requires BOTH (1)
+removing the image XObject (one structural edit in a PDF editor) AND (2)
+expanding each zero-area path's bbox to non-zero width/height (per-path
+geometry surgery). The prior Phase-4 cover-routine leak only needed
+re-colouring 1742 separate white covers — the hotfix #06 dispatcher closes
+that step, so the new failure path is strictly harder.
+
+True deletion of zero-area sources requires content-stream surgery (a candidate
+hotfix #07 / Option B if higher assurance is required); see
+``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the full analysis.
+
+
 - :func:`remove_region_vector` — Phase 2 path. Used when the framed rect overlaps NO
   image XObject on the page (pure CAD / vector / text content). Marks the rect (grown
   ~5pt to catch stroke-wrapper survivors), applies redactions with
@@ -182,7 +215,16 @@ def remove_region_vector(page, rect) -> bool:
     # population the cover routine would paint over). If that count crosses
     # ``ZERO_AREA_RASTER_THRESHOLD``, swap the per-artefact cover strategy for a
     # single solid-white image XObject overlay (``replace_region_with_white_raster``)
-    # — no per-stroke geometry to leak.
+    # — no per-stroke COVER geometry to re-colour as an attack.
+    #
+    # HONEST LIMITATION (mirrors replace_region_with_white_raster's docstring and
+    # the module-level TRUE_REMOVAL_LIMITATION note): the dense branch removes the
+    # COVERS' attack surface but does NOT delete the zero-area BLACK source paths
+    # from the content stream — they remain, visually superseded by the opaque
+    # image XObject. Recovery now requires removing the image AND per-path bbox
+    # surgery (strictly harder than re-colouring vector covers, but not impossible).
+    # True content-stream deletion of zero-area sources is deferred to a future
+    # content-stream-surgery hotfix (Option B / #07).
     #
     # Done AFTER the residual assertion so neither code path can trip
     # ``get_drawings_fully_inside`` (zero-area fills are already excluded from that
