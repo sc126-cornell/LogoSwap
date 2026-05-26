@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: ready_to_complete
-stopped_at: Milestone v1.0 完整交付 — LogoSwap LIVE at https://logoswap.scottchen0622.com (Zeabur + Cloudflare DNS + Let's Encrypt TLS;AGPL §13 三件套就位)。等待 /gsd-complete-milestone 歸檔
-last_updated: "2026-05-24T12:00:00.000Z"
-last_activity: 2026-05-24 -- Phase 5 上線 + Cloudflare 自訂網域 + Dockerfile PATH hotfix push
+stopped_at: Milestone v1.0 + hotfix 06 (dCt-residue Option A) + hotfix 07 (loader gap + error-copy) 全部 LIVE + LIVE-UAT 驗證閉環 at https://logoswap.scottchen0622.com。等待 /gsd-complete-milestone 歸檔
+last_updated: "2026-05-27T00:45:00.000Z"
+last_activity: 2026-05-27 -- hotfix 06 (dCt-residue) + hotfix 07 (loader + error copy) LIVE 驗證閉環,LogoSwap (2) 通過 forensic + re-color attack 雙重檢驗
 progress:
   total_phases: 5
   completed_phases: 5
@@ -28,8 +28,8 @@ See: .planning/PROJECT.md (updated 2026-05-24 — milestone v1.0 complete)
 Milestone: **v1.0 — LIVE** at https://logoswap.scottchen0622.com
 Phase: 5 of 5 (all phases COMPLETE)
 Plans: 11 of 11 complete
-Status: Phase 5 完整交付 + 上線。Zeabur (Tencent Tokyo 2C 2GB K3s, IP 43.163.207.206) + Cloudflare DNS-only (灰色雲) + Let's Encrypt TLS 自動續發。AGPL §13 三件套(public GitHub https://github.com/sc126-cornell/LogoSwap + LICENSE AGPL-3.0 + UI footer source link)同步就位。
-Last activity: 2026-05-24 -- 上線 + Cloudflare 自訂網域生效 + Dockerfile PATH hotfix push (bfb93bd)
+Status: Phase 5 完整交付 + 上線 + 兩輪 post-LIVE hotfix 閉環。Zeabur (Tencent Tokyo 2C 2GB K3s, IP 43.163.207.206) + Cloudflare DNS-only (灰色雲) + Let's Encrypt TLS 自動續發。AGPL §13 三件套(public GitHub https://github.com/sc126-cornell/LogoSwap + LICENSE AGPL-3.0 + UI footer source link)同步就位。Hotfix 06 (dCt-residue Option A raster overlay) + Hotfix 07 (loader gap + error-copy UX) 已 LIVE-UAT 驗證閉環。
+Last activity: 2026-05-27 -- hotfix 06/07 LIVE 驗證閉環。LogoSwap (2) 檔案 forensic 通過:white-fill drawings=0, residual text=0, re-color attack 產出純空白,標題塊 EXW logo + Excellence Wire Ind. Co., Ltd 正確顯示
 
 **Phase 5 post-execute hotfix 收口記錄(自 ad72796 後 12 個 hotfix commit):**
 
@@ -39,6 +39,37 @@ Last activity: 2026-05-24 -- 上線 + Cloudflare 自訂網域生效 + Dockerfile
 - 2 deploy hotfix(0c63ac8 + bfb93bd):repo rename logoswap → LogoSwap PascalCase URLs;Dockerfile ENV PATH=/install/bin(Zeabur 第一次 build 抓出的 runtime bug)
 - 測試:243 → 291 passed + 3 platform-skipped(零回歸)
 - STRIDE:Phase 5 新增 10 個 threats 全 closed(6 mitigate + 4 explicit accept);累積 27/27
+
+**Post-LIVE hotfix 06 + 07 收口記錄(2026-05-26 → 2026-05-27,push to LIVE):**
+
+*Hotfix 06 — dCt-residue Option A (raster overlay for dense zero-area residue)*:
+- 起因:LIVE v1.0 對供應商 CAD-glyph 商標(1742 個零面積 type='f' filled path)的處理,既有 `cover_zero_area_artefacts` 用 1742 個 ±0.5pt 白色 cover 蓋住,但 union 重現 logo 形狀,re-color attack 可完整還原 dCt logo
+- 修法:在 `remove_region_vector` 加 density dispatcher,當 zero-area count ≥ `ZERO_AREA_RASTER_THRESHOLD`(=100)時改用 `replace_region_with_white_raster`(單一 32×32 白色 image XObject overlay)取代 per-artefact 白色 covers
+- Commits(LIVE-deployed):0a2fa99(safe-landing helpers)+ 57da585(Option A raster overlay)+ 21a567f(debug doc rename)+ 3ea0572(code-review BL-01 + WR-02 + WR-03)+ 8ae3654(security audit SECURED 5/5)+ 724253a(debug session metadata)
+- Failed attempt(已 revert):5330290(WR-01/04/05/06/07 + IN-01/02/03/05 一次全修)在 production 觸發 silent fail,3 個小時內偵測 → revert(e5700e5)→ cherry-pick e7e7ca2..0bbeb6d 跳過 5330290 還原工作狀態 → 重新部署成功
+- 教訓:過度堆疊「nice-to-have」polish 在已穩定的修法上會引入未知 production-only 失敗候選;遵守「最小變更 + 充分測試」
+- 測試:294 → 301 passed + 3 skipped(+7 net hotfix #06 tests)
+- STRIDE:5 個重新驗證 threats 全 closed(4 mitigate + 1 D-01 contract revision accept-with-documented-rationale,Hotfix-06-SECURITY.md SECURED)
+- LIVE 驗證(2026-05-26 23:36–23:37 LogoSwap (6)(7))+(2026-05-27 00:01–00:02 LogoSwap (2)(3))全部通過
+
+*Hotfix 07 — loader gap + error-copy UX*:
+- 起因 1:LIVE 套用變更後,瀏覽器 `<img>` 元素在 `pageImage.src` 重新指派與新 fetch 完成之間繼續顯示前一張圖(原圖),使用者誤以為套用沒生效
+- 起因 2:使用者經驗發現「套用失敗常常重新開檔就 OK」,但 4 條相關錯誤訊息均未提及此 escalation path
+- 修法 1:`web/js/viewer.js::showResultImage` 加 `showPageLoader(true/false)` 包住 src swap,onerror wrapper 先關 loader 再呼叫 caller 的 onError
+- 修法 2:`web/js/regions.js` COPY 字典 4 條訊息(`removalFailed` / `resultRenderFailed` / `logoUnavailable` / `logoSkipped`)結尾各加「,或重新開啟檔案再操作一次」;`downloadFailed` 維持不變(下載失敗時重開檔會丟掉已完成的 work copy)
+- Commits(LIVE-deployed):4ed9531(loader gap fix)+ 0a11c97(error-copy UX)
+- 範圍:純 frontend,2 個檔案,+26/-5 行,後端零變動
+- 測試:301 passed + 3 skipped(零回歸;前端無 JS 自動測試,手動 UAT 驗證)
+- LIVE 驗證(2026-05-27 00:37 LogoSwap (2))通過
+
+**LIVE-UAT 最終驗收(2026-05-27)**
+
+LogoSwap (2):
+- 結構 ✅ za_black=1742(被 image XObject 蓋住,合 Option A 預期);white_dr=0;text=0;images=2(EXW logo + raster fallback overlay)
+- Re-color attack ✅ 0 白色 vector drawings 可染色,攻擊產出純空白
+- 視覺 ✅ 標題塊乾淨顯示「All Copy Rights Reserved」+「EXW Excellence Wire Ind. Co., Ltd」,dCt + NINGBO 完全不見
+- Loader gap ✅(視覺驗證,使用者確認 LIVE 行為改善)
+- Error copy ✅ 4 條訊息結尾正確加上「重新開啟檔案再操作一次」(diff 已驗證,LIVE 路徑等下次自然觸發再驗)
 
 **Hotfix 收口記錄(自 137a592 後 13 個 commit):**
 

@@ -4,6 +4,8 @@ phase_name: ubuntu
 hotfix_id: 06-dct-residue
 audit_scope: hotfix_06_dct_residue
 date: 2026-05-26
+live_uat_verified_at: 2026-05-27
+live_uat_evidence: LogoSwap (2) 檔案 forensic 通過 — white-fill drawings=0 (legacy attack surface 消失);residual text=0 (NINGBO 真正刪除);raster overlay image XObject 已就位;re-color attack 產出純空白(舊版會還原 dCt logo)。T-02-07 mitigation 在 LIVE 上實證有效。
 asvs_level: 1
 diff_base: f911139..HEAD
 commits_audited:

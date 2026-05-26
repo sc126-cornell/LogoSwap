@@ -1,9 +1,12 @@
 ---
-status: addressed
+status: live_uat_verified
 hotfix_id: 06-dct-residue
 review_depth: standard
 reviewed_at: 2026-05-26
 addressed_at: 2026-05-26
+live_uat_verified_at: 2026-05-27
+live_uat_evidence: LogoSwap (6)(7)(2)(3) forensic + re-color attack 全部通過(white_dr=0, text=0, image_overlay=present, attack_output=純空白)
+live_uat_caveat: 第二輪 push(5330290:WR-01/04/05/06/07 + IN-01/02/03/05 一次全修)在 production silent fail,已 revert(e5700e5)+ cherry-pick 跳過(0a2fa99..724253a 等同 e7e7ca2..0bbeb6d);實際 LIVE 部署 NOT 包含 5330290。教訓記入 PROJECT.md key decisions:hotfix 階段「過度堆疊 polish 違反 minimum-change 原則」會引入未知 production-only 失敗候選。
 files_reviewed: 3
 diff_base: f911139..HEAD
 commits_reviewed:
