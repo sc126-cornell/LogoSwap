@@ -29,7 +29,17 @@
 
 <!-- Current scope. Building toward these. -->
 
-_None — milestone v1.0 全部交付,正等待 `/gsd-complete-milestone` 歸檔。_
+_Milestone v1.0 已歸檔(2026-05-27,tag v1.0)。等待 `/gsd-new-milestone` 定義下一個版本的需求。_
+
+### Deferred (carried forward from v1.0 close)
+
+候選需求,下個 milestone 定義時重新評估優先級:
+
+- **Option B — content-stream surgery 真正刪除 zero-area sources**:Option A overlay 對使用者實質不可恢復;Option B 需要威脅模型提升(對外公開使用)才必要
+- **嵌入式整合(colleague approval site)**:v1 已預留 API base path + iframe-friendly 設計;實際整合需求出現時啟動
+- **多檔批次處理**:v1 採手動單檔互動;批次須引入 task queue(如 Celery + Redis)
+- **`is_raster_fallback_image()` getter**:colleague 整合需要區分 fallback overlay 與真 logo image 時才加
+- **超大影像錯誤訊息實機驗證(≥89MP)**:自動測試覆蓋 OK;UI 字串待真檔到手
 
 ### Out of Scope
 
@@ -73,6 +83,12 @@ _None — milestone v1.0 全部交付,正等待 `/gsd-complete-milestone` 歸檔
 | 90° 旋轉作用在整份文件(非 per-page) | 供應商 PDF 多半整份方向一致,逐頁旋轉是反向使用情境 | ✓ Validated (Phase 3 UAT) |
 | 套用變更後框選鎖定;以「恢復原圖」為唯一重置入口 | 保護跨多頁的變更不被誤動;後續編輯路徑更明確 | ✓ Validated (Phase 3 UAT) |
 | 原圖 / 移除結果切換鈕移除(視圖自動切換) | 原圖渲染路徑修好前一直顯示移除結果;UAT 期間使用者選擇取消這組按鈕 | ✓ Validated (Phase 3 UAT) |
+| Hotfix 06 — Option A raster overlay(取代 per-artefact white covers) | 1742 per-artefact covers 的 union 重現 dCt logo,re-color attack 可還原;單一 image XObject 無 per-stroke 攻擊面 | ✓ Validated (LIVE-UAT 2026-05-27 LogoSwap (2)) |
+| Hotfix 06 / 接受 zero-area sources 仍在 content stream(Option A) | PyMuPDF API 限制無法刪零面積;Option A overlay 對使用者實質不可恢復,符合 v1 內網威脅模型;真正刪除留待 Option B(對外公開時) | ✓ Validated (T-02-07 mitigation,SECURED 5/5) |
+| **Hotfix 階段堅守 minimum-change + sufficient-testing**(5330290 教訓) | 5330290 第二輪 push 一次修 9 個 nice-to-have findings(WR/IN polish)觸發 production-only silent fail。Tests passing locally ≠ production safe,跨 module 邊界 + assertion + logging 改動疊在已穩定的修法上會放大 surface area | ⚠️ Revisit — 對任何 hotfix flow 都要套用;nice-to-have polish 應該分開 commit 或留到下個 maintenance sprint |
+| Hotfix 07 — UI loader 包住 result-image swap | 套用變更後瀏覽器 `<img>` 繼續顯示舊圖直到新 fetch 完成,使用者誤以為套用沒生效;`showPageLoader(true/false)` 包住 src swap | ✓ Validated (LIVE-UAT 2026-05-27) |
+| Hotfix 07 — apply-fail 訊息建議「重新開啟檔案」 | 使用者經驗顯示重開檔常解決 session-state 問題;4 條 COPY 訊息加 escalation path,downloadFailed 維持不變(避免丟失 work copy) | ✓ Validated (LIVE 2026-05-27;真實 LIVE 觸發等下次自然發生) |
+| `revert + cherry-pick` 比 `git reset --hard + force push` 更安全(5330290 recovery) | 保留 history;砍掉的失敗 commits 仍在 git log 可審計;不破壞遠端 | ✓ Validated (e5700e5 revert + 0a2fa99..724253a cherry-pick) |
 
 ## Evolution
 
