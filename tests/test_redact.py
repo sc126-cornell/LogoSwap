@@ -688,6 +688,112 @@ def test_remove_region_vector_dense_zero_area_routes_to_raster_fallback(monkeypa
         doc.close()
 
 
+def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
+    """Hotfix #06 — end-to-end integration (NO monkey-patch).
+
+    Builds a real PDF page with >= ZERO_AREA_RASTER_THRESHOLD zero-area ``type='f'``
+    fills using PyMuPDF's Shape API (``draw_rect`` with W=0 + ``finish(fill=...)``
+    produces real zero-area filled paths — verified to surface in ``get_drawings()``
+    with ``type='f'`` and bbox W=0). Runs ``remove_region_vector`` end-to-end
+    (counter, dispatcher, raster fallback, post-condition) and verifies the
+    user-visible invariants:
+
+      - exactly one image XObject is inserted on the page (the raster fallback overlay)
+      - no white-fill DRAWINGS intersect the user rect (the legacy attack surface is gone)
+      - the rendered page is white inside the user rect (visual cleanliness)
+      - the function returns True (content was removed)
+
+    This is the only test in the suite that proves the dense-path behaviour without
+    monkey-patching the seam — the BL-01 / WR-02 follow-up from the hotfix #06 review.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=400, height=300)
+
+        # User rect we will frame: 50..350 x 100..200 (300pt wide, 100pt tall).
+        user_rect = fitz.Rect(50.0, 100.0, 350.0, 200.0)
+
+        # Synthesize >= ZERO_AREA_RASTER_THRESHOLD real zero-area type='f' paths
+        # FULLY INSIDE user_rect. Use draw_rect(W=0) — each one is a vertical
+        # zero-width filled line at x=55+i*2, y from 110 to 190. Verified to
+        # produce {'type':'f','fill':(0,0,0)} with bbox W=0 in get_drawings().
+        n = pdf_engine.ZERO_AREA_RASTER_THRESHOLD + 20  # 120, well above threshold
+        for i in range(n):
+            x = 55.0 + i * 2.0
+            shape = page.new_shape()
+            shape.draw_rect(fitz.Rect(x, 110.0, x, 190.0))  # W=0 → zero-area
+            shape.finish(fill=(0.0, 0.0, 0.0), color=None, width=0)
+            shape.commit()
+
+        # Also add a text word to remove (so the no-op short-circuit doesn't fire
+        # and so apply_redactions has something to actually remove).
+        page.insert_text((100, 150), "SUPPLIER", fontsize=10)
+
+        # Pre-condition: the synthesized zero-area count is detected by the helper.
+        zero_count = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert zero_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD, (
+            f"synthesized fixture has {zero_count} zero-area paths, need "
+            f">= {pdf_engine.ZERO_AREA_RASTER_THRESHOLD} for the dense branch"
+        )
+        # Pre-condition: no image XObject on page yet.
+        assert page.get_images(full=True) == [], "fixture must start with no images"
+
+        removed = redact.remove_region_vector(page, user_rect)
+        assert removed is True, "content WAS present; remove_region_vector should return True"
+
+        # POST 1: exactly one image XObject inserted — the raster fallback overlay.
+        imgs = page.get_images(full=True)
+        assert len(imgs) == 1, (
+            f"dense branch must insert exactly 1 raster fallback image; got {len(imgs)}"
+        )
+        # POST 2: the inserted image covers the user rect.
+        xref = imgs[0][0]
+        placed_rects = page.get_image_rects(xref)
+        assert placed_rects, "inserted image must have a placement rect"
+        placed = placed_rects[0]
+        assert (
+            placed.x0 <= user_rect.x0 + 0.5
+            and placed.y0 <= user_rect.y0 + 0.5
+            and placed.x1 >= user_rect.x1 - 0.5
+            and placed.y1 >= user_rect.y1 - 0.5
+        ), f"fallback image rect {placed} does not cover user rect {user_rect}"
+        # POST 3: NO white-fill DRAWINGS intersect the user rect (the legacy
+        # attack surface — re-coloring per-artefact covers to reveal the source
+        # shape — is gone).
+        whitepaint = pdf_engine.get_white_fill_drawings_intersecting(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert whitepaint == [], (
+            f"dense branch must NOT paint per-artefact white covers (legacy attack "
+            f"surface); got {len(whitepaint)} white-fill drawings"
+        )
+        # POST 4: visual cleanliness — sample a few pixels INSIDE the user rect,
+        # well away from the rect edges. They must all be (or near) white.
+        pix = page.get_pixmap(
+            dpi=150, clip=fitz.Rect(user_rect.x0 + 10, user_rect.y0 + 10, user_rect.x1 - 10, user_rect.y1 - 10)
+        )
+        # Sample 5 pixels: corners + center of the clipped area.
+        sample_coords = [
+            (5, 5),
+            (pix.width - 5, 5),
+            (5, pix.height - 5),
+            (pix.width - 5, pix.height - 5),
+            (pix.width // 2, pix.height // 2),
+        ]
+        for x, y in sample_coords:
+            rgb = pix.pixel(x, y)
+            assert all(c >= 250 for c in rgb[:3]), (
+                f"pixel at ({x},{y}) is not white: {rgb} — raster fallback did not "
+                f"visually mask the zero-area residue"
+            )
+    finally:
+        doc.close()
+
+
 def test_remove_region_vector_sparse_zero_area_keeps_per_artefact_cover(monkeypatch):
     """Hotfix #06 dispatcher (counter-test): when the zero-area count is BELOW the
     threshold, ``remove_region_vector`` keeps the existing
