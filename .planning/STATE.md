@@ -46,6 +46,14 @@ Archive: `.planning/milestones/v1.0-ROADMAP.md` + `v1.0-REQUIREMENTS.md`
 | Self-doc | `residual_whitepaint` 顯式列入 `_PROCESS_STATUS` | Deferred | dict.get fallback 已正確映射 422 |
 | UAT | 超大影像錯誤訊息實機驗證(WR-03 megapixel cap UI) | Deferred 自 milestone v1.0 close | 自動測試覆蓋 OK,UI 字串待 ≥89MP 真檔 |
 
+## Quick Tasks Completed
+
+Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
+
+| Date | Slug | Description | Artifacts |
+|---|---|---|---|
+| 2026-05-27 | colleague-handoff-doc | 寫 `HANDOFF.md`(整合路徑決策樹 + AGPL 變化情境 + 核心領域知識備忘),供同事接手整合進公司內部簽核網站 | `HANDOFF.md`(新增,repo root);`.planning/quick/260527-1xq-colleague-handoff-doc/` |
+
 ## Session Continuity
 
 Last session: 2026-05-27T00:50:00.000Z
