@@ -426,11 +426,32 @@ export function showOriginalImage() {
  * mid-redaction, caching 404) burned the whole UI down to the page-render error state and
  * the user was stranded (no path back to the original view). Every caller SHOULD pass an
  * onError; we keep it optional only to preserve the historical signature.
+ *
+ * Loader gap fix (hotfix #07, 2026-05-27): when ``pageImage.src`` is reassigned the
+ * browser keeps the previously-loaded image visible until the new fetch completes
+ * (typically 300 ms–2 s for a server-rendered 200-DPI PNG). Without a loader the user
+ * sees the BEFORE image where they expect the AFTER image — looks like the apply
+ * didn't take effect. Toggle the existing ``pageLoader`` overlay around the swap so
+ * the visual state matches the data state. The loader is hidden on either
+ * ``onload`` (success) or ``onerror`` (failure); on failure the caller's ``onError``
+ * still fires AFTER the loader is cleared so the region-panel notice surfaces over
+ * the resting (last-loaded) image rather than over a stuck spinner.
  */
 export function showResultImage(url, onError) {
   if (state.sessionId === null || !url) return;
+  showPageLoader(true);
+  pageImage.onload = () => {
+    showPageLoader(false);
+  };
   if (typeof onError === "function") {
-    pageImage.onerror = onError;
+    pageImage.onerror = (e) => {
+      showPageLoader(false);
+      onError(e);
+    };
+  } else {
+    pageImage.onerror = () => {
+      showPageLoader(false);
+    };
   }
   pageImage.src = url;
 }
