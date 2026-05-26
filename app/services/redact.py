@@ -3,39 +3,6 @@
 Given an open page and the unrotated-page ``Rect`` the coordinate mapper produced, the
 two entry points TRULY remove the content inside it (not a cover):
 
-TRUE_REMOVAL_LIMITATION (hotfix #06 / dCt-residue, 2026-05-26)
---------------------------------------------------------------
-
-One narrow case violates the "true removal at the content-stream level" guarantee:
-when a supplier mark is rendered as a CAD-glyph decomposition (the supplier ships
-each character/stroke as a separate ``type='f'`` filled path with W=0 or H=0
-"zero-area" bbox), PyMuPDF's ``apply_redactions`` does NOT remove those zero-area
-items in ANY graphics mode — verified for both ``LINE_ART_REMOVE_IF_COVERED``
-and ``LINE_ART_REMOVE_IF_TOUCHED``. The sources remain in the content stream.
-
-When :func:`remove_region_vector` detects DENSE zero-area residue
-(``pdf_engine.ZERO_AREA_RASTER_THRESHOLD`` or more fully-inside the user rect
-after ``apply_redactions``), it overlays a single solid-white image XObject on
-the user rect (:func:`pdf_engine.replace_region_with_white_raster`) — the
-underlying zero-area BLACK source paths remain in the content stream but are
-visually superseded by an opaque image. This is an OVERLAY, not a delete, and
-should be understood as a defence-in-depth measure for the cases PyMuPDF's API
-cannot reach. The third-party-renderer hairline failure mode that motivated
-:func:`pdf_engine.cover_zero_area_artefacts` is also resolved by the overlay
-because the image is opaque across the whole rect.
-
-Recovering a supplier mark from a dense-residue output requires BOTH (1)
-removing the image XObject (one structural edit in a PDF editor) AND (2)
-expanding each zero-area path's bbox to non-zero width/height (per-path
-geometry surgery). The prior Phase-4 cover-routine leak only needed
-re-colouring 1742 separate white covers — the hotfix #06 dispatcher closes
-that step, so the new failure path is strictly harder.
-
-True deletion of zero-area sources requires content-stream surgery (a candidate
-hotfix #07 / Option B if higher assurance is required); see
-``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the full analysis.
-
-
 - :func:`remove_region_vector` — Phase 2 path. Used when the framed rect overlaps NO
   image XObject on the page (pure CAD / vector / text content). Marks the rect (grown
   ~5pt to catch stroke-wrapper survivors), applies redactions with
@@ -81,11 +48,7 @@ grep come back clean.
 
 from __future__ import annotations
 
-import logging
-
 from . import pdf_engine
-
-logger = logging.getLogger(__name__)
 
 # Pitfall 4: a stroked path's wrapping rectangle is larger than the visible line (line
 # width x 1.5 per direction, default miter limit 10). Growing the redaction rect by ~5pt
@@ -198,81 +161,14 @@ def remove_region_vector(page, rect) -> bool:
             "移除後仍偵測到殘留內容(文字或向量),無法保證真正移除。",
         )
 
-    # Zero-area artefact cleanup — dispatched on residue DENSITY (hotfix #06,
-    # dCt-residue).
-    #
-    # Background: ``LINE_ART_REMOVE_IF_COVERED`` leaves zero-area filled paths
-    # (``type='f'`` with W=0 or H=0) in the content stream because PyMuPDF treats
-    # them as non-coverable (verified for both COVERED and TOUCHED graphics modes).
-    # The Phase 4 hotfix #5 routine ``cover_zero_area_artefacts`` paints a ±0.5 pt
-    # white rectangle PER artefact to suppress the 1-px hairline third-party
-    # readers render. That works fine for SPARSE residue (a few isolated CAD
-    # corners, no shape leak).
-    #
-    # Failure mode this dispatcher closes: when the residue is DENSE and the
-    # underlying paths trace a recognizable shape (a supplier-logo CAD glyph
-    # decomposition, 1742 paths in the 3013A-13A-C6-... reproduction), the UNION
-    # of the per-artefact covers reproduces that shape, and re-colouring the
-    # covers any non-white colour recovers the original supplier mark.
-    #
-    # Dispatch: count residual zero-area FILLS fully inside the user rect (the same
-    # population the cover routine would paint over). If that count crosses
-    # ``ZERO_AREA_RASTER_THRESHOLD``, swap the per-artefact cover strategy for a
-    # single solid-white image XObject overlay (``replace_region_with_white_raster``)
-    # — no per-stroke COVER geometry to re-colour as an attack.
-    #
-    # HONEST LIMITATION (mirrors replace_region_with_white_raster's docstring and
-    # the module-level TRUE_REMOVAL_LIMITATION note): the dense branch removes the
-    # COVERS' attack surface but does NOT delete the zero-area BLACK source paths
-    # from the content stream — they remain, visually superseded by the opaque
-    # image XObject. Recovery now requires removing the image AND per-path bbox
-    # surgery (strictly harder than re-colouring vector covers, but not impossible).
-    # True content-stream deletion of zero-area sources is deferred to a future
-    # content-stream-surgery hotfix (Option B / #07).
-    #
-    # Done AFTER the residual assertion so neither code path can trip
-    # ``get_drawings_fully_inside`` (zero-area fills are already excluded from that
-    # assertion via the same _DEGENERATE_BBOX_EPS, IN-01).
-    zero_area_count = pdf_engine.count_zero_area_fills_fully_inside(page, user_rect)
-    # Production telemetry (WR-01 from the hotfix #06 review): record the
-    # dispatcher's decision so SRE can observe the dense-vs-sparse split per
-    # job without re-running the file. INFO level — non-noisy, fires at most
-    # once per redacted region per /process call.
-    _dispatch_branch = (
-        "raster" if zero_area_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD else "cover"
-    )
-    logger.info(
-        "zero_area_dispatch",
-        extra={
-            "zero_area_count": zero_area_count,
-            "threshold": pdf_engine.ZERO_AREA_RASTER_THRESHOLD,
-            "branch": _dispatch_branch,
-        },
-    )
-    if zero_area_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD:
-        # Dense-residue path: single white image XObject covers the whole rect.
-        pdf_engine.replace_region_with_white_raster(page, user_rect)
-        # Post-condition: the safe-landing diagnostic helper from the same hotfix.
-        # After the raster overlay, no non-degenerate white-fill DRAWINGS should
-        # intersect the rect — the dense path deliberately does NOT call
-        # ``cover_zero_area_artefacts`` (the source of the legacy per-artefact
-        # cover drawings the helper detects). The image XObject is not a drawing
-        # and is not counted by this helper. If the assertion ever fails, it
-        # means a future change re-introduced cover-style paint into the dense
-        # path; failing closed is correct (T-02-07: never silently leave
-        # recoverable supplier content).
-        whitepaint = pdf_engine.get_white_fill_drawings_intersecting(page, user_rect)
-        if whitepaint:
-            raise RedactError(
-                "residual_whitepaint",
-                "raster fallback 後仍偵測到 white-paint 殘留,raster overlay 未生效。",
-            )
-    else:
-        # Sparse-residue path: per-artefact hairline cover (the Phase 4 #5
-        # behaviour). Strokes (type='s') are preserved — REMOVE_IF_COVERED
-        # already handles them and any boundary-crossing CAD line stays
-        # untouched by this routine.
-        pdf_engine.cover_zero_area_artefacts(page, user_rect)
+    # Phase 4 hotfix #5: cross-renderer cleanup of zero-area FILL artefacts that
+    # LINE_ART_REMOVE_IF_COVERED leaves in the content stream. PyMuPDF doesn't render them,
+    # but Adobe Reader / Chrome PDF.js render them as 1-px hairlines — visible as "weird
+    # marks" over the placed logo on supplier CAD PDFs (DC.pdf UAT). Done AFTER the
+    # residual assertion so the white covers do not trip ``get_drawings_fully_inside``.
+    # Strokes (type='s') are preserved — REMOVE_IF_COVERED already handles them and any
+    # boundary-crossing CAD line stays untouched by this routine.
+    pdf_engine.cover_zero_area_artefacts(page, user_rect)
 
     return True
 

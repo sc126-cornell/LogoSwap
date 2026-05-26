@@ -106,19 +106,3 @@ APP_BASE_PATH: str = os.environ.get("APP_BASE_PATH", "")
 SESSION_TTL_SECONDS: int = _env_int("SESSION_TTL_SECONDS", 3600)
 PROCESS_TIMEOUT_SECONDS: int = _env_int("PROCESS_TIMEOUT_SECONDS", 60)
 CORS_ALLOW_ORIGINS: str = os.environ.get("CORS_ALLOW_ORIGINS", "")
-
-# Hotfix #06 (dCt-residue): density threshold for the per-artefact-cover → raster-overlay
-# dispatcher in :func:`app.services.redact.remove_region_vector`. When the residual
-# zero-area ``type='f'`` fill count fully inside the user rect after ``apply_redactions``
-# is >= this value, the dispatcher swaps the per-artefact white-cover strategy
-# (:func:`app.services.pdf_engine.cover_zero_area_artefacts`) for a single solid-white
-# image XObject overlay (:func:`app.services.pdf_engine.replace_region_with_white_raster`)
-# — closing the "re-colour the per-artefact covers to reveal the supplier shape" attack.
-#
-# 100 is the empirical default: DC.pdf-class CAD line corners surface single-digit-to-low-
-# tens zero-area artefacts (well below 100); the hotfix-#06 reproduction file (a supplier
-# CAD-glyph "dCt" logo decomposed into 1742 zero-area paths) sits two orders of magnitude
-# above. The default is robust to a 5–10× shift in either population. Ops can tune via
-# ``LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD`` without a code change. See
-# ``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the derivation.
-ZERO_AREA_RASTER_THRESHOLD: int = _env_int("LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD", 100)
