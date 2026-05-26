@@ -217,6 +217,16 @@ def unrotated_content_box(
 #                                    Pitfall 3)
 #   - LINE_ART_REMOVE_IF_COVERED   = PDF_REDACT_LINE_ART_REMOVE_IF_COVERED (vector default,
 #                                    Pitfall 4)
+#   - LINE_ART_REMOVE_IF_TOUCHED   = PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED (re-exported for
+#                                    callers/tests that need to reference the constant
+#                                    without importing fitz; not currently used by the
+#                                    pipeline. Hotfix #05 / dCt-residue investigation
+#                                    empirically verified that TOUCHED does NOT remove
+#                                    ZERO-AREA drawings either — both COVERED and TOUCHED
+#                                    treat zero-area items as non-coverable — so switching
+#                                    to TOUCHED does not address the CAD-glyph-as-zero-area
+#                                    failure mode. See debug session
+#                                    .planning/debug/redact-whitepaint-residue.md.)
 #   - IMAGE_NONE                   = PDF_REDACT_IMAGE_NONE (raster untouched — vector
 #                                    branch; Phase 2 default)
 #   - IMAGE_PIXELS                 = PDF_REDACT_IMAGE_PIXELS (raster overlap: blank the
@@ -226,6 +236,7 @@ def unrotated_content_box(
 #                                    branch)
 TEXT_REMOVE = fitz.PDF_REDACT_TEXT_REMOVE
 LINE_ART_REMOVE_IF_COVERED = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_COVERED
+LINE_ART_REMOVE_IF_TOUCHED = fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED
 IMAGE_NONE = fitz.PDF_REDACT_IMAGE_NONE
 IMAGE_PIXELS = fitz.PDF_REDACT_IMAGE_PIXELS
 
@@ -248,6 +259,18 @@ A4_HEIGHT_PT = 842.0
 # when the residual check ignores a wider epsilon, or (b) ``residual_content``
 # false positives when the cover routine ignores a wider one. IN-01.
 _DEGENERATE_BBOX_EPS = 0.01
+
+# White-fill detection tolerance for the post-redaction "whitepaint residue" guard
+# (hotfix #05 / dCt-residue). PyMuPDF returns fill colours as floats in [0, 1]; a
+# numerically-exact (1.0, 1.0, 1.0) is the common case, but some content streams
+# produce 0.999... due to RGB rounding. Treat any channel within 0.5 % of 1.0 as
+# white. The guard itself is not wired into ``remove_region_vector``'s assertion
+# yet — the dCt-residue investigation showed the residue mechanism is
+# cover_zero_area_artefacts paint (not a recoverable supplier vector), so a guard
+# that trips on those covers would false-positive the existing pipeline. The
+# helper is shipped so the real fix (when chosen) can wire it in at the
+# appropriate boundary.
+_WHITE_FILL_EPS = 0.005
 
 
 def map_tuple_to_rect(
@@ -521,6 +544,69 @@ def get_drawings_fully_inside(
         if is_zero_area and drawing.get("type") == "f":
             continue
         if _rect_contains(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            hits.append(drawing)
+    return hits
+
+
+def get_white_fill_drawings_intersecting(
+    page: "fitz.Page", rect: tuple[float, float, float, float]
+) -> list:
+    """Return non-degenerate WHITE-FILL drawings whose bbox intersects ``rect``.
+
+    Diagnostic helper introduced during the hotfix #05 / dCt-residue investigation. The
+    dCt-residue failure mode shows up as a cluster of ``type='f'`` drawings with fill ≈
+    (1, 1, 1) intersecting the user rect whose union of bboxes reproduces the supplier
+    mark when re-coloured. This helper enumerates exactly that population.
+
+    IMPORTANT CONTEXT: empirical analysis of the LIVE broken output
+    (``3013A-13A-C6-XX-3D02-A01-00040_logoswap.pdf``) confirmed that the 1742 white-fill
+    drawings inside the framed rect are NOT recoverable supplier vectors painted white —
+    they are the ``cover_zero_area_artefacts`` paint covering 1742 zero-area BLACK glyph
+    fills the supplier rendered as a CAD glyph stroke decomposition (each stroke has a
+    bbox with W or H = 0). PyMuPDF's ``apply_redactions`` cannot remove zero-area items
+    in any mode (verified for both ``LINE_ART_REMOVE_IF_COVERED`` and
+    ``LINE_ART_REMOVE_IF_TOUCHED``). The covers form the visible-yet-recoverable
+    "whitepaint" shape; the underlying zero-area black fills are also still in the
+    content stream.
+
+    Because the white covers are intentional pipeline output (defensive paint over CAD
+    artefacts to suppress third-party-renderer hairlines), this helper is NOT wired into
+    ``remove_region_vector``'s residual assertion — doing so would false-positive every
+    DC.pdf-class CAD redaction the pipeline currently handles correctly. It is shipped
+    so the real fix (when chosen — e.g. routing dense zero-area regions through a raster
+    fallback, or content-stream surgery to delete the zero-area sources before painting)
+    can use it as the post-condition oracle.
+
+    EXCLUDED:
+
+    - Drawings whose ``type`` is not ``'f'`` (pure fills only).
+    - Zero-area FILLS (``W < ε`` or ``H < ε``) — same rationale as
+      :func:`get_drawings_fully_inside`: they render zero pixels.
+
+    Fill colour comparison: PyMuPDF returns ``fill`` as a 3-tuple of floats in [0, 1] or
+    ``None``. Any non-None tuple where every channel is within :data:`_WHITE_FILL_EPS`
+    of 1.0 counts as white (some content streams emit ``0.999...`` due to rounding).
+    """
+    q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
+    q.normalize()
+    query = (q.x0, q.y0, q.x1, q.y1)
+    hits = []
+    for drawing in page.get_drawings():
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        if drawing.get("type") != "f":
+            continue
+        fill = drawing.get("fill")
+        if fill is None or len(fill) < 3:
+            continue
+        if not all(abs(c - 1.0) <= _WHITE_FILL_EPS for c in fill[:3]):
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        if dr.width < _DEGENERATE_BBOX_EPS or dr.height < _DEGENERATE_BBOX_EPS:
+            continue
+        if _rects_overlap(query, (dr.x0, dr.y0, dr.x1, dr.y1)):
             hits.append(drawing)
     return hits
 

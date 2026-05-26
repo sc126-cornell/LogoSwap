@@ -188,6 +188,131 @@ def test_remove_region_boundary_crossing_line_survives_job_succeeds():
         pdf_engine.close(doc)
 
 
+def test_get_white_fill_drawings_intersecting_detects_simulated_residue():
+    """Hotfix #05 / dCt-residue diagnostic helper: a simulated whitepaint residue (the
+    dCt-residue shape) is detected by ``get_white_fill_drawings_intersecting``, while
+    zero-area fills, non-white fills, strokes, and out-of-rect fills are EXCLUDED.
+
+    The helper itself is not (yet) wired into the residual assertion — the dCt-residue
+    investigation showed that the 1742 white-fill drawings in the broken live output are
+    the ``cover_zero_area_artefacts`` pipeline paint, not recoverable supplier vectors.
+    The helper is shipped so the real fix (when chosen) has a precise post-condition
+    oracle to assert against.
+    """
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        orig = page.get_drawings
+
+        def _with_simulated_residue():
+            return list(orig()) + [
+                # Genuine residue: non-degenerate type='f' fill ≈ (1,1,1) inside the user rect.
+                {
+                    "rect": fitz.Rect(60.0, 60.0, 80.0, 80.0),
+                    "type": "f",
+                    "fill": (1.0, 1.0, 1.0),
+                    "color": None,
+                    "items": [],
+                },
+                # Floating-point rounding white (channels at 0.997): still detected.
+                {
+                    "rect": fitz.Rect(85.0, 60.0, 100.0, 75.0),
+                    "type": "f",
+                    "fill": (0.997, 0.998, 0.999),
+                    "color": None,
+                    "items": [],
+                },
+                # Zero-area white fill — must be EXCLUDED (PyMuPDF's own cover routine paints
+                # these as artefact covers; they render zero pixels and carry no content).
+                {
+                    "rect": fitz.Rect(110.0, 60.0, 110.0, 80.0),
+                    "type": "f",
+                    "fill": (1.0, 1.0, 1.0),
+                    "color": None,
+                    "items": [],
+                },
+                # Black fill inside the user rect — must be EXCLUDED (not white).
+                {
+                    "rect": fitz.Rect(65.0, 85.0, 75.0, 95.0),
+                    "type": "f",
+                    "fill": (0.0, 0.0, 0.0),
+                    "color": None,
+                    "items": [],
+                },
+                # White stroked (type='s') — must be EXCLUDED (guard is fills-only).
+                {
+                    "rect": fitz.Rect(60.0, 100.0, 100.0, 105.0),
+                    "type": "s",
+                    "fill": None,
+                    "color": (1.0, 1.0, 1.0),
+                    "items": [],
+                },
+                # White fill OUTSIDE the user rect — must be EXCLUDED.
+                {
+                    "rect": fitz.Rect(160.0, 200.0, 180.0, 220.0),
+                    "type": "f",
+                    "fill": (1.0, 1.0, 1.0),
+                    "color": None,
+                    "items": [],
+                },
+            ]
+
+        page.get_drawings = _with_simulated_residue
+        user_rect = (50.0, 50.0, 130.0, 130.0)
+        hits = pdf_engine.get_white_fill_drawings_intersecting(page, user_rect)
+        # Exactly the two genuine white residue drawings (60..80 + 85..100), nothing else.
+        assert len(hits) == 2, f"expected 2 residue hits, got {len(hits)}: {hits}"
+        bboxes = [(d["rect"].x0, d["rect"].x1) for d in hits]
+        assert any(60.0 <= b[0] <= 60.5 for b in bboxes), f"first residue missed: {bboxes}"
+        assert any(84.5 <= b[0] <= 85.5 for b in bboxes), f"second residue missed: {bboxes}"
+    finally:
+        doc.close()
+
+
+def test_get_white_fill_drawings_intersecting_empty_on_normal_redaction():
+    """Hotfix #05 invariant: after a normal vector redaction (no zero-area glyphs), the
+    helper returns 0. Pins that the helper's BASELINE on the existing pipeline is empty,
+    so any future fix can use the helper's count as a regression signal.
+    """
+    import fitz
+
+    from app.services import ingest
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        # Normal-area supplier-like content (no zero-area CAD glyphs) — the existing
+        # pipeline handles this correctly under COVERED + fill=None + cover-routine.
+        page.draw_rect(fitz.Rect(60, 60, 140, 80), color=(0, 0, 0), fill=(0, 0, 0))
+        page.insert_text((70, 110), "supplier")
+        pdf_bytes = doc.tobytes()
+    finally:
+        doc.close()
+
+    sess = ingest.ingest_upload("supplier.pdf", pdf_bytes)
+    sid = sess.session_id
+
+    region_px = [v * _SCALE for v in (50.0, 50.0, 150.0, 120.0)]
+    spec = JobSpec(dpi=_DPI, regions=[RegionMark(page=0, px_rect=region_px)])
+    result = pipeline.process_job(sid, spec)
+    assert result["regions"][0]["removed"] is True
+
+    out = storage.outputs_dir(sid) / result["output_filename"]
+    doc = pdf_engine.open_pdf(out)
+    try:
+        page = pdf_engine.get_page(doc, 0)
+        rect = coords.pixels_to_pdf_rect(region_px, _DPI, page)
+        rt = (rect.x0, rect.y0, rect.x1, rect.y1)
+        residue = pdf_engine.get_white_fill_drawings_intersecting(page, rt)
+        assert residue == [], (
+            f"baseline guard count must be 0 for normal-area content; got: {residue}"
+        )
+    finally:
+        pdf_engine.close(doc)
+
+
 def test_get_drawings_fully_inside_skips_zero_area_point_cad_marker():
     """Hotfix #04-03: a degenerate POINT drawing (W=H=0) must be SKIPPED by the residual check.
 
@@ -754,6 +879,20 @@ def test_image_pixels_constant_exported():
     import fitz
 
     assert pdf_engine.IMAGE_PIXELS == fitz.PDF_REDACT_IMAGE_PIXELS == 2
+
+
+def test_line_art_remove_if_touched_constant_exported():
+    """Hotfix #05 investigation: PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED is re-exported so
+    callers/tests can name it without importing fitz (AGPL seam, T-02-03).
+
+    NOT currently used by the pipeline — the dCt-residue investigation empirically verified
+    that TOUCHED does not remove zero-area drawings either, so switching the vector branch
+    to TOUCHED does NOT fix the dCt-residue failure mode. The constant is shipped as
+    infrastructure for the eventual real fix.
+    """
+    import fitz
+
+    assert pdf_engine.LINE_ART_REMOVE_IF_TOUCHED == fitz.PDF_REDACT_LINE_ART_REMOVE_IF_TOUCHED == 2
 
 
 def test_rect_overlaps_image_positive(image_only_pdf_bytes):
