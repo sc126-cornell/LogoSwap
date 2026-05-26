@@ -61,15 +61,15 @@ const COPY = {
   nothingRemoved:
     "框選區域內沒有可移除的內容。請確認框選位置,或此頁可能為圖片型(將於後續版本支援)。",
   clamped: "框選超出頁面範圍,已自動調整到頁面邊界。",
-  removalFailed: "套用移除時發生問題。請再試一次,或調整框選範圍後重試。",
-  resultRenderFailed: "無法產生移除結果預覽。請重新套用移除。",
+  removalFailed: "套用移除時發生問題。請再試一次、調整框選範圍後重試,或重新開啟檔案再操作一次。",
+  resultRenderFailed: "無法產生移除結果預覽。請重新套用移除,或重新開啟檔案再操作一次。",
   downloadFailed: "下載失敗,請檢查網路連線後再試一次。",
   // WR-03: dedicated copy for the logo_* error codes so a logo problem is not mistaken for a
   // framing failure. logoUnavailable covers a hard logo error (should be rare now that the
   // server degrades to pure removal — WR-02); logoSkipped is the per-job soft warning the
   // server returns (result.logo_skipped) after completing the removal without the logo.
-  logoUnavailable: "所選商標已無法使用,請改選其他商標或先不置入商標。",
-  logoSkipped: "所選商標無法置入,已完成移除但未置入商標。請改選其他商標後重新套用。",
+  logoUnavailable: "所選商標已無法使用,請改選其他商標、先不置入商標,或重新開啟檔案再操作一次。",
+  logoSkipped: "所選商標無法置入,已完成移除但未置入商標。請改選其他商標後重新套用,或重新開啟檔案再操作一次。",
 };
 
 // The REQUESTED render DPI (the ceiling). The server clamps this and may reduce the EFFECTIVE
