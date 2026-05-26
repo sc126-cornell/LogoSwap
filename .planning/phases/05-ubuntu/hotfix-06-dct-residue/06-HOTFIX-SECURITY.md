@@ -127,12 +127,12 @@ fitz seam(T-02-03)新 helper 全部位於 `pdf_engine.py` 內,AST-level 守衛�
 
 ## Notes for follow-up(non-blocking, post-push)
 
-下列項目為良好工程實踐,不阻擋 push,可在後續 maintenance cycle 處理:
+下列項目原為 maintenance-cycle 候選;**項目 3(WR-01)已在 push 窗口內隨同 code-review 第二輪一併修完**(`LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD` env override + `logger.info("zero_area_dispatch", ...)` telemetry,測試 308 全綠)。其餘仍為良好工程實踐,不阻擋 push:
 
 1. **顯式列入 `residual_whitepaint` 至 `_PROCESS_STATUS`**(`app/main.py:160-167`):目前 code 透過 `dict.get(code, 422)` fallback 正確映射,但顯式 entry `"residual_whitepaint": 422,` 可提高可讀性 + 防未來 reviewer 誤改 default。功能性等效,僅 self-documentation gain。
 2. **`is_raster_fallback_image(page, xref)` getter**(`06-HOTFIX-REVIEW.md` BL-01 option 2):若 colleague 簽核網站 integration 上線,需要區分 fallback overlay 與真 logo image — 此時加入 32×32 / 全白 metadata sentinel 比 patch 下游所有 consumer 便宜。
-3. **WR-01 threshold env override + telemetry**:env var `LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD` + 觸發點 `logger.info` log,讓 production tuning 不需 redeploy。對 ASVS L1 不必須,但可顯著降低中間區(50–99)的 surprise risk。
-4. **內部 UAT 對 2–3 個其他 supplier 檔案探測 `count_zero_area_fills_fully_inside` 分布**(per ## Threshold Boundary Verification 建議):成本低、信息量高,可儘早確認 100 閾值在實際 production 樣本下無中間區檔案落入。
+3. **~~WR-01 threshold env override + telemetry~~**:✅ 已修(`app/config.py` 加 `LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD`,`app/services/redact.py` 加 `logger.info("zero_area_dispatch", extra={"zero_area_count", "threshold", "branch"})`,3 個新測試 pin env override + dispatch log)。
+4. **內部 UAT 對 2–3 個其他 supplier 檔案探測 `count_zero_area_fills_fully_inside` 分布**(per ## Threshold Boundary Verification 建議):成本低、信息量高,可儘早確認 100 閾值在實際 production 樣本下無中間區檔案落入。**telemetry 已就位**(`zero_area_dispatch` log 含 count + threshold + branch),production 流量自動累積分布資料。
 
 ## Verdict
 

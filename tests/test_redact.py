@@ -514,6 +514,50 @@ def test_zero_area_raster_threshold_constant_exported():
     assert pdf_engine.ZERO_AREA_RASTER_THRESHOLD > 0
 
 
+def test_zero_area_raster_threshold_reads_from_config():
+    """Hotfix #06 (WR-01): the seam re-exports the value from ``app.config`` so the
+    dispatcher in ``redact.py`` can stay fitz-free AND the threshold is env-driven
+    via ``LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD`` (read by ``config._env_int`` at
+    module load).
+
+    Pinning the re-export equality guards against accidental hard-coding of the
+    value in a future refactor of the seam.
+    """
+    from app import config
+
+    assert pdf_engine.ZERO_AREA_RASTER_THRESHOLD == config.ZERO_AREA_RASTER_THRESHOLD
+
+
+def test_zero_area_raster_threshold_respects_env_var(monkeypatch):
+    """Hotfix #06 (WR-01): ``LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD`` env var drives
+    the config value at module load. Reload the config module under a synthetic
+    env value and verify it propagates.
+    """
+    import importlib
+
+    monkeypatch.setenv("LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD", "250")
+    from app import config as config_module
+
+    reloaded = importlib.reload(config_module)
+    try:
+        assert reloaded.ZERO_AREA_RASTER_THRESHOLD == 250
+    finally:
+        # Reload again WITHOUT the env override so subsequent tests see the
+        # process-default value (the monkeypatch fixture rolls back the env var
+        # but does NOT re-trigger module-level code that already ran).
+        monkeypatch.delenv("LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD", raising=False)
+        importlib.reload(config_module)
+
+
+def test_white_raster_fallback_size_px_constant_is_positive_int():
+    """Hotfix #06 (IN-03): the pixmap dimension is a named module-level constant
+    rather than an inline 32, so a future tuning experiment has one canonical
+    location.
+    """
+    assert isinstance(pdf_engine._WHITE_RASTER_FALLBACK_SIZE_PX, int)
+    assert pdf_engine._WHITE_RASTER_FALLBACK_SIZE_PX > 0
+
+
 def test_count_zero_area_fills_fully_inside_counts_only_inside_zero_area_fills():
     """Hotfix #06 counter helper: counts ONLY ``type='f'`` drawings with zero-area bbox
     that are FULLY INSIDE the rect. Excludes strokes, non-zero-area fills, and
@@ -790,6 +834,164 @@ def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
                 f"pixel at ({x},{y}) is not white: {rgb} — raster fallback did not "
                 f"visually mask the zero-area residue"
             )
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_at_threshold_takes_dense_branch(monkeypatch):
+    """Hotfix #06 boundary test (IN-01): exactly at ``ZERO_AREA_RASTER_THRESHOLD``
+    the dispatcher takes the DENSE (raster) branch. The contract is ``>=`` per
+    ``redact.py`` and "at least this many" per the docstring; this test pins
+    the ``==`` boundary explicitly.
+    """
+    raster_calls: list = []
+    cover_calls: list = []
+    real_replace = pdf_engine.replace_region_with_white_raster
+    real_cover = pdf_engine.cover_zero_area_artefacts
+
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "count_zero_area_fills_fully_inside",
+        lambda p, r: pdf_engine.ZERO_AREA_RASTER_THRESHOLD,
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "replace_region_with_white_raster",
+        lambda p, r: raster_calls.append(r) or real_replace(p, r),
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "cover_zero_area_artefacts",
+        lambda p, r: cover_calls.append(r) or real_cover(p, r),
+    )
+
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+        assert redact.remove_region_vector(page, rect) is True
+        assert len(raster_calls) == 1, f"count == THRESHOLD must take dense branch; raster={raster_calls}"
+        assert cover_calls == [], f"count == THRESHOLD must NOT take sparse branch; cover={cover_calls}"
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_one_below_threshold_takes_sparse_branch(monkeypatch):
+    """Hotfix #06 boundary test (IN-01, symmetric): exactly ``THRESHOLD - 1``
+    takes the SPARSE (per-artefact cover) branch.
+    """
+    raster_calls: list = []
+    cover_calls: list = []
+    real_replace = pdf_engine.replace_region_with_white_raster
+    real_cover = pdf_engine.cover_zero_area_artefacts
+
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "count_zero_area_fills_fully_inside",
+        lambda p, r: pdf_engine.ZERO_AREA_RASTER_THRESHOLD - 1,
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "replace_region_with_white_raster",
+        lambda p, r: raster_calls.append(r) or real_replace(p, r),
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "cover_zero_area_artefacts",
+        lambda p, r: cover_calls.append(r) or real_cover(p, r),
+    )
+
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+        assert redact.remove_region_vector(page, rect) is True
+        assert raster_calls == [], f"count == THRESHOLD - 1 must NOT take dense branch; raster={raster_calls}"
+        assert len(cover_calls) == 1, f"count == THRESHOLD - 1 must take sparse branch; cover={cover_calls}"
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_dense_branch_fails_closed_on_residual_whitepaint(monkeypatch):
+    """Hotfix #06 defence test (IN-02): the dense branch's ``residual_whitepaint``
+    fail-closed guard is unreachable in practice (the branch deliberately skips
+    ``cover_zero_area_artefacts``, the source of vector white covers), but a
+    future refactor that re-introduces cover-style paint into the dense path
+    must trip this assertion immediately rather than silently leaving a
+    recoverable supplier shape.
+
+    Simulate the regression by stubbing ``get_white_fill_drawings_intersecting``
+    to return a non-empty list AFTER the raster overlay runs. The dispatcher
+    must raise ``RedactError("residual_whitepaint")``.
+    """
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "count_zero_area_fills_fully_inside",
+        lambda p, r: pdf_engine.ZERO_AREA_RASTER_THRESHOLD + 10,
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "replace_region_with_white_raster",
+        lambda p, r: None,  # stub: pretend the overlay ran
+    )
+    monkeypatch.setattr(
+        redact.pdf_engine,
+        "get_white_fill_drawings_intersecting",
+        lambda p, r: [{"rect": (50.0, 50.0, 60.0, 60.0), "type": "f", "fill": (1.0, 1.0, 1.0)}],
+    )
+
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+        with pytest.raises(redact.RedactError) as exc_info:
+            redact.remove_region_vector(page, rect)
+        assert exc_info.value.code == "residual_whitepaint", (
+            f"expected residual_whitepaint, got {exc_info.value.code}"
+        )
+    finally:
+        doc.close()
+
+
+def test_remove_region_vector_logs_dispatch_decision(monkeypatch, caplog):
+    """Hotfix #06 telemetry (WR-01): the dispatcher must emit an INFO log record
+    naming the branch taken and the residue count, so production SRE can
+    diagnose "the logo looks different" tickets without re-running the file.
+    """
+    import logging
+
+    # Force the SPARSE branch first.
+    monkeypatch.setattr(
+        redact.pdf_engine, "count_zero_area_fills_fully_inside", lambda p, r: 3
+    )
+    import fitz
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=200, height=300)
+        page.insert_text((40, 60), "Page 0")
+        page.draw_line(fitz.Point(20, 100), fitz.Point(180, 100))
+        rect = fitz.Rect(10.0, 40.0, 190.0, 120.0)
+        with caplog.at_level(logging.INFO, logger="app.services.redact"):
+            redact.remove_region_vector(page, rect)
+        records = [r for r in caplog.records if r.message == "zero_area_dispatch"]
+        assert len(records) == 1, f"expected exactly one dispatch log record; got {len(records)}"
+        rec = records[0]
+        assert getattr(rec, "branch", None) == "cover", f"sparse branch must log branch=cover; got {rec.branch!r}"
+        assert getattr(rec, "zero_area_count", None) == 3
+        assert getattr(rec, "threshold", None) == pdf_engine.ZERO_AREA_RASTER_THRESHOLD
     finally:
         doc.close()
 

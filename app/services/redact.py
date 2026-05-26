@@ -81,7 +81,11 @@ grep come back clean.
 
 from __future__ import annotations
 
+import logging
+
 from . import pdf_engine
+
+logger = logging.getLogger(__name__)
 
 # Pitfall 4: a stroked path's wrapping rectangle is larger than the visible line (line
 # width x 1.5 per direction, default miter limit 10). Growing the redaction rect by ~5pt
@@ -230,6 +234,21 @@ def remove_region_vector(page, rect) -> bool:
     # ``get_drawings_fully_inside`` (zero-area fills are already excluded from that
     # assertion via the same _DEGENERATE_BBOX_EPS, IN-01).
     zero_area_count = pdf_engine.count_zero_area_fills_fully_inside(page, user_rect)
+    # Production telemetry (WR-01 from the hotfix #06 review): record the
+    # dispatcher's decision so SRE can observe the dense-vs-sparse split per
+    # job without re-running the file. INFO level — non-noisy, fires at most
+    # once per redacted region per /process call.
+    _dispatch_branch = (
+        "raster" if zero_area_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD else "cover"
+    )
+    logger.info(
+        "zero_area_dispatch",
+        extra={
+            "zero_area_count": zero_area_count,
+            "threshold": pdf_engine.ZERO_AREA_RASTER_THRESHOLD,
+            "branch": _dispatch_branch,
+        },
+    )
     if zero_area_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD:
         # Dense-residue path: single white image XObject covers the whole rect.
         pdf_engine.replace_region_with_white_raster(page, user_rect)

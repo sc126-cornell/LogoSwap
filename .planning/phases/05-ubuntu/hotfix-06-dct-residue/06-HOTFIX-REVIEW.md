@@ -1,15 +1,19 @@
 ---
-status: addressed
+status: all_findings_addressed
 hotfix_id: 06-dct-residue
 review_depth: standard
 reviewed_at: 2026-05-26
 addressed_at: 2026-05-26
+all_addressed_at: 2026-05-26
 files_reviewed: 3
 diff_base: f911139..HEAD
 commits_reviewed:
   - e7e7ca2 chore(06-hotfix): safe-landing investigation helpers (no behavior change)
   - 8352e0d fix(06-hotfix): Option A raster overlay for dense zero-area residue
   - 20974b9 chore(06-hotfix): mark dCt-residue debug session resolved
+  - 00a99e4 fix(06-hotfix): address code-review BL-01 + WR-02 + WR-03 (push-blockers)
+  - c90e40e docs(06-hotfix): add security audit report (SECURED 5/5)
+  - 0bbeb6d docs(06-hotfix): finish debug session metadata update
 findings:
   blocker: 1
   critical: 0
@@ -17,17 +21,21 @@ findings:
   info: 5
   total: 13
 disposition:
-  fixed:
+  fixed_in_push_window:
     - BL-01: D-01 contract docstring + test updated to acknowledge raster fallback overlay
     - WR-02: added end-to-end integration test with real synthesized zero-area paths (no monkeypatch)
     - WR-03: redact.py module docstring + dispatcher inline comment now mirror engine LIMITATION
-  deferred:
-    - WR-01: threshold env-override + telemetry (production-tuning improvement, not push-blocker)
-    - WR-04: clear_with(255) colorspace assertion (latent future-proofing)
-    - WR-05: del pix → pix = None idiom (style)
-    - WR-06: normalize() inverted-tuple comment (clarity)
-    - WR-07: CR-02 boundary-crossing visual mask (already a documented trade-off, rare case)
-    - IN-01..IN-05: boundary test, defence test, magic number 32, doc cross-ref
+  fixed_post_push:
+    - WR-01: ZERO_AREA_RASTER_THRESHOLD moved to app/config.py with LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD env override + logger.info("zero_area_dispatch", ...) telemetry per dispatch decision
+    - WR-04: assert pix.colorspace.n == 3 and not pix.alpha defence-in-depth pre-condition pinned in replace_region_with_white_raster
+    - WR-05: del pix → pix = None (idiomatic refcount drop) + comment corrected (no GC cycle involved)
+    - WR-06: rect-normalization contract section added to replace_region_with_white_raster docstring (accepts inverted-tuple inputs by design, matching fitz semantics and the caller's contract)
+    - WR-07: CR-02 interaction section added to replace_region_with_white_raster docstring (acknowledges the visual mask trade-off vs sparse-cover branch)
+    - IN-01: boundary tests pinning count == THRESHOLD takes dense branch, count == THRESHOLD - 1 takes sparse branch
+    - IN-02: defence test pinning residual_whitepaint RedactError fires when get_white_fill_drawings_intersecting returns non-empty under the dense path
+    - IN-03: _WHITE_RASTER_FALLBACK_SIZE_PX module-level constant replaces inline 32
+    - IN-04: positive observation, no action required
+    - IN-05: replace_region_with_white_raster docstring now cross-references .planning/phases/05-ubuntu/hotfix-06-dct-residue/
 ---
 
 # Hotfix #06 (dCt-residue) — Code Review

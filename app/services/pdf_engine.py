@@ -18,6 +18,8 @@ from pathlib import Path
 
 import fitz  # PyMuPDF — AGPL; isolated here on purpose. (see module docstring)
 
+from .. import config  # stdlib-only module — does NOT compromise the fitz seam
+
 
 class PdfEngineError(Exception):
     """Raised when the underlying engine fails to open/parse a document.
@@ -287,11 +289,28 @@ _WHITE_FILL_EPS = 0.005
 # non-white colour recovers the original mark — a leak this dispatcher closes
 # for the high-density case.
 #
-# Chosen as 100 from empirical separation: legitimate DC.pdf-class CAD artefacts
+# Default 100 is the empirical separation: legitimate DC.pdf-class CAD artefacts
 # at line corners surface as a handful (single-digit to low-tens) of zero-area
 # fills; supplier-logo decomposition produces hundreds to thousands. The gap is
 # wide enough that the threshold is robust to a 5–10x shift in either direction.
-ZERO_AREA_RASTER_THRESHOLD = 100
+#
+# Ops can override the default at deploy time via the ``LOGOSWAP_ZERO_AREA_RASTER_THRESHOLD``
+# env var (the constant is read from ``config.ZERO_AREA_RASTER_THRESHOLD``, which
+# in turn reads the env at module load via ``_env_int``). This re-export keeps
+# the call site (:func:`remove_region_vector` in ``app/services/redact.py``)
+# fitz-free — callers reach the env-driven value through the seam without
+# importing ``config`` themselves.
+ZERO_AREA_RASTER_THRESHOLD: int = config.ZERO_AREA_RASTER_THRESHOLD
+
+# Raster overlay pixmap dimensions for the dCt-residue fix (hotfix #06). The
+# pixmap inserted by :func:`replace_region_with_white_raster` is rendered at this
+# size and then bilinear-scaled by the PDF reader to fit the user rect. For a
+# pure solid-white colour this is visually indistinguishable from a per-pixel-
+# native render at any rect size, AND keeps the deflate-compressed PDF resource
+# under 100 bytes (a constant-byte buffer compresses to a deflate header + tiny
+# run-length). Promoted to a named constant (IN-03 from the hotfix #06 review)
+# rather than inline so a future tuning experiment has one canonical location.
+_WHITE_RASTER_FALLBACK_SIZE_PX: int = 32
 
 
 def map_tuple_to_rect(
@@ -760,18 +779,49 @@ def replace_region_with_white_raster(
     Implementation notes
     --------------------
 
-    The pixmap is generated at a small fixed resolution (32×32 RGB white). PDF
-    readers scale it to fit ``rect`` using bilinear interpolation, which is
-    visually indistinguishable from a per-pixel render for a solid colour. After
-    ``deflate=True`` save compression the on-disk resource is well under 100
-    bytes — the compressed stream of a constant-byte pixmap is essentially a
-    deflate header plus a tiny run-length.
+    The pixmap is generated at a small fixed resolution
+    (:data:`_WHITE_RASTER_FALLBACK_SIZE_PX` × :data:`_WHITE_RASTER_FALLBACK_SIZE_PX`
+    RGB white). PDF readers scale it to fit ``rect`` using bilinear interpolation,
+    which is visually indistinguishable from a per-pixel render for a solid
+    colour. After ``deflate=True`` save compression the on-disk resource is well
+    under 100 bytes — the compressed stream of a constant-byte pixmap is
+    essentially a deflate header plus a tiny run-length.
 
     The image is inserted with ``overlay=True`` (default), placing it ABOVE the
     existing content stream — including the zero-area source paths PyMuPDF
     cannot remove. Render order is therefore:
     ``[zero-area sources] → [residual covers, if any] → [this white image]``,
     and the image is the topmost layer.
+
+    Rect-normalization contract
+    ---------------------------
+
+    ``fitz.Rect.normalize()`` swaps coords so ``x0<=x1`` and ``y0<=y1``. An
+    inverted-tuple input like ``(60, 50, 50, 60)`` is therefore accepted and
+    painted as a valid 10×10 rect at ``(50, 50, 60, 60)`` — NOT rejected as
+    degenerate. This matches fitz semantics and the caller's input contract
+    (``coords.pixels_to_pdf_rect`` always produces a normalized rect). If a
+    future caller needs strict-validation rejection of inverted inputs, gate on
+    ``if rect[0] > rect[2] or rect[1] > rect[3]: return`` BEFORE calling this
+    routine. Only true zero-area inputs (``W=0`` OR ``H=0`` after normalize)
+    are no-ops here.
+
+    CR-02 interaction
+    -----------------
+
+    This branch is intended for the case where the entire framed rect is being
+    replaced by a logo (the project's primary use case): the supplier mark
+    occupies essentially the whole rect, and a company logo is later placed on
+    top via ``place_logo``. CAD through-lines that LEGITIMATELY survive via
+    CR-02 (boundary-crossing strokes kept by ``LINE_ART_REMOVE_IF_COVERED``)
+    will be VISUALLY hidden for their interior portion under the opaque white
+    image. Their content-stream data is preserved (CR-02 unbroken at the data
+    layer), but they no longer render inside the user rect.
+
+    The sparse-cover branch (:func:`cover_zero_area_artefacts`) does NOT have
+    this side effect — it paints only over the zero-area artefacts themselves.
+    The dense branch's stronger visual mask is the price for closing the
+    "union of per-artefact covers reveals the supplier shape" attack surface.
 
     LIMITATION (be honest)
     ----------------------
@@ -789,25 +839,45 @@ def replace_region_with_white_raster(
     the per-artefact covers, no geometry surgery needed. True deletion of
     zero-area sources requires content-stream surgery (a candidate hotfix for a
     future iteration if higher assurance is required).
+
+    See ``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the dispatch
+    threshold derivation and the full recovery-step analysis.
     """
+    # ``fitz.Rect.normalize()`` swaps inverted coords (caller contract above).
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
     if q.width <= 0 or q.height <= 0:
         # Degenerate rect — caller already short-circuited on empty rects in
         # remove_region_vector via _is_empty(). Defence in depth here.
         return
-    # 32×32 white pixmap. fitz.Pixmap(colorspace, bbox, alpha) created without
+    # White RGB pixmap. fitz.Pixmap(colorspace, bbox, alpha) created without
     # samples=... contains uninitialised bytes; clear_with(255) sets every byte
-    # to 0xff, producing pure white in RGB. alpha=False keeps the resource
-    # small and avoids alpha-channel handling in third-party renderers.
-    pix = fitz.Pixmap(fitz.csRGB, fitz.IRect(0, 0, 32, 32), False)
+    # to 0xff. For a 3-channel non-alpha RGB pixmap that produces pure white;
+    # for any OTHER colorspace (CMYK = 4 channels: 255,255,255,255 = solid black
+    # ink) or with alpha enabled it would produce a different colour silently.
+    # The assertion below pins the pre-condition (WR-04 from the hotfix #06
+    # review) so a future colorspace/alpha refactor cannot silently regress
+    # this routine's "solid white overlay" contract.
+    pix = fitz.Pixmap(
+        fitz.csRGB,
+        fitz.IRect(0, 0, _WHITE_RASTER_FALLBACK_SIZE_PX, _WHITE_RASTER_FALLBACK_SIZE_PX),
+        False,
+    )
     try:
+        assert pix.colorspace.n == 3 and not pix.alpha, (
+            "replace_region_with_white_raster requires a 3-channel non-alpha RGB pixmap "
+            "for clear_with(255) to produce solid white; got colorspace.n="
+            f"{pix.colorspace.n} alpha={pix.alpha}"
+        )
         pix.clear_with(255)
         page.insert_image(q, pixmap=pix, overlay=True)
     finally:
-        # Pixmap holds a C-allocated buffer; drop the reference promptly so the
-        # garbage collector can reclaim it without waiting for the next gc cycle.
-        del pix
+        # Drop the C-allocated buffer immediately rather than at scope exit
+        # (refcount goes to zero so CPython reclaims the Pixmap right here;
+        # explicit `pix = None` is more idiomatic than `del pix` and behaves
+        # identically on CPython). No GC cycle is involved — Pixmap holds no
+        # circular reference back to its owner.
+        pix = None  # noqa: F841 — intentionally drop the reference
 
 
 def image_to_a4_pdf(image_bytes: bytes) -> bytes:
