@@ -32,7 +32,7 @@ resolution_commits:
 - 2026-05-26 session-manager 嘗試套用使用者預填的 `LINE_ART_REMOVE_IF_TOUCHED` 修正,實測失敗,實機重新分析後**修正了 root cause 機制**(見下方 ## Root Cause (REVISED))。
 
 ### Reproduction
-- 輸入:`3013A-13A-C6-XX-3D02-A01-00040.pdf`(專案根目錄)
+- 輸入:`samples/3013A-13A-C6-XX-3D02-A01-00040.pdf`(2026-05-27 cleanup 從 repo root 搬入 `samples/`)
 - 在 web UI 框選右下角標題塊 dCt logo + NINGBO 那一條(PDF 座標 603–826 × 480–511 pt)
 - 選「保持空白」(不貼 logo)
 - 套用 → 下載 → 輸出檔即 `3013A-13A-C6-XX-3D02-A01-00040_logoswap.pdf`
@@ -126,7 +126,7 @@ Option A(raster fallback for dense zero-area regions)成本/效益最佳:
 1. **`pdf_engine.LINE_ART_REMOVE_IF_TOUCHED` constant 已 re-export**(`app/services/pdf_engine.py`),callers 不需要 import fitz 就能名指該模式。
 2. **`pdf_engine.get_white_fill_drawings_intersecting()` helper 已加入**(`app/services/pdf_engine.py`):列出 non-degenerate 白色 fills 與其 bboxes,排除零面積 fills、非白色 fills、stroke、out-of-rect。Option A 修完後可以用這個 helper 當 post-condition oracle(實作的 fix 完成後對 reproduction 檔執行該 helper,預期回傳 `[]`)。
 3. **`tests/test_redact.py::test_get_white_fill_drawings_intersecting_*`** 兩個新測試 pin 住該 helper 的合約(simulated residue 會被偵測、normal redaction 的 baseline 為 0)。
-4. **`_verify_residue_mechanism.py` / `_verify_dct_residue_fix.py`** 兩個 scratch 腳本留在 repo 根目錄,可用來重跑 ORIG vs SWAP 比對(scratch 檔,不要 commit)。
+4. **`_verify_residue_mechanism.py` / `_verify_dct_residue_fix.py`** 兩個重跑腳本已於 2026-05-27 cleanup 歸檔到 `.planning/debug/scratch/v1.0-hotfix06/`(連同 `proof_recolored_black.png` + `proof_optionA_recolored_black.png` 兩張攻擊/修復對照證據)。未來若 dCt-residue 或同類零面積殘留再出現,可從該目錄取出腳本對 `samples/3013A-13A-C6-XX-3D02-A01-00040.pdf` 重跑 ORIG vs SWAP 比對。
 
 ## Current Focus
 
@@ -148,7 +148,7 @@ new_next_action: **等待使用者在 Option A / B / C 之間決策**,session-ma
   - finding: 1742 個 white-fill paths, bbox (602.5, 486.9) → (627.7, 509.9)
 - timestamp: 2026-05-26
   - source: 把 white-fill paths 重新染黑後在新頁渲染
-  - finding: 完整還原 dCt logo 形狀(見 proof_recolored_black.png)
+  - finding: 完整還原 dCt logo 形狀(見 `.planning/debug/scratch/v1.0-hotfix06/proof_recolored_black.png`)
 - timestamp: 2026-05-26
   - source: swap PDF text spans 在該矩形內
   - finding: 0 spans(NINGBO 文字字串確實已刪)— 故只有 vector path 殘留,文字部分 OK
@@ -174,7 +174,7 @@ new_next_action: **等待使用者在 Option A / B / C 之間決策**,session-ma
 - fix: **Option A 落地** — `remove_region_vector` 在 post-redaction 階段計算 zero-area type='f' fill 密度;若 ≥ `ZERO_AREA_RASTER_THRESHOLD`(=100),改走 `replace_region_with_white_raster`(單一白色 image XObject 覆蓋整個 user rect),跳過 `cover_zero_area_artefacts`。密集情境的「per-artefact cover union 重現 logo」攻擊面消失。
 - verification: 對 reproduction 檔(`3013A-13A-C6-XX-3D02-A01-00040.pdf`)實測結果:
   - PRE:1742 個 zero-area type='f' 在框選 rect 內,LIVE broken output 在同 rect 內 1742 個 union-of-covers 重現 dCt logo
-  - POST:0 個 white-fill DRAWING(舊版的攻擊面消失);1 個 image XObject 覆蓋 rect;用同樣的「重新染黑」攻擊產出純白圖(`proof_optionA_recolored_black.png`),完全無法還原 dCt
+  - POST:0 個 white-fill DRAWING(舊版的攻擊面消失);1 個 image XObject 覆蓋 rect;用同樣的「重新染黑」攻擊產出純白圖(`.planning/debug/scratch/v1.0-hotfix06/proof_optionA_recolored_black.png`),完全無法還原 dCt
   - 視覺渲染:整張頁面其它區域(產品圖、規格文字、T568A/B 圖例、IDC Cap、Cat 6)零變化,標題塊那條乾淨
 - files_changed:
   - `app/services/pdf_engine.py` — Phase 1 safe-landing(`LINE_ART_REMOVE_IF_TOUCHED` 常數、`_WHITE_FILL_EPS`、`get_white_fill_drawings_intersecting()`)+ Phase 2 Option A(`ZERO_AREA_RASTER_THRESHOLD` 常數、`count_zero_area_fills_fully_inside()`、`replace_region_with_white_raster()`)

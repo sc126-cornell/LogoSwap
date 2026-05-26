@@ -53,6 +53,7 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 | Date | Slug | Description | Artifacts |
 |---|---|---|---|
 | 2026-05-27 | colleague-handoff-doc | 寫 `HANDOFF.md`(整合路徑決策樹 + AGPL 變化情境 + 核心領域知識備忘),供同事接手整合進公司內部簽核網站 | `HANDOFF.md`(新增,repo root);`.planning/quick/260527-1xq-colleague-handoff-doc/` |
+| 2026-05-27 | cleanup-v1-debug-artifacts | 清理 milestone v1.0 hotfix 06(dCt-residue)累積的 72 個 root scratch artifacts:1 個樣本 PDF 搬 `samples/`、4 個 forensic 證據歸檔 `.planning/debug/scratch/v1.0-hotfix06/`、67 個純 scratch 直接刪;`.gitignore` 加入 root-anchored 防護 pattern;`debug/resolved/redact-whitepaint-residue.md` 與 `hotfix-06/06-HOTFIX-REVIEW.md` 路徑引用更新 | `samples/`(新增);`.planning/debug/scratch/v1.0-hotfix06/`(新增);`.planning/quick/260527-251-cleanup-v1-debug-artifacts/`;`.gitignore`(modified) |
 
 ## Session Continuity
 

@@ -109,7 +109,7 @@ dense branch 透過 `monkeypatch.setattr(redact.pdf_engine, "count_zero_area_fil
 2. `replace_region_with_white_raster` 真的視覺隱藏那些 zero-area paths
 3. 重新染色攻擊在輸出 PDF 上真的失效
 
-唯一證據是 manual repro on `3013A-13A-C6-XX-3D02-A01-00040.pdf`,**該檔不在 test suite 內**(repo root scratch)。
+唯一證據是 manual repro on `samples/3013A-13A-C6-XX-3D02-A01-00040.pdf`,**該檔不在 test suite 內**(2026-05-27 cleanup 從 repo root 搬入 `samples/`)。
 
 **Fix:** 加一個 integration test,合成 / 引入 sanitized fixture(≥100 真實 zero-area `type='f'` paths),end-to-end 跑 `remove_region_vector`,斷言:
 - `page.get_images(full=True)` 恰好 1 個

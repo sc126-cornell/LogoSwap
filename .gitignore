@@ -24,3 +24,33 @@ desktop.ini
 
 # GSD transient lock files (workflow concurrency guards).
 .planning/*.lock
+
+# Root-level debug / forensic scratch — never commit at repo root.
+# Added 2026-05-27 after milestone v1.0 hotfix 06 cleanup (72 stray files
+# accumulated during dCt-residue investigation). If a scratch file has
+# historical/forensic value, archive it under
+# `.planning/debug/scratch/<session>/` instead of leaving it at root.
+# Patterns are /-anchored so .planning/debug/scratch/** remains tracked.
+#
+# Underscore-prefixed scratch (e.g. _verify_*.py, _compare_orig.pdf):
+/_*.py
+/_*.pdf
+/_*.png
+# Attack / repro / pre-post comparison images:
+/attack_*.png
+/today_attack_*.png
+/verify_today_*.png
+/cmp_*.png
+/crop_*.png
+/q_[A-Z]_*.png
+/r_*.png
+/proof_*.png
+/shape_*.png
+/z_*.png
+# Render / hires snapshots:
+/*_render.png
+/*_hires.png
+/orig_hires.png
+/swap_hires.png
+# Stray LogoSwap output PDFs accidentally saved to root:
+/*_logoswap*.pdf
