@@ -1,9 +1,13 @@
 ---
-status: root_cause_revised_pending_fix_decision
+status: resolved
 trigger: redaction 後 dCt 圖形 logo 並未真正移除,而是被「染白」殘留為白色填充的 vector path(1742 個白色 path,bbox=602.5–627.7×486.9–509.9pt,重新染黑後完整還原 dCt logo)。NINGBO 那段文字則正確刪除。
 created: 2026-05-26
 updated: 2026-05-26
+resolved: 2026-05-26
 branch: fix/redaction-graphics-touched-mode
+resolution_commits:
+  - e7e7ca2 chore(06-hotfix): safe-landing investigation helpers (no behavior change)
+  - 8352e0d fix(06-hotfix): Option A raster overlay for dense zero-area residue
 ---
 
 # Debug Session: redact-whitepaint-residue
@@ -164,13 +168,23 @@ new_next_action: **等待使用者在 Option A / B / C 之間決策**,session-ma
 
 ## Resolution
 
-**Status: PENDING USER DECISION**
+**Status: RESOLVED — Option A landed**
 
 - root_cause: dCt logo 由 1742 個零面積 type='f' filled path 組成,PyMuPDF `apply_redactions` 在任何 graphics 模式下都無法移除零面積項目。pipeline 的 `cover_zero_area_artefacts` 對每個零面積項目畫一個 ±0.5pt 白色覆蓋,這些覆蓋的 union 重現 supplier logo 形狀;底下的零面積 black-fill source 仍留在 content stream 可恢復。
-- fix: **(待使用者在 Option A / B / C 中決策後實作)**
-- verification: 已就緒 — `pdf_engine.get_white_fill_drawings_intersecting()` 為 post-condition oracle,加上對 reproduction 檔(`3013A-13A-C6-XX-3D02-A01-00040.pdf`)在框選 (603,480)→(826,511) 後,該 helper 與 zero-area-black-source-fully-inside 兩者都應為 0(實作完成後可被 `_verify_dct_residue_fix.py` 自動驗證)。
-- files_changed (本 session 已就位的基礎建設):
-  - `app/services/pdf_engine.py` — 新增 `LINE_ART_REMOVE_IF_TOUCHED` 常數 re-export、`_WHITE_FILL_EPS` 常數、`get_white_fill_drawings_intersecting()` helper
-  - `tests/test_redact.py` — 新增 3 個測試:`test_line_art_remove_if_touched_constant_exported`、`test_get_white_fill_drawings_intersecting_detects_simulated_residue`、`test_get_white_fill_drawings_intersecting_empty_on_normal_redaction`
-  - `app/services/redact.py` — **無修改**(實測證明使用者預填的 `graphics=TOUCHED` 修正不解決根因,且會破壞 CR-02 與既存 DC.pdf-class 流程,故 revert)
-- branch: `fix/redaction-graphics-touched-mode`(branch name 已不精確,實際修正路徑待定;建議使用者決策後可重新命名 branch 或在新 branch 進行 Option A 的實作)
+- fix: **Option A 落地** — `remove_region_vector` 在 post-redaction 階段計算 zero-area type='f' fill 密度;若 ≥ `ZERO_AREA_RASTER_THRESHOLD`(=100),改走 `replace_region_with_white_raster`(單一白色 image XObject 覆蓋整個 user rect),跳過 `cover_zero_area_artefacts`。密集情境的「per-artefact cover union 重現 logo」攻擊面消失。
+- verification: 對 reproduction 檔(`3013A-13A-C6-XX-3D02-A01-00040.pdf`)實測結果:
+  - PRE:1742 個 zero-area type='f' 在框選 rect 內,LIVE broken output 在同 rect 內 1742 個 union-of-covers 重現 dCt logo
+  - POST:0 個 white-fill DRAWING(舊版的攻擊面消失);1 個 image XObject 覆蓋 rect;用同樣的「重新染黑」攻擊產出純白圖(`proof_optionA_recolored_black.png`),完全無法還原 dCt
+  - 視覺渲染:整張頁面其它區域(產品圖、規格文字、T568A/B 圖例、IDC Cap、Cat 6)零變化,標題塊那條乾淨
+- files_changed:
+  - `app/services/pdf_engine.py` — Phase 1 safe-landing(`LINE_ART_REMOVE_IF_TOUCHED` 常數、`_WHITE_FILL_EPS`、`get_white_fill_drawings_intersecting()`)+ Phase 2 Option A(`ZERO_AREA_RASTER_THRESHOLD` 常數、`count_zero_area_fills_fully_inside()`、`replace_region_with_white_raster()`)
+  - `app/services/redact.py` — `remove_region_vector` 加 dense/sparse dispatcher;dense 路徑後加 `residual_whitepaint` 不變式
+  - `tests/test_redact.py` — 共 +9 個新測試(3 safe-landing + 6 Option A:threshold 常數、counter helper、image XObject 插入、degenerate-rect no-op、dense dispatcher、sparse dispatcher)
+- tests: 300 passed, 3 skipped(原 294 → +6 個新測試,零回歸;Phase 1 safe-landing 已含 +3 個測試已在 commit e7e7ca2 計入)
+- commits(local only, NOT pushed per user memory):
+  - `e7e7ca2` chore(06-hotfix): ship dCt-residue investigation helpers (no behavior change)
+  - `8352e0d` fix(06-hotfix): Option A raster overlay for dense zero-area residue (dCt-residue)
+- branch: `fix/redaction-graphics-touched-mode`(branch name 沿用方便不重建;實際修正不是 TOUCHED 而是 raster overlay)
+- known_limitations:
+  - 底下的 1742 個 zero-area black source 仍在 content stream(PyMuPDF API 無法刪除零面積項目);現在被 image XObject 視覺覆蓋,recoverable 需要 (1) 拿掉 image XObject + (2) per-path bbox 擴張(strictly 比原本 LIVE broken 的「重新染色」難很多,但理論上仍可能)
+  - 真正完整刪除需要 content stream surgery(Option B)— 留待 hotfix #07 如果需要更高保證
