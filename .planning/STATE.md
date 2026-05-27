@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: planning
+status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-05-27T17:47:21.014Z"
-last_activity: 2026-05-28 — v1.1 ROADMAP.md 完成(11 reqs 100% 映射到 Phase 6/7/8)
+last_updated: "2026-05-27T18:41:09.066Z"
+last_activity: 2026-05-27 -- Phase 6 planning complete
 progress:
   total_phases: 3
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
   percent: 0
 ---
@@ -27,8 +27,8 @@ See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 Phase: 6 of 8 (Regression Foundation + Threat Model Re-evaluation) — first phase of v1.1
 Plan: — (plans TBD,待 `/gsd-plan-phase 6`)
-Status: Ready to plan (roadmap defined, 11 v1.1 reqs mapped to 3 phases)
-Last activity: 2026-05-28 — v1.1 ROADMAP.md 完成(11 reqs 100% 映射到 Phase 6/7/8)
+Status: Ready to execute
+Last activity: 2026-05-27 -- Phase 6 planning complete
 
 Progress: [░░░░░░░░░░] 0% (v1.1 only; v1.0 已歸檔交付)
 
