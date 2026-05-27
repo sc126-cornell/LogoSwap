@@ -8,7 +8,7 @@
 
 ## v1.1 Requirements
 
-11 個 requirements 分 4 類,對應到 roadmap 階段。
+11 個 requirements 分 5 類,對應到 roadmap 階段(Phase 6/7/8)。
 
 ### Option B 核心(SEC)
 
@@ -70,26 +70,27 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 
 ## Traceability
 
-待 roadmap 階段填入。
+每個 v1.1 requirement 對應到一個 phase,100% 映射,無 orphan。
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SEC-01 | TBD | Pending |
-| SEC-02 | TBD | Pending |
-| SEC-03 | TBD | Pending |
-| THREAT-01 | TBD | Pending |
-| THREAT-02 | TBD | Pending |
-| TEST-01 | TBD | Pending |
-| TEST-02 | TBD | Pending |
-| TEST-03 | TBD | Pending |
-| DOC-01 | TBD | Pending |
-| DOC-02 | TBD | Pending |
-| DEPLOY-01 | TBD | Pending |
+| TEST-01    | Phase 6 | Pending |
+| TEST-02    | Phase 6 | Pending |
+| THREAT-01  | Phase 6 | Pending |
+| SEC-01     | Phase 7 | Pending |
+| SEC-02     | Phase 7 | Pending |
+| SEC-03     | Phase 7 | Pending |
+| TEST-03    | Phase 7 | Pending |
+| THREAT-02  | Phase 8 | Pending |
+| DOC-01     | Phase 8 | Pending |
+| DOC-02     | Phase 8 | Pending |
+| DEPLOY-01  | Phase 8 | Pending |
 
 **Coverage:**
 - v1.1 requirements: 11 total
-- Mapped to phases: 0 ⚠️(roadmap 階段填入)
+- Mapped to phases: **11 / 11 ✓**
+- Per-phase distribution: Phase 6 = 3 reqs · Phase 7 = 4 reqs · Phase 8 = 4 reqs
 
 ---
 *Requirements defined: 2026-05-28*
-*Last updated: 2026-05-28 after milestone v1.1 start*
+*Last updated: 2026-05-28 — Traceability filled after `/gsd-roadmap` 完成(3 phases / 11 reqs / 100% coverage)*
