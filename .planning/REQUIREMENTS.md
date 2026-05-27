@@ -29,7 +29,7 @@ content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator �
 
 確保 Option B 對真實 CAD-glyph PDF 有效,且未來不會回退。
 
-- [ ] **TEST-01**: 收集 ≥3 個工程師手上實際出問題的 CAD-glyph supplier PDF(來源例:AutoCAD / SolidWorks / Catia 匯出),sanitized(去除敏感 metadata)後納入 `tests/fixtures/cad-glyph/` 作為 regression baseline
+- [x] **TEST-01**: 收集 ≥3 個工程師手上實際出問題的 CAD-glyph supplier PDF(來源例:AutoCAD / SolidWorks / Catia 匯出),sanitized(去除敏感 metadata)後納入 `tests/fixtures/cad-glyph/` 作為 regression baseline
 - [ ] **TEST-02**: 攻擊模擬腳本(目前 `.planning/debug/scratch/illustrator-attack-2026-05-28/_attack_delete_image_xobject.py`)改寫為 pytest regression test:對每個 fixture 跑「LogoSwap process → 用 content-stream surgery 拔掉 image XObject → assert 框選區 render 仍 ≥98% 白 + zero-area fills count == 0」
 - [ ] **TEST-03**: Option B 核心 helper 單元測試 — zero-area fill counter、content stream rewrite correctness(算子序列邊界判定)、form XObject 巢狀偵測、no-op 行為(input 不含 zero-area fill 時)、邊界條件(0 / 1 / 100 / 1742 個 zero-area fill 的密度梯度)
 
@@ -74,7 +74,7 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01    | Phase 6 | Pending |
+| TEST-01    | Phase 6 | Complete |
 | TEST-02    | Phase 6 | Pending |
 | THREAT-01  | Phase 6 | Pending |
 | SEC-01     | Phase 7 | Pending |

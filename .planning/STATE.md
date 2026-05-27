@@ -4,14 +4,14 @@ milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
 status: executing
 stopped_at: Phase 6 context gathered
-last_updated: "2026-05-27T18:41:09.066Z"
-last_activity: 2026-05-27 -- Phase 6 planning complete
+last_updated: "2026-05-27T18:58:04.669Z"
+last_activity: 2026-05-27
 progress:
   total_phases: 3
   completed_phases: 0
   total_plans: 2
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 50
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** v1.1 Phase 6 — Regression Foundation + Threat Model Re-evaluation(在動 Option B 實作前先把「紅燈」regression test 立起來)。
+**Current focus:** Phase 6 — Regression Foundation + Threat Model Re-evaluation
 
 ## Current Position
 
-Phase: 6 of 8 (Regression Foundation + Threat Model Re-evaluation) — first phase of v1.1
-Plan: — (plans TBD,待 `/gsd-plan-phase 6`)
+Phase: 6 (Regression Foundation + Threat Model Re-evaluation) — EXECUTING
+Plan: 2 of 2
 Status: Ready to execute
-Last activity: 2026-05-27 -- Phase 6 planning complete
+Last activity: 2026-05-27
 
-Progress: [░░░░░░░░░░] 0% (v1.1 only; v1.0 已歸檔交付)
+Progress: [█████░░░░░] 50%
 
 ## Accumulated Context
 
@@ -41,6 +41,9 @@ Progress: [░░░░░░░░░░] 0% (v1.1 only; v1.0 已歸檔交付)
 - **2026-05-28** v1.1 啟動:Option B 從 v1.0 Deferred 升格為第一優先,因 forensic attack script 證明 deferral 假設「Option A 對使用者實質不可恢復」不成立
 - **v1.0 hotfix-06 教訓**:已穩定的修法上「再加 polish」不是免費的 — Phase 7 落地 Option B 時嚴守 minimum-change,nice-to-have polish 分開 commit 或下次 maintenance sprint
 - **AGPL seam**:fitz 嚴格限制在 `app/services/pdf_engine.py` — Option B 新 helper 必須在這個檔案內,不可外溢
+- [Phase ?]: Sidecar manifest 採 split-coordinate schema(region_rect_pdf_points + region_rect_px),Phase 6 canonical per Warning #8
+- [Phase ?]: PyMuPDF 1.27.2.3: doc.set_metadata({}) 為 no-op;必須傳 per-field empty dict 才會真清空 [Rule 1 deviation]
+- [Phase ?]: 2/3 Phase 6 fixtures synthetic — Phase 6 close 為 PROVISIONAL until 工程師交付剩餘 supplier PDF
 
 ### Pending Todos
 
@@ -49,6 +52,7 @@ Progress: [░░░░░░░░░░] 0% (v1.1 only; v1.0 已歸檔交付)
 ### Blockers/Concerns
 
 - **TEST-01 需要實際樣本**:工程師需提供 ≥3 個出問題的 supplier CAD-glyph PDF。Phase 6 plan 時必須先確認樣本來源與 sanitization 流程(去除供應商 metadata),才能開始寫 fixture-based regression test。
+- [ ] **Phase 6 fixture replenishment** — 以真實 supplier PDF 替換 synthetic-{text|figure} fixtures(2026-05-28 Plan 06-01 執行時工程師僅交付 1 個真實 supplier PDF;`mixed-glyph-01.pdf` 用真實檔,`text-glyph-01.pdf` + `figure-glyph-01.pdf` 為 synthetic fallback)。Phase 6 close 為 **PROVISIONAL** until 工程師交付剩餘 2 個 real supplier PDF + 重跑 `scripts/sanitize_fixture.py` 替換 synthetic 版本。參 `tests/fixtures/cad-glyph/README.md` Section 2 表格 + `06-01-SUMMARY.md`。
 
 ## Deferred Items
 
@@ -79,6 +83,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-27T17:47:21.000Z
+Last session: 2026-05-27T18:57:04.008Z
 Stopped at: Phase 6 context gathered
-Resume file: .planning/phases/06-regression-foundation-threat-model-re-evaluation/06-CONTEXT.md
+Resume file: None
