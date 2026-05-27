@@ -29,17 +29,30 @@
 
 <!-- Current scope. Building toward these. -->
 
-_Milestone v1.0 已歸檔(2026-05-27,tag v1.0)。等待 `/gsd-new-milestone` 定義下一個版本的需求。_
+**Milestone v1.1 — Harden against Illustrator-class attacks on CAD-generated PDFs(2026-05-28 啟動)**
+
+Goal:落地 Option B(content-stream surgery 真正刪除零面積 type='f' fills),關閉「Illustrator 拔掉 image XObject overlay 後供應商 CAD glyph 重現」的攻擊面;同步把威脅模型從「內網 CLI 攻擊者」升級為「內網 + 一般 PDF 編輯工具(Illustrator/Acrobat Pro 級)使用者」。
+
+Target features(roadmap 階段細分):
+
+1. **Option B 實作** — `pdf_engine` 新 helper 在 `apply_redactions` 後、Option A overlay 前直接 rewrite content stream 刪除 fully-inside-rect 的零面積 type='f' `m/l/f/B` 算子序列(避開 form XObject 巢狀地雷)
+2. **威脅模型重評** — STRIDE 加入「Illustrator-class editor attacker」actor;T-02-07 從 "CLOSED with documented residual" 重新打開,Option B 落地後 close-with-fix
+3. **CAD-glyph regression fixture** — 收集工程師手上實際出問題的 supplier PDF 樣本;sanitized fixture 涵蓋 representative shapes(文字 glyph、圖形 glyph)
+4. **攻擊腳本變 regression test** — 今天的 `_attack_delete_image_xobject.py` 改寫為 pytest fixture,每次 release 自動跑「拔 image XObject → assert region 仍乾淨」
+5. **HANDOFF.md + PROJECT.md 同步** — Option B 落地後更新 Key Decisions、核心領域知識備忘、Deferred 清單
+
+起因:2026-05-28 forensic attack script 實測證實 — 對「正常面積 vector 商標」PDF 安全(`apply_redactions` 真正刪了),但對「CAD-glyph 零面積 fill 商標」PDF,Option A overlay 是唯一防線,Illustrator 可拔。原 v1.0 close 時 Option B deferral 假設(「Option A 對使用者實質不可恢復」)已被證明不成立。證據已歸檔於 `.planning/debug/scratch/illustrator-attack-2026-05-28/`(6 個檔)。
 
 ### Deferred (carried forward from v1.0 close)
 
-候選需求,下個 milestone 定義時重新評估優先級:
+候選需求,將來 milestone 定義時重新評估優先級:
 
-- **Option B — content-stream surgery 真正刪除 zero-area sources**:Option A overlay 對使用者實質不可恢復;Option B 需要威脅模型提升(對外公開使用)才必要
-- **嵌入式整合(colleague approval site)**:v1 已預留 API base path + iframe-friendly 設計;實際整合需求出現時啟動
+- **嵌入式整合(colleague approval site)**:v1 已預留 API base path + iframe-friendly 設計;實際整合需求出現時啟動。HANDOFF.md(2026-05-27)已為同事準備好決策樹與領域知識備忘
 - **多檔批次處理**:v1 採手動單檔互動;批次須引入 task queue(如 Celery + Redis)
 - **`is_raster_fallback_image()` getter**:colleague 整合需要區分 fallback overlay 與真 logo image 時才加
 - **超大影像錯誤訊息實機驗證(≥89MP)**:自動測試覆蓋 OK;UI 字串待真檔到手
+
+_2026-05-28 移除:Option B(content-stream surgery)— 已升格為 v1.1 active 第一優先,deferral 假設破滅。_
 
 ### Out of Scope
 
@@ -108,4 +121,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-24 after Phase 5 完成 + 上線 (Zeabur + Cloudflare DNS + AGPL §13 公開合規) — milestone v1.0 完整交付。*
+*Last updated: 2026-05-28 — Milestone v1.1 started(Illustrator-class threat model + Option B content-stream surgery)。前次更新 2026-05-24 Phase 5 完成 + LIVE 上線(milestone v1.0 完整交付)。*
