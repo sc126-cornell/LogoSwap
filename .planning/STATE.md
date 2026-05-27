@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: executing
+status: verifying
 stopped_at: Phase 6 context gathered
-last_updated: "2026-05-27T18:58:04.669Z"
+last_updated: "2026-05-27T19:16:48.523Z"
 last_activity: 2026-05-27
 progress:
   total_phases: 3
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 2
-  completed_plans: 1
-  percent: 50
+  completed_plans: 2
+  percent: 100
 ---
 
 # Project State
@@ -27,10 +27,10 @@ See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 Phase: 6 (Regression Foundation + Threat Model Re-evaluation) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-27
 
-Progress: [█████░░░░░] 50%
+Progress: [██████████] 100%
 
 ## Accumulated Context
 
@@ -44,6 +44,10 @@ Progress: [█████░░░░░] 50%
 - [Phase ?]: Sidecar manifest 採 split-coordinate schema(region_rect_pdf_points + region_rect_px),Phase 6 canonical per Warning #8
 - [Phase ?]: PyMuPDF 1.27.2.3: doc.set_metadata({}) 為 no-op;必須傳 per-field empty dict 才會真清空 [Rule 1 deviation]
 - [Phase ?]: 2/3 Phase 6 fixtures synthetic — Phase 6 close 為 PROVISIONAL until 工程師交付剩餘 supplier PDF
+- [Phase ?]: Phase 6 Plan 06-02 完成: VERBATIM-port + xfail-strict baseline + pre-mortem STRIDE + scratch retirement
+- [Phase ?]: Phase 6 紅燈基線就位: tests/test_illustrator_attack_regression.py 3 個 XFAIL,pytest baseline 升級為 301 passed + 3 skipped + 3 xfailed;Phase 7 落地 Option B 後 xfail strict 強迫拔 marker 為 handoff completion 動作
+- [Phase ?]: Phase 6 Plan 06-02: STRIDE 加入 Illustrator-class editor attacker actor;T-02-07 RE-OPENED + T-06-01 NEW 兩條皆 accept (P0 transition-pending until Phase 7);06-SECURITY.md frontmatter threats_open:0 + threats_accepted:2 滿足 gsd-secure-phase non-block
+- [Phase ?]: Phase 6 repo phase-level invariant: git ls-files | grep '3013A-13A-C6-XX' returns empty (samples/ raw supplier PDF 已 git rm + repo root 副本物理 mv 到 archived dir);git mv 保住 history follow for forensic PNG/PDF artefacts
 
 ### Pending Todos
 
@@ -83,6 +87,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-27T18:57:04.008Z
+Last session: 2026-05-27T19:16:01.508Z
 Stopped at: Phase 6 context gathered
 Resume file: None

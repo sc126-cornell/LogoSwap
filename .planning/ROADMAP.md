@@ -56,7 +56,7 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
   4. `.planning/SECURITY.md`(或同等威脅模型文件)STRIDE 表新增 "Illustrator-class editor attacker" actor,T-02-07 從 "CLOSED with documented residual" 改回 "OPEN — Option B 落地後重新關閉"
 **Plans**: 2 plans
   - [x] 06-01-PLAN.md — Sanitization tooling + 3 CAD-glyph fixtures + sidecar manifests (TEST-01)
-  - [ ] 06-02-PLAN.md — Attack regression test (xfail strict) + 06-SECURITY.md (pre-mortem STRIDE) + scratch retirement (TEST-02, THREAT-01)
+  - [x] 06-02-PLAN.md — Attack regression test (xfail strict) + 06-SECURITY.md (pre-mortem STRIDE) + scratch retirement (TEST-02, THREAT-01)
 
 ### Phase 7: Option B Implementation — Content-Stream Surgery
 **Goal**: 在 `app/services/pdf_engine.py`(AGPL seam,fitz 唯一允許 import 的檔案)落地 Option B helper — 在 `apply_redactions` 之後、Option A overlay 之前,直接 rewrite page-level content stream 刪除 fully-inside-rect 的零面積 type='f' `m/l/f/B` 算子序列。對「正常面積 vector 商標」PDF 需 no-op(SEC-02),對 form XObject 內部巢狀 path 需安全處理不誤改(SEC-03,page-level only 策略 + log)。完成後 Phase 6 的紅燈攻擊測試應全綠。**紀律:**5330290 incident 教訓 — minimum-change,nice-to-have polish 留下個 maintenance sprint。
@@ -96,7 +96,7 @@ v1.0: 1 → 2 → 3 → 4 → 5 (complete) → v1.1: 6 → 7 → 8
 | 3. 商標置入            | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 4. 點陣圖與圖片型檔案  | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 5. 部署與穩固化        | v1.0 | 2/2 | Complete    | 2026-05-24 |
-| 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 1/2 | In Progress|  |
+| 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 2/2 | Complete   | 2026-05-27 |
 | 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 0/TBD | Not started | - |
 | 8. Documentation Sync + LIVE Rollout                  | v1.1 | 0/TBD | Not started | - |
 

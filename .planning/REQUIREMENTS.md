@@ -22,7 +22,7 @@ content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator �
 
 把「Illustrator-class editor」加入威脅 actor,更新所有相關安全文件。
 
-- [ ] **THREAT-01**: STRIDE 威脅模型新增 "Illustrator-class editor attacker" actor;Hotfix 06 的 T-02-07 從 "CLOSED with documented residual" 重新評估,Option B 落地後重新關閉為 "CLOSED via Option B"
+- [x] **THREAT-01**: STRIDE 威脅模型新增 "Illustrator-class editor attacker" actor;Hotfix 06 的 T-02-07 從 "CLOSED with documented residual" 重新評估,Option B 落地後重新關閉為 "CLOSED via Option B"
 - [ ] **THREAT-02**: 三處「LIMITATION (be honest)」docstring 區段同步更新 — `app/services/pdf_engine.py::replace_region_with_white_raster`、`app/services/redact.py` 模組層級 `TRUE_REMOVAL_LIMITATION`、`app/services/redact.py` dispatcher inline comment「HONEST LIMITATION」— 從「需要 delete image XObject + per-path bbox surgery 攻擊」改為「Option B 已關閉零面積 source 路徑」
 
 ### Regression 測試基礎(TEST)
@@ -30,7 +30,7 @@ content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator �
 確保 Option B 對真實 CAD-glyph PDF 有效,且未來不會回退。
 
 - [x] **TEST-01**: 收集 ≥3 個工程師手上實際出問題的 CAD-glyph supplier PDF(來源例:AutoCAD / SolidWorks / Catia 匯出),sanitized(去除敏感 metadata)後納入 `tests/fixtures/cad-glyph/` 作為 regression baseline
-- [ ] **TEST-02**: 攻擊模擬腳本(目前 `.planning/debug/scratch/illustrator-attack-2026-05-28/_attack_delete_image_xobject.py`)改寫為 pytest regression test:對每個 fixture 跑「LogoSwap process → 用 content-stream surgery 拔掉 image XObject → assert 框選區 render 仍 ≥98% 白 + zero-area fills count == 0」
+- [x] **TEST-02**: 攻擊模擬腳本(目前 `.planning/debug/scratch/illustrator-attack-2026-05-28/_attack_delete_image_xobject.py`)改寫為 pytest regression test:對每個 fixture 跑「LogoSwap process → 用 content-stream surgery 拔掉 image XObject → assert 框選區 render 仍 ≥98% 白 + zero-area fills count == 0」
 - [ ] **TEST-03**: Option B 核心 helper 單元測試 — zero-area fill counter、content stream rewrite correctness(算子序列邊界判定)、form XObject 巢狀偵測、no-op 行為(input 不含 zero-area fill 時)、邊界條件(0 / 1 / 100 / 1742 個 zero-area fill 的密度梯度)
 
 ### 文件同步(DOC)
@@ -75,8 +75,8 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | TEST-01    | Phase 6 | Complete |
-| TEST-02    | Phase 6 | Pending |
-| THREAT-01  | Phase 6 | Pending |
+| TEST-02    | Phase 6 | Complete |
+| THREAT-01  | Phase 6 | Complete |
 | SEC-01     | Phase 7 | Pending |
 | SEC-02     | Phase 7 | Pending |
 | SEC-03     | Phase 7 | Pending |
