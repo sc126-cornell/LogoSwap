@@ -3,8 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
 status: planning
-last_updated: "2026-05-28T00:00:00.000Z"
-last_activity: 2026-05-28
+stopped_at: Phase 6 context gathered
+last_updated: "2026-05-27T17:47:21.014Z"
+last_activity: 2026-05-28 — v1.1 ROADMAP.md 完成(11 reqs 100% 映射到 Phase 6/7/8)
 progress:
   total_phases: 3
   completed_phases: 0
@@ -64,6 +65,7 @@ Progress: [░░░░░░░░░░] 0% (v1.1 only; v1.0 已歸檔交付)
 | Security | Zero-area `type='s'`(stroke)surgery | Deferred from v1.1 | 威脅證據都是 type='f';stroke 未出現殘留 |
 
 **Promoted from Deferred to Active(2026-05-28):**
+
 - ~~Option B — content-stream surgery 真正刪除 zero-area sources~~ → **v1.1 active(Phase 7 核心)**。原 deferral 假設「Option A 對使用者實質不可恢復」已被 2026-05-28 forensic attack script 證明不成立(Illustrator 可拔 image XObject overlay)。
 
 ## Quick Tasks Completed
@@ -77,6 +79,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28
-Stopped at: v1.1 ROADMAP.md 寫完(3 phases / 11 reqs 100% 映射);REQUIREMENTS.md traceability 表已填;下一步 `/gsd-plan-phase 6` 起跑 Phase 6 規劃。
-Resume file: None.
+Last session: 2026-05-27T17:47:21.000Z
+Stopped at: Phase 6 context gathered
+Resume file: .planning/phases/06-regression-foundation-threat-model-re-evaluation/06-CONTEXT.md
