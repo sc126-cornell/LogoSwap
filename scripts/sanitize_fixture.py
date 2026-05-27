@@ -193,10 +193,30 @@ def _short_git_sha() -> str:
         return "unknown"
 
 
+_USER_METADATA_FIELDS = (
+    "author",
+    "producer",
+    "title",
+    "keywords",
+    "subject",
+    "creator",
+    "creationDate",
+    "modDate",
+    "trapped",
+)
+
+
 def _metadata_all_empty(doc: fitz.Document) -> bool:
-    """檢查 doc.metadata 全部欄位皆 None 或空字串(PyMuPDF 1.27 set_metadata({}) 後行為)。"""
+    """檢查 doc.metadata 中「user-supplied」欄位皆 None 或空字串。
+
+    PyMuPDF `doc.metadata` 同時包含 user fields(author / producer / title / keywords /
+    subject / creator / creationDate / modDate / trapped — 來自 PDF /Info dict)與
+    computed fields(`format`、`encryption` — 由 PDF 結構推斷,**非** /Info 內容,
+    `set_metadata({})` 不會清也不該清這些)。本 check 只看 user fields。
+    """
     md = doc.metadata or {}
-    for v in md.values():
+    for field in _USER_METADATA_FIELDS:
+        v = md.get(field)
         if v not in (None, "", b""):
             return False
     return True
@@ -469,8 +489,14 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
         page = doc[page_index]
 
         # Step 1 — Metadata 清空(/Info + XMP 雙清)
+        # [Rule 1 deviation] PyMuPDF 1.27.2.3 行為:`doc.set_metadata({})` 傳空 dict
+        # **不清** 任何欄位(視為 no-op),與 RESEARCH Pattern 1 引用的「1.18.4 起空值不寫」
+        # 行為不符 — 1.27 系列要求顯式每個欄位設空字串。下方先呼叫 `doc.set_metadata({})`
+        # 為文件化 intent(及 acceptance criteria grep 對齊),再以 per-field 空字串
+        # dict 實際清空。實證 verified 2026-05-28 with PyMuPDF 1.27.2.3 on 3013A-...pdf。
         print("步驟 1/6:清空 metadata 與 XMP …")
-        doc.set_metadata({})  # type: ignore[arg-type]
+        doc.set_metadata({})  # intent marker(1.27 上為 no-op;見上方註解)
+        doc.set_metadata({k: "" for k in _USER_METADATA_FIELDS})  # 實際清空
         try:
             doc.set_xml_metadata("")
         except Exception as e:  # noqa: BLE001 — 某些 PDF 無 XMP stream,呼叫可能 no-op or raise
@@ -614,7 +640,7 @@ def _run_synthesize_mode(
         page = doc[page_index]
 
         # Step 1 — Metadata 確保為空
-        doc.set_metadata({})  # type: ignore[arg-type]
+        doc.set_metadata({k: "" for k in _USER_METADATA_FIELDS})
         try:
             doc.set_xml_metadata("")
         except Exception:  # noqa: BLE001
