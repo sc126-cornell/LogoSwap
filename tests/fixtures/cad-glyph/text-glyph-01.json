@@ -1,0 +1,21 @@
+{
+  "region_rect_pdf_points": [
+    100.0,
+    100.0,
+    300.0,
+    200.0
+  ],
+  "region_rect_px": [
+    200.0,
+    200.0,
+    600.0,
+    400.0
+  ],
+  "dpi": 144,
+  "page_index": 0,
+  "expected_zero_area_count_pre_process": 120,
+  "original_supplier_name_sha256": "sha256:01d2772e0e8fa0da",
+  "sanitization_script_commit_sha": "d671548",
+  "created_at_iso": "2026-05-27T18:51:28.206785+00:00",
+  "synthetic": true
+}

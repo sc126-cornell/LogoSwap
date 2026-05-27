@@ -54,3 +54,19 @@ desktop.ini
 /swap_hires.png
 # Stray LogoSwap output PDFs accidentally saved to root:
 /*_logoswap*.pdf
+
+# v1.1 Phase 6 — Raw supplier PDF guards (Plan 06-01 / D-A4).
+# Raw supplier PDFs(含原供應商商標 + metadata IP)must never be committed.
+# Sanitized fixtures live in tests/fixtures/cad-glyph/ and ARE committed
+# (D-A2 例外,README.md 文件化)。
+#
+# Root-anchored:repo root 已有的 3013A-... raw file 屏蔽防誤 commit
+/3013A-13A-C6-XX-*.pdf
+# samples/-anchored:tracked 副本 Plan 06-02 Task 4 將用 git rm 移除;
+# 此 pattern 防止移除後又被 git add 回來
+/samples/3013A-*.pdf
+# Archived scratch dir(Plan 06-02 Task 4 物理 mv raw supplier PDF 至此處,
+# .gitignore 確保移入後不被 git track,讓 git rm + 物理 mv 為兩步乾淨操作):
+/.planning/debug/scratch/illustrator-attack-2026-05-28-archived/3013A-*.pdf
+# Future-proof convention:任何 *-supplier-raw.pdf 命名的 raw file 都屏蔽
+*-supplier-raw.pdf
