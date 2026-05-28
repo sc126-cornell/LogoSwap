@@ -73,3 +73,11 @@ desktop.ini
 /.planning/debug/scratch/illustrator-attack-2026-05-28-archived/B-3012IP-*.pdf
 # Future-proof convention:任何 *-supplier-raw.pdf 命名的 raw file 都屏蔽
 *-supplier-raw.pdf
+
+# v1.1 Phase 8 — LIVE-UAT scratch session guard(Plan 08-03 / T-08-05)。
+# .planning/debug/scratch/** 本身是 git-tracked(上方 36-38 的 /_*.py 等只 root-anchored,
+# 不及於 scratch 子目錄)。Phase 8 LIVE-UAT 的一次性 attack-sim 腳本、下載的供應商輸出 PDF、
+# 與 attacked.pdf 皆為 transient + 含供應商 IP,絕不可推上公開 repo。整個 08-live-uat session
+# 目錄屏蔽,並對 scratch 樹下任何 _*.py 腳本做防呆;archived 證據目錄(已 tracked)不受影響。
+.planning/debug/scratch/08-live-uat/
+.planning/debug/scratch/**/_*.py
