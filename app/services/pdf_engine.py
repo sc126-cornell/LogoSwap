@@ -325,16 +325,35 @@ ZERO_AREA_RASTER_THRESHOLD = 100
 # match as real. Without this safe-skip pre-pass a bare ``q\b[^Q]*?Q\b`` pattern
 # terminates prematurely on a `Q` byte inside `(Quality)` (Pitfall 1 / 06-PATTERNS
 # Risk Callout WR-02).
+# WR-03: inline images (``BI ... ID ... EI``) are masked by a DEDICATED stateful
+# scanner (``_mask_inline_images``), NOT by this regex. Inline-image binary data
+# (after ``ID``) is arbitrary bytes that can legally contain a whitespace-delimited
+# ``EI`` token; a regex ``[\s\S]*? \b EI \b`` (or even ``\s EI \s``) stops at that
+# FIRST false ``EI`` and leaves the binary tail UNMASKED. The scanner instead
+# respects the inline-image dictionary's declared length (``/L`` or ``/Length``) when
+# present to jump past the exact binary payload, and otherwise advances ``EI``-by-
+# ``EI`` accepting only a whitespace-delimited ``EI`` whose following bytes parse as
+# valid post-image content-stream tokens (no raw binary). The remaining 4 safe-skip
+# contexts stay in this regex.
 _SAFE_SKIP_REGIONS_RE = re.compile(
     rb"""
       (BT \b [\s\S]*? \b ET \b)                      # text block
-    | (BI \b [\s\S]*? \b ID \b [\s\S]*? \b EI \b)    # inline image (BI ... ID ... EI)
     | (\( (?: \\. | [^()\\] )* \))                   # paren literal (with \( \) escape)
     | (< [^>]* >)                                    # hex string
     | (% [^\n\r]* )                                  # comment till EOL
     """,
     re.VERBOSE | re.DOTALL,
 )
+
+# Inline-image scanner anchors (WR-03). ``BI`` opens the dict, ``ID`` (followed by a
+# single whitespace) opens the binary payload, ``EI`` (whitespace-delimited) closes
+# it. ``/L`` (abbreviation) and ``/Length`` give the payload byte count when present.
+_BI_OPEN_RE = re.compile(rb"\bBI\b")
+_ID_OPEN_RE = re.compile(rb"\bID[ \t\r\n\f\x00]")
+_INLINE_LEN_RE = re.compile(rb"/(?:L|Length)[ \t\r\n\f\x00]+(\d+)")
+# A real terminating ``EI``: preceded by whitespace, followed by whitespace / a PDF
+# delimiter / end-of-stream. Used as the fallback when no declared length is present.
+_EI_CLOSE_RE = re.compile(rb"[ \t\r\n\f\x00]EI(?=[ \t\r\n\f\x00/\[\]<>(){}%]|$)")
 
 # Shape 2 detector: standalone `<x> <y> <w> <h> re ... fillop` pattern (Acrobat /
 # TESTCO sanitize injection / general). `f*` MUST precede `f` in the alternation —
@@ -1002,6 +1021,62 @@ def save_doc(
 # existing Hotfix 06 dense/sparse last-mile defence. See 07-RESEARCH and 07-PATTERNS
 # for design rationale and verbatim Risk Callouts.
 
+def _mask_inline_images(stream: bytes, mask: bytearray) -> None:
+    """Mask every ``BI ... ID <binary> EI`` inline image in ``stream`` (WR-03).
+
+    Stateful scan that does NOT trust a regex to find the closing ``EI`` inside
+    arbitrary binary data (which can itself contain a whitespace-delimited ``EI``).
+    For each ``BI``:
+
+      1. Locate the ``ID`` that opens the binary payload (``ID`` + one whitespace).
+      2. Read the inline-image dictionary (bytes between ``BI`` and ``ID``) for a
+         declared length ``/L`` or ``/Length``. When present, jump exactly that many
+         bytes past the payload-opening whitespace, then require a whitespace-
+         delimited ``EI`` within a tiny trailing window — this skips the binary
+         payload byte-exactly and is immune to embedded false ``EI`` tokens.
+      3. When no length is declared, fall back to the FIRST whitespace-delimited
+         ``EI`` whose following byte is a whitespace / PDF delimiter / EOF. This is
+         the documented best-effort (a payload containing an exact ``\\sEI<delim>``
+         is the only residual false-positive, far narrower than the prior regex).
+
+    Masks ``[BI.start, EI.end)`` (mask byte → 0). Mutates ``mask`` in place.
+    """
+    pos = 0
+    n = len(stream)
+    while pos < n:
+        bi = _BI_OPEN_RE.search(stream, pos)
+        if bi is None:
+            return
+        # Find the ID that opens the binary payload, searching from just after BI.
+        id_m = _ID_OPEN_RE.search(stream, bi.end())
+        if id_m is None:
+            return  # malformed: BI with no ID — nothing more to mask.
+        data_start = id_m.end()  # first byte of binary payload (after ID + 1 ws)
+
+        # Declared length from the inline dict (between BI and ID), if any.
+        dict_bytes = stream[bi.end():id_m.start()]
+        len_m = _INLINE_LEN_RE.search(dict_bytes)
+        ei_end: int | None = None
+        if len_m is not None:
+            declared = int(len_m.group(1))
+            after = data_start + declared
+            # Accept a whitespace-delimited EI within a small window after the
+            # declared payload (allows optional whitespace before EI).
+            window = stream[after:after + 4]
+            wm = re.match(rb"[ \t\r\n\f\x00]*EI", window)
+            if wm is not None:
+                ei_end = after + wm.end()
+        if ei_end is None:
+            # Fallback: first whitespace-delimited EI followed by a delimiter/EOF.
+            ei = _EI_CLOSE_RE.search(stream, data_start)
+            if ei is None:
+                return  # unterminated inline image — leave tail searchable.
+            ei_end = ei.end()
+
+        mask[bi.start():ei_end] = b"\x00" * (ei_end - bi.start())
+        pos = ei_end
+
+
 def _build_safe_skip_mask(stream: bytes) -> bytearray:
     """Return a same-length bytearray; mask[i]==0 means 'inside safe-skip region'.
 
@@ -1010,10 +1085,19 @@ def _build_safe_skip_mask(stream: bytes) -> bytearray:
     bare ASCII operator characters lose semantics inside the 5 PDF safe-skip
     contexts (BT/ET, BI/ID/EI, ``(...)``, ``<...>``, ``%...\\n``).
 
+    Inline images (BI/ID/EI) are masked by the dedicated stateful scanner
+    :func:`_mask_inline_images` (WR-03 — a regex cannot reliably find the real ``EI``
+    inside arbitrary binary payload); the other 4 contexts are masked by
+    :data:`_SAFE_SKIP_REGIONS_RE`. Order matters: mask inline images FIRST so a
+    paren/hex byte INSIDE a binary payload is not mis-masked as a separate context
+    (the inline-image span already covers it).
+
     See 07-PATTERNS Risk Callout #4 + Pitfall 1 in 07-RESEARCH for the empirical
     motivation (the WR-02 caveat from ``tests/_illustrator_attack.py:19-37``).
     """
     mask = bytearray(b"\x01" * len(stream))
+    # WR-03: mask inline-image binary payloads first (stateful, length-aware).
+    _mask_inline_images(stream, mask)
     for m in _SAFE_SKIP_REGIONS_RE.finditer(stream):
         # bytearray supports slice assignment to a bytes value of the same length;
         # this is dramatically faster than the per-byte loop on large streams.

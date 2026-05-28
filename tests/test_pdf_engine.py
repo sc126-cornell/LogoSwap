@@ -292,6 +292,52 @@ def test_safe_skip_inline_image():
         doc.close()
 
 
+def test_safe_skip_inline_image_false_ei_in_binary_with_length():
+    """WR-03:inline image binary payload 內含 standalone ``EI`` token,且宣告 ``/L``
+    長度時,scanner 用長度跳過整個 payload,不被假 ``EI`` 提早終止。
+
+    舊 regex ``[\\s\\S]*? \\b EI \\b`` 在第一個 whitespace-delimited 假 ``EI`` 停下,
+    讓 payload 尾段(含後續看似 ``re f`` 的 bytes)UNMASKED → 若 collision 命中
+    shape detector 會 over-delete 破壞 inline image。length-aware scanner 跳過確切
+    payload byte 數後才找真 ``EI``,對 payload 內假 ``EI`` 免疫。
+    """
+    payload = b"binarydata EI morebinary"  # contains a false ' EI ' mid-binary
+    stream = (
+        b"BI /W 4 /H 1 /L " + str(len(payload)).encode()
+        + b" ID " + payload + b" EI 10 20 0 80 re f"
+    )
+    mask = pdf_engine._build_safe_skip_mask(stream)
+
+    # The false ' EI ' inside the payload must be MASKED (part of the image).
+    false_ei = stream.find(b"EI morebinary")
+    assert mask[false_ei] == 0 and mask[false_ei + 1] == 0, (
+        "payload 內的假 EI 必須被遮罩(屬於 inline image binary)"
+    )
+    # The ' re f' AFTER the real EI must remain SEARCHABLE (it is page content).
+    ref = stream.find(b"re f")
+    assert all(m == 1 for m in mask[ref:ref + 4]), (
+        "真 EI 之後的 page-level `re f` 必須保持可搜尋(不被假 EI 提早終止吞掉)"
+    )
+
+
+def test_safe_skip_inline_image_no_length_masks_to_first_delimited_ei():
+    """WR-03 fallback:無宣告長度時,scanner 退回到第一個 whitespace-delimited ``EI``
+    (+ 後接 delimiter/EOF)。這是 documented best-effort(無 ``/L`` 時無法 byte-exact
+    跳過 binary);至少標準的「payload 後緊接 EI」inline image 仍被完整遮罩。
+    """
+    # Standard inline image, no /L, real EI at end — must be fully masked.
+    stream = b"q BI /W 1 /H 1 /BPC 8 ID rawbytes EI Q"
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    bi = stream.find(b"BI")
+    ei_end = stream.find(b"EI") + 2
+    assert all(m == 0 for m in mask[bi:ei_end]), (
+        "標準 inline image(無 /L,EI 緊接 payload)必須被完整遮罩"
+    )
+    # The trailing ' Q' after EI stays searchable.
+    q_tail = stream.rfind(b"Q")
+    assert mask[q_tail] == 1, "EI 之後的 page-level Q 必須保持可搜尋"
+
+
 # --- SEC-03 form-XObject (3 cases) ----------------------------------------------------
 
 def test_option_b_form_xobject_intersect_logged(caplog):
