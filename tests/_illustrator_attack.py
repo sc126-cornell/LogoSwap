@@ -105,7 +105,23 @@ def delete_image_xobjects_intersecting(
     Returns
     -------
     int
-        刪除的 image xref 數量(``>= 1`` 才算 attack precondition 成立)。
+        實際發生的 content-stream substitution 數量(主 regex + bare fallback 總和)。
+
+        若 ``> 0`` → attack 真正觸發,content stream 已被修改;``>= 1`` 視為
+        attack precondition 成立。
+
+        若 ``== 0`` 但 ``xrefs`` 非空 → 找到 image XObject 但 regex 都沒命中
+        (例:stream 內 unusual whitespace、image 被包在 BT...ET 內、或 PDF parser
+        bug 導致 name 帶兩條斜線等)→ attack 沒真正發生,呼叫者的
+        ``assert n_deleted >= 1`` 會誠實 fail with descriptive message。
+
+        **WR-07 修復(2026-05-28):** 原本回傳 ``len(xrefs)``(意圖數)。
+        導致即便 regex 失敗 ``n_deleted >= 1`` 也成立,test 繼續往下跑,
+        後續 white-pct assertion 因錯誤理由失敗,xfail strict 攔截,表面看正常。
+        但 Phase 7 implementer 拔 marker 後會看到「false PASS」(attack 從未發生,
+        但 white-pct 因 Option B 落地而 ≥ 98% → PASS),掩蓋 fixture 已失效的事實。
+        改為實際 substitution count 後,此 false-PASS scenario 直接以
+        precondition assert 失敗 surface。
     """
     rect_obj = fitz.Rect(*rect)
     page = doc[page_index]
@@ -119,20 +135,24 @@ def delete_image_xobjects_intersecting(
     stream_bytes = page.read_contents()
     stream_text = stream_bytes.decode("latin-1")
 
+    total_subs = 0  # WR-07 修復:track actual substitution count(主 + bare 總和)
+
     # 主 regex: `q ... /<name> Do ... Q` block — VERBATIM scratch lines 84-94
     for name in names:
         pattern = re.compile(
             r"q\b[^Q]*?/" + re.escape(name.lstrip("/")) + r"\s+Do\b[^Q]*?Q\b",
             re.DOTALL,
         )
-        new_text, _n = pattern.subn("", stream_text)
+        new_text, n = pattern.subn("", stream_text)
         stream_text = new_text
+        total_subs += n
 
     # bare fallback: `/<name> Do` 不在 q...Q wrap 內 — VERBATIM scratch lines 96-102
     for name in names:
         bare = re.compile(r"/" + re.escape(name.lstrip("/")) + r"\s+Do\b")
-        new_text, _n = bare.subn("", stream_text)
+        new_text, n = bare.subn("", stream_text)
         stream_text = new_text
+        total_subs += n
 
     # Multi-stream write-back — VERBATIM scratch lines 104-115(不對稱 pattern,
     # 保留兩個 branch 結構而非「整理」為單一 loop,per 06-PATTERNS Risk Callout #4)
@@ -145,7 +165,8 @@ def delete_image_xobjects_intersecting(
         for xref in content_xrefs[1:]:
             doc.update_stream(xref, b"", compress=True)
 
-    return len(xrefs)
+    # WR-07 修復:回傳實際 substitution count(可能為 0 — 找到 xrefs 但 regex 都未命中)
+    return total_subs
 
 
 # ----------------------------------------------------------------------------------
