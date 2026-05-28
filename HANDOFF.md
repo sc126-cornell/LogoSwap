@@ -170,7 +170,10 @@ graphics=..., images=...)` 才能真正刪除底層物件。任何「換掉 PyMu
 `graphics=` 與 `images=` 的選項可調(`REMOVE_IF_TOUCHED` vs
 `REMOVE_IF_COVERED`),影響「碰到邊就刪」還是「完全被蓋才刪」的行為 — milestone
 v1.0 hotfix 06 調校過(dCt-residue Option A),動之前先看
-`app/services/pdf_engine.py` 的 commit history。
+`app/services/pdf_engine.py` 的 commit history。**注意:Option A 自 v1.1 起
+已不是唯一防線,而是「Option A + B 雙層防線」的其中一層** — `apply_redactions`
+對 CAD-glyph 零面積 fill 力有未逮,milestone v1.1 補上了 Option B
+(content-stream surgery 真正刪除),詳見下面 6.5。
 
 ### 6.3 PDF.js viewport 座標換算(前端碰之前必讀)
 
@@ -192,6 +195,44 @@ PDF 內部座標(point, 原點左下)和瀏覽器像素座標(pixel, 原點左�
 
 這條規則寫進 STRIDE 威脅模型,動 `pdf_engine.py` 或 `app/routes/process.py` 之
 前確認不破壞。
+
+### 6.5 Option B content-stream surgery(三層防線分工)
+
+milestone v1.1 之後,「真正移除」由三層防線分工完成,動框選/移除邏輯前必讀:
+
+1. **`apply_redactions`(基線防線)** — 6.2 描述的這一步。它真正移除「正常面積」
+   的文字物件、完全被框選覆蓋的向量物件、以及重疊的影像像素。對絕大多數一般
+   商標而言,這一層就已經把供應商內容從 PDF 物件樹徹底刪掉。
+
+2. **Option B —— `delete_zero_area_type_f_fills_inside`(content-stream surgery,
+   上游真刪)** — 跑在 dispatcher 之前(`redact.py` 的 Option A overlay 之前)。
+   它針對 `apply_redactions` 觸及不到的一類殘留:**page-level 的零面積
+   `type='f'` CAD-glyph fill**。這類 fill 來自 CAD 出口的 PDF 把商標拆解成大量
+   零面積路徑,`apply_redactions` 在任何 graphics 模式下都不會刪它們。Option B
+   直接在 page 的 content stream 上定位這些零面積 fill 的 byte range 並
+   splice 移除 —— 是**真正刪除**,不是覆蓋。
+
+3. **Option A —— `replace_region_with_white_raster`(dense)/
+   `cover_zero_area_artefacts`(sparse)(last-mile overlay 防線)** — 在
+   Option B 之後跑。它是 overlay(用不透明影像 XObject 蓋住),只在 Option B
+   構不到殘留時才有意義,涵蓋兩種情況:(a) 殘留位於 **form XObject 內部** ——
+   Option B 採 page-level-only 策略不下鑽巢狀 XObject(以 `log_xobject_intersect`
+   記 log 而非刪除);(b) Option B 的 regex anchor 沒命中而 cardinality fail-safe
+   回 0(保守不刪、交給 overlay 兜底,「寧可蓋住也不要過刪不可逆」)。
+
+**CAD-glyph 與一般 vector 商標的處理差異(關鍵):**
+
+- **一般/正常面積 vector 商標** —— `apply_redactions` 就能真正刪除。對這類 PDF,
+  Option B 是 **no-op**(SEC-02):框選區內沒有零面積 `type='f'` fill 可刪,
+  Option B 不動 content stream、不引入任何新 artefact。
+- **CAD-glyph 供應商商標** —— 會被拆成大量零面積 `type='f'` fill,
+  `apply_redactions` 把它們留在 stream 裡(這正是 Illustrator 攻擊者拔掉
+  Option A overlay 影像後能讓供應商商標重現的攻擊面)。Option B 精準鎖定的就是
+  這些零面積 fill,在 page-level content stream 把它們真正刪掉。
+
+換句話說:Option B 並非取代 `apply_redactions` 或 Option A,而是補上兩者之間
+那道專屬 CAD-glyph 零面積 source 的缺口;三層合起來才是 v1.1 的完整「真正移除」
+保證。
 
 ---
 
