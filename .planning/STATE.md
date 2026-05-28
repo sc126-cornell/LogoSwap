@@ -4,14 +4,14 @@ milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
 status: executing
 stopped_at: Phase 7 context gathered
-last_updated: "2026-05-28T03:13:17.643Z"
+last_updated: "2026-05-28T04:03:00.603Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 4
-  completed_plans: 3
-  percent: 75
+  completed_plans: 4
+  percent: 100
 ---
 
 # Project State
@@ -30,7 +30,7 @@ Plan: 2 of 2
 Status: Ready to execute
 Last activity: 2026-05-28
 
-Progress: [████████░░] 75%
+Progress: [██████████] 100%
 
 ## Accumulated Context
 
@@ -54,6 +54,7 @@ Progress: [████████░░] 75%
 - [Phase 6 close 2026-05-28]: Phase 6 production code 0 改動驗證 — `git diff --stat c27ffea..HEAD -- app/` empty;AGPL seam(`import fitz` 只在 `app/services/pdf_engine.py`)未被本 phase 任何 commit 動到
 - [Phase ?]: Phase 7 Plan 01: Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) landed in pdf_engine.py AGPL seam + 14 TEST-03 unit tests; baseline 315 passed + 3 skipped + 3 xfailed; Phase 6 regression stays 3 XFAIL for 07-02 handoff
 - [Phase ?]: Phase 7 Plan 01 [Rule 1 deviations]: (1) Shape 1/2 byte-range bboxes need page.transformation_matrix — fitz get_drawings reports MuPDF top-left, stream re/m/l operands are PDF bottom-left; (2) _RE_FILL_RECT_RE between-group widened to absorb h + colour ops because PyMuPDF Shape.draw_rect emits re-h-rg-f not adjacent re-f; (3) page.get_xobjects() bbox is plain tuple not fitz.Rect on 1.27.2.3
+- [Phase ?]: [Phase 7 Plan 07-02] Option B wiring landed in redact.py (line 195/197 boundary, 2 LOC import + ~15 LOC dispatcher, existing dispatcher 0 deletions); xfail decorator removed. SEC-01 acceptance gate FAILED (3 regression FAIL not PASS) — upstream scope: mixed-glyph 3396-ZAF helper cardinality fail-safe + figure-glyph existing residual_content raise + text-glyph stale attack precondition. Option B proven to truly delete on text-glyph (count 1->0, 99.59% white). Self-Check FAILED; not advancing plan — orchestrator to decide upstream fix.
 
 ### Pending Todos
 
@@ -63,6 +64,7 @@ Progress: [████████░░] 75%
 
 - ~~**TEST-01 需要實際樣本**:工程師需提供 ≥3 個出問題的 supplier CAD-glyph PDF~~ **〔已 RESOLVED 2026-05-28:全 3 個 fixture 為真實 supplier〕**
 - [x] ~~**Phase 6 fixture replenishment**~~ **〔已 RESOLVED 2026-05-28:工程師交付 `3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,經 `scripts/sanitize_fixture.py`(commit `0045c6b` Impl notes C + D)重跑後,`text-glyph-01.pdf` + `figure-glyph-01.pdf` 升級為 real supplier;Phase 6 PROVISIONAL banner 移除〕**
+- Phase 7 Plan 07-02 SEC-01 acceptance gate FAILED: 3 illustrator-attack regression cases fail (not pass). Root cause upstream scope (NOT 07-02 integration bug): mixed-glyph-01 3396-ZAF cardinality fail-safe in 07-01 helper (option_b_parse_anomaly, deletes 0); figure-glyph-01 raises existing residual_content (pre-Option-B Phase 4 behaviour); text-glyph-01 Option B works (count 1 to 0, render 99.59% white) but stale attack precondition (no Option A overlay to pull, N=1 < threshold 100). Per sec_01 acceptance note, did NOT expand 07-02 scope to fix helper/fixture/attack-model. Self-Check FAILED in 07-02-SUMMARY.md.
 
 ## Deferred Items
 
@@ -93,6 +95,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T03:12:46.677Z
+Last session: 2026-05-28T04:02:12.350Z
 Stopped at: Phase 7 context gathered
 Resume file: None
