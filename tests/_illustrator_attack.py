@@ -16,6 +16,29 @@ to SIMULATE attack mechanics in regression tests」)。
 參 ``.planning/phases/06-regression-foundation-threat-model-re-evaluation/06-PATTERNS.md``
 Shared Pattern S1。
 
+**WR-02 caveat — regex 對 PDF string literal 內的 ``Q`` byte 脆弱:**
+
+主 regex ``q\\b[^Q]*?/<name>\\s+Do\\b[^Q]*?Q\\b`` 與 bare fallback regex 都用
+``[^Q]`` 字元集 — 此為 byte-level 比對,**不**識別 PDF string literal ``(...)`` /
+hex-string ``<...>`` 邊界。若 supplier PDF 的 content stream 在 attack 區塊內含
+literal ``(Quality)Tj`` / ``(QC report)Tj``、或 binary inline image 帶 ``0x51``
+byte,non-greedy match 會在錯位置 terminate,attack 行為對不同 supplier 不一致:
+supplier A 的 attack「成功」、supplier B 的 attack「失敗」,可能不是因為 supplier
+B 本質安全,而是 supplier B 的 stream 剛好有 Q-byte split 了目標 block。
+
+**對 Phase 7 implementer 的影響:**
+若 regression test 在新真實 supplier PDF 上 fail/pass 行為不穩定,先確認是
+**Option B 真的成功 / 失敗**,還是 attack 機制本身因 regex 對 PDF 語法不敏感
+而 confused。長期(post-v1.1):考慮改用 proper content-stream tokenizer
+(pdfminer.six,或小型狀態機尊重 ``(...)`` / ``<...>`` 邊界)讓 regression test
+mechanism 對所有 supplier 行為 deterministic。 sanitize script 是 offline 有
+self-assert,heuristic 可接受;但 regression test 應 deterministic across all
+real supplier PDFs。WR-07 已將 return value 從「意圖數」改為「實際 subn count」,
+讓此類「regex miss」case 透過 ``assert n_deleted >= 1`` 誠實 surface。
+
+WR-04 同樣警示:sanitize script 內的 ``_strip_brand_glyph_block`` 也共享此 q...Q
+regex 啟發式;當前已知對 ``3013A-13A-C6-XX-3D02-A01-00040.pdf``(N=1)有效。
+
 Exports
 -------
 
