@@ -32,7 +32,7 @@ Final test count: 301 passed, 3 skipped. AGPL fitz seam preserved throughout (si
 **Strategy:** 「先紅燈、再轉綠燈、最後同步文件 + LIVE」三段式 — Phase 6 把今天的 forensic 攻擊腳本變 pytest regression test 並收集 ≥3 個工程師手上實際出問題的 CAD-glyph fixture(此時測試應該是紅的,因為 Option B 還沒寫);Phase 7 在 `pdf_engine.py` 落地 Option B helper(注意 minimum-change 紀律 — 5330290 incident 教訓),Phase 6 的紅燈轉綠;Phase 8 同步 docstring/HANDOFF/PROJECT + LIVE 部署 + attack-sim 全綠驗證。
 
 - [x] **Phase 6: Regression Foundation + Threat Model Re-evaluation** — CAD-glyph fixture suite + attack-simulation pytest(red-light baseline)+ STRIDE 加入 Illustrator-class attacker (3 reqs) **(completed 2026-05-28;production code 0 changes;3/3 fixture real supplier;三道閘綠;sanitize script 補強 Impl notes C + D)**
-- [ ] **Phase 7: Option B Implementation — Content-Stream Surgery** — `pdf_engine` helper 真正刪除零面積 type='f' fills + unit tests + Phase 6 攻擊測試轉綠 (4 reqs)
+- [x] **Phase 7: Option B Implementation — Content-Stream Surgery** — `pdf_engine` helper 真正刪除零面積 type='f' fills + unit tests + Phase 6 攻擊測試轉綠 (4 reqs) **(completed 2026-05-28;3 plans 含 07-03 gap-closure;app/ 只動 pdf_engine.py + redact.py 604 insertions 0 deletions;baseline 321 passed + 3 skipped + 0 xfailed;SEC-01 3 attack tests PASS)**
 - [ ] **Phase 8: Documentation Sync + LIVE Rollout** — LIMITATION docstring 三處同步 + HANDOFF/PROJECT/STATE 更新 + LIVE 部署 + attack-sim 全綠驗證 (4 reqs)
 
 ## Phase Details
@@ -105,7 +105,7 @@ v1.0: 1 → 2 → 3 → 4 → 5 (complete) → v1.1: 6 → 7 → 8
 | 4. 點陣圖與圖片型檔案  | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 5. 部署與穩固化        | v1.0 | 2/2 | Complete    | 2026-05-24 |
 | 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 2/2 | Complete   | 2026-05-28 |
-| 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 2/3 | In progress | - |
+| 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 3/3 | Complete   | 2026-05-28 |
 | 8. Documentation Sync + LIVE Rollout                  | v1.1 | 0/TBD | Not started | - |
 
 ## Backlog
