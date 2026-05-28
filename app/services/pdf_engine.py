@@ -933,19 +933,31 @@ def replace_region_with_white_raster(
     LIMITATION (be honest)
     ----------------------
 
-    The zero-area BLACK source paths remain in the content stream. They are not
-    deleted — only visually superseded by the image overlay. Recovering the
-    original supplier mark requires:
+    When THIS branch fires, the zero-area BLACK source paths it overlays remain
+    in the content stream — they are visually superseded by the image, not
+    deleted. But this is now a LAST-MILE defence, not the only defence: Option B
+    (:func:`delete_zero_area_type_f_fills_inside`) runs UPSTREAM in
+    :func:`app.services.redact.remove_region_vector`, BEFORE the dense/sparse
+    dispatcher reaches this routine, and has already TRULY deleted the
+    page-level zero-area ``type='f'`` sources from the content stream. This
+    overlay only fires for residue Option B could not reach, which is exactly
+    why the underlying sources are still here when it does:
 
-      1. Removing this image XObject (one structural edit in a PDF editor), AND
-      2. Expanding the zero-area path bboxes to non-zero width/height
-         (per-path geometry surgery).
+      1. form-XObject-internal residue — Option B is page-level-only and does
+         NOT descend into form-XObject streams; such intersects are logged via
+         :func:`log_xobject_intersect`, not deleted; AND/OR
+      2. Option B fail-safe cases — a regex-anchor miss / cardinality mismatch,
+         or a ``_DISALLOWED_IN_BLOCK`` co-located-content guard skip, makes
+         Option B conservatively ``return 0`` and leave the stream untouched.
 
-    This is strictly harder than the failure mode it replaces — the prior
-    ``cover_zero_area_artefacts`` leak recovers the mark by simply re-colouring
-    the per-artefact covers, no geometry surgery needed. True deletion of
-    zero-area sources requires content-stream surgery (a candidate hotfix for a
-    future iteration if higher assurance is required).
+    Recovering a supplier mark from one of THESE last-mile cases still requires
+    both (a) removing this image XObject (one structural edit in a PDF editor)
+    AND (b) expanding the zero-area path bboxes to non-zero width/height
+    (per-path geometry surgery) — strictly harder than the failure mode it
+    replaces, where the prior ``cover_zero_area_artefacts`` leak recovered the
+    mark by simply re-colouring the per-artefact covers, no geometry surgery
+    needed. For the common page-level case Option B已先一步真正刪除來源,本 overlay
+    僅是 form-XObject 殘留與 regex-miss fail-safe 的最後一道防線。
     """
     q = fitz.Rect(rect[0], rect[1], rect[2], rect[3])
     q.normalize()
