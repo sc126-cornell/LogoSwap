@@ -532,3 +532,55 @@ def test_option_b_shape1_genuine_miss_failsafe(caplog):
         assert getattr(rec, "mixed_empty", False) is True
     finally:
         doc.close()
+
+
+# --- CR-01 over-delete guard(co-located 合法內容必須存活)----------------------------
+#
+# Shape 1 索引舊行為:把整個 q...Q block byte-range 當刪除目標。當 block 同時夾帶零面積
+# path 與 co-located 合法內容(如 ``/Fm0 Do`` Form-XObject 調用)時,整塊 splice 會把
+# ``Do`` 一起刪掉 = silent data loss。修正後採保守 skip:夾帶 ``Do/BT/sh/BI`` 的 block
+# 不入索引 → dispatch 視為 missing → D-A5 fail-safe → 既有 overlay 接 last-mile。
+
+def test_shape1_block_with_colocated_do_not_indexed():
+    """CR-01:含 co-located ``/Fm0 Do`` 的 q...Q block 不被 index(整塊刪會誤刪 Do)。
+
+    直接對 ``_build_shape1_candidate_index`` 注入 REVIEW.md 重現 byte stream
+    ``q 10 20 m 10 100 l f /Fm0 Do Q``。修正後此 block 因夾帶 ``Do`` 而被保守跳過,
+    index 不含其 key → dispatch 端視為 missing → fail-safe(絕不破壞性寫回)→ ``Do``
+    存活。對照組(純零面積 path,無 ``Do``)仍正常入索引,證明 guard 不過度寬鬆。
+    """
+    page_transform = fitz.Identity  # raw byte test — no page-space mapping needed
+
+    # (a) block 夾帶 co-located Do → 必須被跳過(不入索引)。
+    stream_with_do = b"q 10 20 m 10 100 l f /Fm0 Do Q"
+    mask = pdf_engine._build_safe_skip_mask(stream_with_do)
+    index = pdf_engine._build_shape1_candidate_index(
+        stream_with_do, mask, pdf_engine._DEGENERATE_BBOX_EPS, page_transform
+    )
+    assert index == {}, (
+        "夾帶 /Fm0 Do 的 q...Q block 不可入索引 — 整塊 splice 會誤刪 Do(CR-01 資料遺失)"
+    )
+
+    # (b) 對照組:純零面積 path(無 Do/BT/sh/BI)仍正常入索引(guard 不過度寬鬆)。
+    stream_pure = b"q 10 20 m 10 100 l f Q"
+    mask_pure = pdf_engine._build_safe_skip_mask(stream_pure)
+    index_pure = pdf_engine._build_shape1_candidate_index(
+        stream_pure, mask_pure, pdf_engine._DEGENERATE_BBOX_EPS, page_transform
+    )
+    assert len(index_pure) == 1, (
+        "純零面積 path block(無 co-located 內容)仍應正常入索引並被刪除"
+    )
+
+
+@pytest.mark.parametrize("disallowed", [b"Do", b"BT", b"sh", b"BI"])
+def test_shape1_block_with_any_disallowed_token_not_indexed(disallowed):
+    """CR-01:任一 disallowed token(Do/BT/sh/BI)出現於 block body 都觸發保守跳過。"""
+    page_transform = fitz.Identity
+    stream = b"q 10 20 m 10 100 l f " + disallowed + b" Q"
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    index = pdf_engine._build_shape1_candidate_index(
+        stream, mask, pdf_engine._DEGENERATE_BBOX_EPS, page_transform
+    )
+    assert index == {}, (
+        f"夾帶 {disallowed!r} 的 q...Q block 不可入索引(CR-01 over-delete guard)"
+    )

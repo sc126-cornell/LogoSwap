@@ -413,6 +413,20 @@ _POINT_RE = re.compile(
 )
 _FILL_OP_RE = re.compile(rb"\b(?:f\*|f|F|B\*|b\*|B|b)\b")
 
+# CR-01 over-delete guard: co-located non-path content inside a Shape 1 q...Q block.
+# ``_build_shape1_candidate_index`` stores the WHOLE q...Q block byte range as the
+# deletion target. That is only safe when the block contains NOTHING but
+# path-construction / colour / fill operators. If the same wrapper also invokes a
+# Form/Image XObject (``Do``), opens a text block (``BT``), paints a shading
+# (``sh``), or embeds an inline image (``BI``), splicing the whole block would
+# silently delete that legitimate co-located content (data loss). When this matches
+# the block body, we REFUSE to index the candidate — the zaf-bbox key then looks
+# "missing" to the dispatcher → D-A5 cardinality fail-safe trips (return 0, no
+# destructive write) → existing Phase 4-6 Option A overlay接 last-mile defense.
+# Per 5330290 minimum-change + "never over-delete legit content": conservative skip,
+# not a narrowed splice.
+_DISALLOWED_IN_BLOCK = re.compile(rb"\bDo\b|\bBT\b|\bsh\b|\bBI\b")
+
 
 def map_tuple_to_rect(
     rect_tuple: tuple[float, float, float, float],
@@ -1108,6 +1122,15 @@ def _build_shape1_candidate_index(
 
         # 驗證至少一個填色算子 —— 沒有 fill 的純描邊 / clip path 不是 type='f' ZAF。
         if not _FILL_OP_RE.search(body):
+            continue
+
+        # CR-01 over-delete guard:此 block 同時夾帶 co-located 合法內容
+        # (Form/Image XObject ``Do``、文字段 ``BT``、shading ``sh``、inline image
+        # ``BI``)時,整塊 splice 會把那些內容一起刪掉(silent data loss)。保守做法:
+        # 不 index 此候選 → dispatch 端視該 zaf-bbox 為 missing → D-A5 cardinality
+        # fail-safe(return 0,絕不破壞性寫回)→ 既有 Phase 4-6 Option A overlay 接
+        # last-mile defense。寧可不刪(可被 overlay 補)也不過刪(不可復原)。
+        if _DISALLOWED_IN_BLOCK.search(body):
             continue
 
         loc_x0 = min(p[0] for p in points)
