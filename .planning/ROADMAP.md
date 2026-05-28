@@ -75,7 +75,7 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
   4. `grep -rn "import fitz" app/` 仍只在 `app/services/pdf_engine.py` 一行 — AGPL seam 未破
   5. 框選區若位於 form XObject 內,系統不靜默誤改,以 log 記錄 + safe-skip(SEC-03 page-level only 策略)
 **Plans**: 2 plans
-  - [ ] 07-01-PLAN.md — pdf_engine.py Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) + tests/test_pdf_engine.py 14 TEST-03 cases (SEC-02, SEC-03, TEST-03)
+  - [x] 07-01-PLAN.md — pdf_engine.py Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) + tests/test_pdf_engine.py 14 TEST-03 cases (SEC-02, SEC-03, TEST-03)
   - [ ] 07-02-PLAN.md — redact.py dispatcher integration (line 195/232 boundary, +12 LOC) + xfail decorator removal in tests/test_illustrator_attack_regression.py + SEC-01 acceptance gate verify (SEC-01, SEC-02, SEC-03)
 
 ### Phase 8: Documentation Sync + LIVE Rollout
