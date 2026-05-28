@@ -1,21 +1,23 @@
 {
   "region_rect_pdf_points": [
-    100.0,
-    100.0,
-    300.0,
+    440.0,
+    80.0,
+    580.0,
     200.0
   ],
   "region_rect_px": [
-    200.0,
-    200.0,
-    600.0,
+    880.0,
+    160.0,
+    1160.0,
     400.0
   ],
   "dpi": 144,
   "page_index": 0,
-  "expected_zero_area_count_pre_process": 120,
-  "original_supplier_name_sha256": "sha256:01d2772e0e8fa0da",
-  "sanitization_script_commit_sha": "d671548",
-  "created_at_iso": "2026-05-27T18:51:28.206785+00:00",
-  "synthetic": true
+  "expected_zero_area_count_pre_process": 0,
+  "original_supplier_zero_area_count": 0,
+  "expected_zero_area_count_post_build": 1,
+  "original_supplier_name_sha256": "sha256:ef20a2811e1fd205",
+  "sanitization_script_commit_sha": "7a73dad",
+  "created_at_iso": "2026-05-28T01:37:59.002880+00:00",
+  "synthetic": false
 }

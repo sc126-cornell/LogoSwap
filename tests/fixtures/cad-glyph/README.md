@@ -1,7 +1,7 @@
 # `tests/fixtures/cad-glyph/` — Committed-binary fixture 例外
 
-**最後更新:** 2026-05-28(milestone v1.1 Phase 6 / Plan 06-01)
-**狀態:** ⚠ **PROVISIONAL** — 3 個 fixture 中有 2 個是 synthetic(工程師延遲交付 contingency)。
+**最後更新:** 2026-05-28(milestone v1.1 Phase 6 — synthetic→real fixture 升級完成)
+**狀態:** ✓ **READY** — 3 個 fixture 全部為真實 supplier CAD-glyph PDF(同供應商 `宁波登骐 / Ningbo Dengqi`,3 個不同 SKU,sanitized)。
 
 ---
 
@@ -30,11 +30,11 @@ JSON manifest,所有 binary 都先經過 `scripts/sanitize_fixture.py` 洗去原
 
 ## 2. 每個 fixture 的脫敏記錄
 
-| fixture | original supplier (initial only) | sanitization date (UTC ISO) | script commit sha | coverage slot |
+| fixture | original supplier raw | sanitization date (UTC ISO) | script commit sha | coverage slot |
 |---|---|---|---|---|
-| `text-glyph-01.pdf` | —(synthetic — 工程師延遲交付 contingency;Phase 6 close 為 PROVISIONAL) | 2026-05-28T... | `d671548`(本 plan Task 1 commit;前一個 commit 為 sanitize script 加入) | 文字 glyph 主體 wordmark |
-| `figure-glyph-01.pdf` | —(synthetic — 工程師延遲交付 contingency;Phase 6 close 為 PROVISIONAL) | 2026-05-28T... | `d671548` | 圖形 glyph 主體(icon / monogram) |
-| `mixed-glyph-01.pdf` | 真實 supplier(初代 = `3013A-13A-C6-XX-3D02-A01-00040.pdf`;Acrobat Distiller / PScript5 出口);author 已洗(原 `RD07`) | 2026-05-28T... | `d671548` | 文字 + 圖形 mixed CAD title block(2026-05-28 attack reproduction file) |
+| `text-glyph-01.pdf` | 真實 supplier(`3013A-36A-C6-W4.pdf`;PScript5 + Acrobat Distiller 9.0.0 出口);brand `宁波登骐` 經 Form-XObject stamp annotation 移除(Impl note D) | 2026-05-28T(synthetic→real 升級) | `0045c6b`(sanitize script Impl note C/D 補強) | 文字 glyph 主體 wordmark(供應商在 Acrobat Stamp annotation 內) |
+| `figure-glyph-01.pdf` | 真實 supplier(`B-3012IP-WM02-T430.pdf`;同上出口器,大型 A1 plot);brand 純零面積路徑編碼(無 image XObject) | 2026-05-28T(synthetic→real 升級) | `0045c6b` | 圖形 glyph 主體(13,962 個零面積 `type='f'`,純 CAD-glyph 攻擊面) |
+| `mixed-glyph-01.pdf` | 真實 supplier(初代 = `3013A-13A-C6-XX-3D02-A01-00040.pdf`;Acrobat Distiller / PScript5 出口);author 已洗(原 `RD07`) | 2026-05-28T(原始 Phase 6 commit) | `d671548` | 文字 + 圖形 mixed CAD title block(2026-05-28 attack reproduction file) |
 
 詳細的元資料(`region_rect_pdf_points`、`region_rect_px`、`dpi`、`page_index`、
 `expected_zero_area_count_pre_process`、`original_supplier_name_sha256`、
@@ -42,9 +42,11 @@ JSON manifest,所有 binary 都先經過 `scripts/sanitize_fixture.py` 洗去原
 sidecar `<slot>.json`。pytest 在 collection 時讀 manifest(Plan 06-02 規格 D-B4 +
 本 plan canonical split-coordinate schema per Warning #8)。
 
-**PROVISIONAL banner:** 2 / 3 fixture 為 synthetic;Phase 6 close 條件 **PROVISIONAL**
-until 工程師交付剩餘 supplier PDF + 重跑 `scripts/sanitize_fixture.py` 替換 synthetic
-版本。Tracking blocker:`.planning/STATE.md` 的「Phase 6 fixture replenishment」項。
+**PROVISIONAL banner removed 2026-05-28:** 工程師已交付剩餘 2 個 supplier PDF
+(`3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`),經 `scripts/sanitize_fixture.py`
+(commit `0045c6b`,新增 Impl notes C + D 處理 CMap-encoded font + Form-XObject
+stamp annotation)重跑後,3 個 fixture 全為 real-supplier 來源。STATE.md 對應
+blocker「Phase 6 fixture replenishment」已關閉。
 
 ---
 
@@ -77,11 +79,15 @@ supplier name does NOT appear in `page.get_text()` of any sanitized PDF, before
 writing the output file (在 doc.save 之前 self-assert,任一失敗 → exit 1 + 不寫
 output)。
 
-Synthetic fixtures(2 of 3 in current state)從零建構,本就不含任何 supplier IP。
-
 Public repo(AGPL §13 lockfile per memory `project_deployment_licensing`)receives
 only sanitized output — raw supplier PDFs are **never** committed(`.gitignore`
 root-anchored + samples-anchored + archived-anchored guards 多重防護)。
+
+**Sanitization fallback chain(Impl notes A → B → C → D,2026-05-28 補強):**
+1. **A** — Brand-glyph `q...Q` content-stream block strip(scratch lines 40-115 verbatim)
+2. **B** — Latin-1 content-stream find-replace(supplier_name → "TESTCO")
+3. **C** — `add_redact_annot` + `apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level redaction(CMap-encoded font 真正修法)
+4. **D** — `page.delete_annot()` annotation 整塊刪除(Form-XObject stamp 內巢狀 supplier text 的真正修法 — SEC-03 page-level-only 策略對 annotation 同樣適用)
 
 ---
 

@@ -43,7 +43,7 @@ Progress: [██████████] 100%
 - **AGPL seam**:fitz 嚴格限制在 `app/services/pdf_engine.py` — Option B 新 helper 必須在這個檔案內,不可外溢
 - [Phase ?]: Sidecar manifest 採 split-coordinate schema(region_rect_pdf_points + region_rect_px),Phase 6 canonical per Warning #8
 - [Phase ?]: PyMuPDF 1.27.2.3: doc.set_metadata({}) 為 no-op;必須傳 per-field empty dict 才會真清空 [Rule 1 deviation]
-- [Phase ?]: 2/3 Phase 6 fixtures synthetic — Phase 6 close 為 PROVISIONAL until 工程師交付剩餘 supplier PDF
+- [Phase ?]: 2/3 Phase 6 fixtures synthetic — Phase 6 close 為 PROVISIONAL until 工程師交付剩餘 supplier PDF **〔已 RESOLVED 2026-05-28:工程師交付 `3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,合計 3 個 fixture 全 real;同步引發 sanitize_fixture.py 補強 Impl notes C(CMap font glyph redaction) + D(Form-XObject stamp annotation 整塊刪除) — commit `0045c6b`〕**
 - [Phase ?]: Phase 6 Plan 06-02 完成: VERBATIM-port + xfail-strict baseline + pre-mortem STRIDE + scratch retirement
 - [Phase ?]: Phase 6 紅燈基線就位: tests/test_illustrator_attack_regression.py 3 個 XFAIL,pytest baseline 升級為 301 passed + 3 skipped + 3 xfailed;Phase 7 落地 Option B 後 xfail strict 強迫拔 marker 為 handoff completion 動作
 - [Phase ?]: Phase 6 Plan 06-02: STRIDE 加入 Illustrator-class editor attacker actor;T-02-07 RE-OPENED + T-06-01 NEW 兩條皆 accept (P0 transition-pending until Phase 7);06-SECURITY.md frontmatter threats_open:0 + threats_accepted:2 滿足 gsd-secure-phase non-block
@@ -55,8 +55,8 @@ Progress: [██████████] 100%
 
 ### Blockers/Concerns
 
-- **TEST-01 需要實際樣本**:工程師需提供 ≥3 個出問題的 supplier CAD-glyph PDF。Phase 6 plan 時必須先確認樣本來源與 sanitization 流程(去除供應商 metadata),才能開始寫 fixture-based regression test。
-- [ ] **Phase 6 fixture replenishment** — 以真實 supplier PDF 替換 synthetic-{text|figure} fixtures(2026-05-28 Plan 06-01 執行時工程師僅交付 1 個真實 supplier PDF;`mixed-glyph-01.pdf` 用真實檔,`text-glyph-01.pdf` + `figure-glyph-01.pdf` 為 synthetic fallback)。Phase 6 close 為 **PROVISIONAL** until 工程師交付剩餘 2 個 real supplier PDF + 重跑 `scripts/sanitize_fixture.py` 替換 synthetic 版本。參 `tests/fixtures/cad-glyph/README.md` Section 2 表格 + `06-01-SUMMARY.md`。
+- ~~**TEST-01 需要實際樣本**:工程師需提供 ≥3 個出問題的 supplier CAD-glyph PDF~~ **〔已 RESOLVED 2026-05-28:全 3 個 fixture 為真實 supplier〕**
+- [x] ~~**Phase 6 fixture replenishment**~~ **〔已 RESOLVED 2026-05-28:工程師交付 `3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,經 `scripts/sanitize_fixture.py`(commit `0045c6b` Impl notes C + D)重跑後,`text-glyph-01.pdf` + `figure-glyph-01.pdf` 升級為 real supplier;Phase 6 PROVISIONAL banner 移除〕**
 
 ## Deferred Items
 

@@ -62,11 +62,14 @@ desktop.ini
 #
 # Root-anchored:repo root 已有的 3013A-... raw file 屏蔽防誤 commit
 /3013A-13A-C6-XX-*.pdf
+/3013A-36A-*.pdf
+/B-3012IP-*.pdf
 # samples/-anchored:tracked 副本 Plan 06-02 Task 4 將用 git rm 移除;
 # 此 pattern 防止移除後又被 git add 回來
 /samples/3013A-*.pdf
 # Archived scratch dir(Plan 06-02 Task 4 物理 mv raw supplier PDF 至此處,
 # .gitignore 確保移入後不被 git track,讓 git rm + 物理 mv 為兩步乾淨操作):
 /.planning/debug/scratch/illustrator-attack-2026-05-28-archived/3013A-*.pdf
+/.planning/debug/scratch/illustrator-attack-2026-05-28-archived/B-3012IP-*.pdf
 # Future-proof convention:任何 *-supplier-raw.pdf 命名的 raw file 都屏蔽
 *-supplier-raw.pdf
