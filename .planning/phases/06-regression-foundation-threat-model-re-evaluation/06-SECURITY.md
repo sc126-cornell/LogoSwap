@@ -344,3 +344,75 @@ transition)。Archived 原檔不被本檔編輯;追溯 chain 透過 frontmatter 
 
 *06-SECURITY.md authoring complete — Phase 6 STRIDE pre-mortem 鎖定。*
 *下一步:Phase 7 implementer 落地 Option B 後在 `07-SECURITY.md` close 本檔列出的兩條 threat。*
+
+---
+
+## Security Audit 2026-05-28 (post-code-review-fix)
+
+**Auditor:** Claude (gsd-secure-phase)
+**Audit posture:** FORCE — assume mitigations absent until grep proves present;State A verification of pre-mortem deliverable against post-review-fix code.
+**Scope:** verify each declared threat disposition in this file's STRIDE register matches the on-disk reality after Phase 6 code-review fix (commits `d0370de`..`e3ac65f`).
+
+### Verification Matrix
+
+| # | Verification | Status | Evidence (file:line / command output) |
+|---|---|---|---|
+| 1 | Phase 6 added 0 production code lines | CLOSED | `git diff --stat d671548^..HEAD -- app/` returns empty output (verified at audit time across all 10 Phase 6 commits + 8 code-review-fix commits) |
+| 2 | AGPL fitz seam intact — only `app/services/pdf_engine.py` imports fitz in `app/` | CLOSED | AST walk across `app/**/*.py`: single hit at `app/services/pdf_engine.py:19`; all other grep matches are docstring/comment references (verified via AST `Import` + `ImportFrom` node walk) |
+| 3 | AGPL guard test still green | CLOSED | `python -m pytest tests/test_redact.py::test_fitz_import_confined_to_engine_seam -v` → `1 passed in 0.32s`; AST guard at `tests/test_redact.py:1190-1207` scopes only `app/**/*.py` — `tests/`/`scripts/` are out of scope by design |
+| 4 | `tests/_illustrator_attack.py` `import fitz` is permitted (test-harness exception) | CLOSED | `tests/_illustrator_attack.py:60` `import fitz  # license: test harness exception (mirror tests/conftest.py:12)`; AST guard does not visit `tests/` |
+| 5 | `scripts/sanitize_fixture.py` `import fitz` is permitted (scripts/ out of AGPL guard scope) | CLOSED | `scripts/sanitize_fixture.py:83`; AST guard scope is `app/**/*.py` only |
+| 6 | CR-01 fix applied — `_metadata_all_empty` uses allowlist (only `format`, `encryption` permitted as non-empty) | CLOSED | `scripts/sanitize_fixture.py:258` `_COMPUTED_METADATA_FIELDS = frozenset({"format", "encryption"})`; `:261-279` allowlist iteration of `doc.metadata.items()` with computed-field skip + `value not in (None, "", b"")` fail-fast; commit `d0370de` |
+| 7 | WR-03 fix applied — out-path validated via `Path.resolve()` + `is_relative_to()` (no path traversal / case bypass) | CLOSED | `scripts/sanitize_fixture.py:219-239` `_out_path_in_fixtures_dir()` helper using `Path.resolve()` + `is_relative_to(FIXTURES_DIR)`; called at entry-point (`:455-461` analog) AND in self-assert (`:714-720`); commit `509cef7` |
+| 8 | WR-07 fix applied — `delete_image_xobjects_intersecting` returns actual `total_subs`, not `len(xrefs)` | CLOSED | `tests/_illustrator_attack.py:161` `total_subs = 0`; `:171,178` `total_subs += n` from each `pattern.subn()`; `:192` `return total_subs`; commit `7514ef1` |
+| 9 | All 4 self-asserts gate `doc.save()` (any failure → `return 1` before save) | CLOSED | `scripts/sanitize_fixture.py:660-720` self-assert block precedes Step 6 save at `:723`: (1) `_metadata_all_empty(doc)` at `:662`, (2) `supplier_name not in text_after` at `:671` w/ CMap fallback, (3) `post_zero_area_count` ≥ 0.9 × original at `:687-709`, (4) `_out_path_in_fixtures_dir(out_path)` at `:714` |
+| 10 | T-06-01 Accepted Risks Log entry present + cross-refs valid | CLOSED | `06-SECURITY.md:253-275` "T-06-01-r1 — Illustrator-class editor attack surface (NEW Phase 6)" with disposition `accept (P0, transition-pending until Phase 7 closes)`, risk description, why-accepted-now, upgrade trigger (Phase 7 Option B落地), documented-at refs (xfail reason / STRIDE table / REQUIREMENTS.md SEC-01/02/03 / PROJECT.md Active) |
+| 11 | T-02-07 Accepted Risks Log entry present + supersedes chain to archived `06-HOTFIX-SECURITY.md` | CLOSED | `06-SECURITY.md:223-251` "T-02-07-r2 — v1.0 documented residual + v1.1 RE-OPENED transition"; frontmatter `:15-16` `supersedes: - .planning/milestones/v1.0-phases/05-ubuntu/hotfix-06-dct-residue/06-HOTFIX-SECURITY.md`; cross-ref to future `07-SECURITY.md` CLOSE noted at `:160-165` and `:310-314` |
+| 12 | Committed-binary fixture exposure controlled — no raw supplier PDF tracked | CLOSED | `git ls-files \| grep -E '3013A-13A-C6-XX'` returns empty (exit 1); `samples/3013A-...pdf` removed via `git rm` in commit `0f14325`; repo-root copy physically `mv`'d to archived dir (`.gitignore` `:/.planning/debug/scratch/illustrator-attack-2026-05-28-archived/3013A-*.pdf` archived-anchored) |
+| 13 | `tests/fixtures/cad-glyph/README.md` documents committed-binary exception + AGPL §13 + immutability + PROVISIONAL state | CLOSED | README.md has 5 sections (line 8 §1 why-exception, line 31 §2 sanitization log w/ `synthetic` markers, line 51 §3 immutability rule, line 70 §4 AGPL §13 statement, line 88 §5 cross-references); PROVISIONAL banner at `:4` |
+| 14 | Forensic evidence archived + git history preserved (Blocker #3) | CLOSED | Archived dir contains 4 retained PNG/PDF artifacts + README.md + raw 3013A.pdf (untracked, `.gitignore` archived-anchored); original `.py` attack scripts deleted (`ls *.py` exit 2 "No such file or directory"); `git log --follow .../_attack_proof_supplier_revealed.png` returns 2 commits (`0f14325` + `b9aa005`) — rename detection preserves history through `git mv` |
+| 15 | Pre-mortem framing: 3 XFAIL regression tests exist as Phase 6 → Phase 7 handoff signal | CLOSED | `python -m pytest -k illustrator_attack -v` → `3 xfailed in 2.37s` (figure-glyph-01 + mixed-glyph-01 + text-glyph-01); `@pytest.mark.parametrize` ABOVE `@pytest.mark.xfail(strict=True)` at `tests/test_illustrator_attack_regression.py:73-82`; reason string cross-refs `.planning/REQUIREMENTS.md SEC-01` |
+| 16 | Frontmatter `gsd-secure-phase` non-block invariant: `threats_open: 0` + `threats_accepted: 2` | CLOSED | `06-SECURITY.md:11-13` frontmatter exact match: `threats_total: 2 / threats_closed: 0 / threats_open: 0 / threats_accepted: 2`; semantics explained at `:293-297` (Pre-mortem vs Audit-time variant section) |
+
+### Per-threat Disposition Verification
+
+**T-06-01 (NEW — Spoofing + Information disclosure, Illustrator-class editor pulls overlay):**
+- Disposition declared in register: `accept (P0, transition-pending until Phase 7)`
+- Accepted Risks Log entry: `06-SECURITY.md:253-275` (T-06-01-r1) — risk description ✓, why-accepted-now ✓, upgrade trigger ✓, documented-at refs ✓
+- Closing condition cross-ref: `.planning/REQUIREMENTS.md` SEC-01 / SEC-02 / SEC-03 (Phase 7 Option B)
+- Evidence cite: `_attack_proof_supplier_revealed.png` archived + 3 XFAIL regression tests live in `tests/test_illustrator_attack_regression.py` — both verified present at audit time
+- **Verdict:** disposition matches reality; `accept` framing valid (no production-code mitigation expected this phase by design)
+
+**T-02-07 (RE-OPENED — Information disclosure, TRUE REMOVAL vs cover):**
+- Disposition declared in register: `mitigate (archived, v1.0 LIVE Option A still effective for CLI-only model) + RE-OPENED 2026-05-28 pending Option B (Phase 7) — accept (P0, transition-pending until Phase 7)`
+- Supersession chain: frontmatter `supersedes:` lists archived `06-HOTFIX-SECURITY.md` — verified at `:15-16`; archived original unmodified (no edits to `.planning/milestones/v1.0-phases/...` in any Phase 6 commit)
+- Accepted Risks Log entry: `06-SECURITY.md:223-251` (T-02-07-r2) — all required fields present
+- Future close path: `07-SECURITY.md` will mark `mitigate | CLOSED via Option B` (chain: `07 → 06 → archived-06-HOTFIX`) — documented at `:308-314`
+- **Verdict:** disposition matches reality; supersedes chain valid; v1.0 LIVE mitigation explicitly not retracted (only the Illustrator-class threat-model assumption invalidated)
+
+### Phase 6 Attack-Surface Delta Confirmation
+
+- **Production code lines added:** 0 (verified via `git diff --stat d671548^..HEAD -- app/` returning empty across all 10 Phase 6 commits + 8 code-review-fix commits)
+- **New `import fitz` in app/:** 0 (AST walk confirms only `app/services/pdf_engine.py:19`)
+- **New runtime attack surface:** 0 — Phase 6 is pre-mortem hardening + test/docs/scripts only:
+  - `scripts/sanitize_fixture.py` — maintainer-only dev tool, runs in trust boundary covered by T-PLAN06-01-03 (accept, low — maintainer-trust per Plan 06-01 threat_model)
+  - `tests/_illustrator_attack.py` + `tests/test_illustrator_attack_regression.py` — test harness, never imported by `app/`
+  - `06-SECURITY.md` — docs-only
+- **Threat Flags from `06-01-SUMMARY.md` / `06-02-SUMMARY.md`:** both summaries explicitly state "無新 threat surface introduced" — no unregistered flags require mapping
+
+### Unregistered Flags
+
+None. Both summaries' Threat Flags sections audited and confirmed empty of new attack surface.
+
+### Final Verdict
+
+**Phase 6 is THREAT-SECURE (threats_open: 0, threats_accepted: 2)**
+
+All 16 declared mitigations / acceptances verified by direct grep / AST walk / pytest invocation against on-disk code. The pre-mortem framing — `accept (P0, transition-pending until Phase 7)` for both T-06-01 + T-02-07 — is internally consistent: no production-code mitigation was expected this phase (by design, per `06-RESEARCH § Assumptions A3`), and the binding handoff signal (3 × xfail-strict regression tests) is wired correctly to fail-loud when Phase 7 Option B lands.
+
+CR-01 + WR-03 + WR-07 fixes from the code review are all present and behaviorally correct in the post-fix code at audit time. The 4 self-asserts in `scripts/sanitize_fixture.py` all gate `doc.save()` with `return 1` on any failure — the AGPL §13 statement in `tests/fixtures/cad-glyph/README.md` § 4 is upheld by mechanical means, not merely by documentation.
+
+**No blockers. No unregistered flags. Phase 6 cleared for Phase 7 entry.**
+
+*Audit completed: 2026-05-28*
+*Auditor: Claude (gsd-secure-phase, FORCE stance)*
