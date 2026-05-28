@@ -4,14 +4,14 @@ milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-05-28T15:58:52.543Z"
+last_updated: "2026-05-28T16:05:48.067Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 9
-  completed_plans: 6
-  percent: 67
+  completed_plans: 7
+  percent: 78
 ---
 
 # Project State
@@ -26,11 +26,11 @@ See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 ## Current Position
 
 Phase: 8 (Documentation Sync + LIVE Rollout) — EXECUTING
-Plan: 2 of 4
+Plan: 3 of 4
 Status: Ready to execute
 Last activity: 2026-05-28
 
-Progress: [███████░░░] 67%
+Progress: [████████░░] 78%
 
 ## Accumulated Context
 
@@ -61,6 +61,8 @@ Progress: [███████░░░] 67%
 - [Phase 7 close 2026-05-28]: production code 改動只 `pdf_engine.py`(+helpers)+ `redact.py`(+~15 LOC,0 deletions,既有 dispatcher 一字不改);AGPL seam intact(`import fitz` 只 `pdf_engine.py:21`);baseline 338 passed + 3 skipped + 0 xfailed
 - [Phase 8 部署提醒 IN-02]: secure audit 環境是 Python 3.14,CLAUDE.md mandate 是 3.12 — Phase 8 LIVE 部署要確認 pin 3.12 維持 regex/logging 行為 parity(非 source defect)
 - [Phase ?]: [Phase 8 Plan 08-01] THREAT-02 三處 honest-limitation docstring 同步:由「true deletion 留待 future/candidate Option B/#07」改寫為「Option B 已 upstream 真正刪除 page-level 零面積 source;overlay 為 form-XObject 殘留(已 log)+ regex-miss fail-safe 的 last-mile 防線」。零 logic 改動;AGPL seam intact;§1.4 三 non-target marker 未動。commits 9a3a8c0 + c6a5274
+- [Phase ?]: [Phase 8 Plan 08-02] DOC-01 + DOC-02 完成:HANDOFF §6.5 三層防線(apply_redactions + Option B 上游真刪 + Option A last-mile overlay)+ CAD-glyph vs 一般 vector 差異;§6.2 Option A 改「Option A + B 雙層防線」;PROJECT Key Decisions 新增 Option B 落地列(引 forensic 證據 illustrator-attack-2026-05-28-archived);STATE Option B promoted note final-clean 為 DONE/shipped。commits 659befb + 013bc5e + 41e30f1
+- [Phase ?]: [Phase 8 Plan 08-02] DEPLOY-01 checkbox 刻意保持 Pending(strict-honesty):LIVE deploy + attack-sim 工作在 Plan 03;Plan 04 milestone-close 統一驗證四項。ROADMAP Phase 8 phase-checkbox 不動(owned by close)
 
 ### Pending Todos
 
@@ -101,6 +103,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T15:58:44.539Z
+Last session: 2026-05-28T16:05:33.360Z
 Stopped at: Phase 8 context gathered
 Resume file: None
