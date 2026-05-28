@@ -79,6 +79,14 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
   - [x] 07-02-PLAN.md — redact.py dispatcher integration (line 195/232 boundary, +12 LOC) + xfail decorator removal in tests/test_illustrator_attack_regression.py + SEC-01 acceptance gate verify (SEC-01, SEC-02, SEC-03)
   - [x] 07-03-PLAN.md — [gap closure] Shape 1 locator rework (single-pass `_build_shape1_candidate_index` + bbox-keyed cardinality:perf 765s→<5s + match 14%→~100% + 重複-bbox 全刪) + 高密度/重複-bbox/genuine-miss 單元測試 + attack precondition 重設計(無 overlay+region 乾淨=PASS)+ figure-glyph fixture 調查與修補 → 3 illustrator-attack regression PASS (SEC-01, SEC-02, SEC-03, TEST-03)
 
+**Phase 7 close — verify + 三道閘(2026-05-28)**:
+- verify PASSED(5 success criteria + 4 reqs + 10 invariants,直接指令驗證)
+- code-review/fix:**deep review 抓 1 BLOCKER(CR-01:Shape 1 splice 整 q...Q block 會過刪夾帶 `/Fm0 Do` 等合法內容;D-A5 + regression gate 都抓不到)+ 6 Warning,全修**(commits `a10704b..037ce75`)— 修法 `_DISALLOWED_IN_BLOCK` 保守跳過 + `_NUMBER` leading-dot 修進 Shape 2 + WR-03 length-aware inline-image mask
+- validate Nyquist no-op(config 停用,等效驗證已由 verifier 完成)
+- secure SECURED(threats_open:0,14/15 CLOSED + 1 accept;**T-06-01 + T-02-07 CLOSED via Option B**;commit `21ad273`)
+- baseline 338 passed + 3 skipped + 0 xfailed;AGPL seam intact;app/ 只動 pdf_engine.py + redact.py(0 deletions)
+- **Phase 8 部署提醒**:audit 環境 Python 3.14,CLAUDE.md mandate 3.12 — LIVE 部署 pin 3.12 維持 regex/logging parity
+
 ### Phase 8: Documentation Sync + LIVE Rollout
 **Goal**: Option B 落地後同步所有面向同事 / 法務 / 維運的決策文件 — 三處「LIMITATION (be honest)」docstring 更新、HANDOFF.md 加 6.5 小節、PROJECT.md Key Decisions 加 v1.1 落地列,把實作推上 Zeabur(或本機 Docker)並對 ≥1 個 CAD-glyph 樣本完成端到端 LIVE-UAT(upload → 框選 → process → download → Illustrator-attack-simulation 全綠)。**紀律:**沿用 v1.0 流程 — UAT 期間 commit local but never push,LIVE-UAT 通過 + final review/fix pass 後才 push;AGPL §13 三件套無變更(僅文件文字調整,GitHub/LICENSE/UI footer 既有就位)。
 **Mode:** rollout + docs sync

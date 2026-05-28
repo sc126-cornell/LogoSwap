@@ -45,8 +45,8 @@ Target features(roadmap 階段細分):
 
 **Milestone v1.1 進度(2026-05-28):**
 - ✓ Phase 6 完成 — 紅燈基線就位(3 個 real-supplier sanitized fixture + xfail-strict regression test + 06-SECURITY.md pre-mortem STRIDE)。三道閘 review/validate/secure 全綠;sanitize_fixture.py 補強 Impl notes C + D 處理 PScript5 + Acrobat 出口 PDF 的 CMap font + Form-XObject stamp annotation 場景
-- ⏳ Phase 7 待跑 — Option B 內容串流真正刪除零面積 type='f' fills
-- ⏳ Phase 8 待跑 — 文件同步(LIMITATION docstring 三處 + HANDOFF.md 6.5 + PROJECT.md Key Decisions)+ LIVE 部署
+- ✓ Phase 7 完成 — Option B content-stream surgery 落地(`pdf_engine.py::delete_zero_area_type_f_fills_inside` + Shape 1/2 single-pass index locator + redact.py dispatcher upstream defense,既有 dispatcher 0 deletions)。3 plans(含 07-03 gap-closure 修 Shape 1 perf 765s→1.12s + match 14%→100% + `_NUMBER` leading-dot regex bug)。三道閘全綠(deep review 抓 CR-01 over-delete BLOCKER + 6 WR 全修;secure SECURED threats_open:0)。**T-06-01 + T-02-07 CLOSED via Option B**(content-stream gate 真刪驗證,非 Option A overlay 視覺遮蓋)。baseline 338 passed + 3 skipped + 0 xfailed。AGPL seam intact
+- ⏳ Phase 8 待跑 — 文件同步(LIMITATION docstring 三處改寫 = THREAT-02 + HANDOFF.md 6.5 = DOC-01 + PROJECT.md Key Decisions「Option B 落地」列 = DOC-02)+ LIVE 部署 + attack-sim 全綠驗證。部署提醒:pin Python 3.12(audit 環境是 3.14,維持 regex/logging parity)
 
 ### Deferred (carried forward from v1.0 close)
 

@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: verifying
-stopped_at: Phase 7 context gathered
-last_updated: "2026-05-28T10:13:39.507Z"
+status: complete
+stopped_at: Phase 7 complete — verify + 三道閘全綠;ready for Phase 8
+last_updated: "2026-05-28T11:00:00.000Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 3
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 7 — Option B Implementation — Content-Stream Surgery
+**Current focus:** Phase 7 完成(2026-05-28)— Option B 落地、verify + 三道閘全綠。下一步:`/gsd-discuss-phase 8 --chain`(文件同步 + LIVE 部署)。
 
 ## Current Position
 
-Phase: 7 (Option B Implementation — Content-Stream Surgery) — EXECUTING
-Plan: 2 of 2
-Status: Phase complete — ready for verification
+Phase: 7 (Option B Implementation — Content-Stream Surgery) — COMPLETE
+Plan: 3 of 3(含 07-03 gap-closure)
+Status: verify PASSED + 三道閘全綠(review/fix 1 BLOCKER + 6 WR 修;validate Nyquist no-op;secure SECURED threats_open:0,T-06-01 + T-02-07 CLOSED via Option B);baseline 338 passed + 3 skipped + 0 xfailed
 Last activity: 2026-05-28
 
-Progress: [██████████] 100%
+Progress: [██████████] 100%(2 / 3 phases complete;Phase 8 待跑)
 
 ## Accumulated Context
 
@@ -55,6 +55,11 @@ Progress: [██████████] 100%
 - [Phase ?]: Phase 7 Plan 01: Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) landed in pdf_engine.py AGPL seam + 14 TEST-03 unit tests; baseline 315 passed + 3 skipped + 3 xfailed; Phase 6 regression stays 3 XFAIL for 07-02 handoff
 - [Phase ?]: Phase 7 Plan 01 [Rule 1 deviations]: (1) Shape 1/2 byte-range bboxes need page.transformation_matrix — fitz get_drawings reports MuPDF top-left, stream re/m/l operands are PDF bottom-left; (2) _RE_FILL_RECT_RE between-group widened to absorb h + colour ops because PyMuPDF Shape.draw_rect emits re-h-rg-f not adjacent re-f; (3) page.get_xobjects() bbox is plain tuple not fitz.Rect on 1.27.2.3
 - [Phase ?]: [Phase 7 Plan 07-02] Option B wiring landed in redact.py (line 195/197 boundary, 2 LOC import + ~15 LOC dispatcher, existing dispatcher 0 deletions); xfail decorator removed. SEC-01 acceptance gate FAILED (3 regression FAIL not PASS) — upstream scope: mixed-glyph 3396-ZAF helper cardinality fail-safe + figure-glyph existing residual_content raise + text-glyph stale attack precondition. Option B proven to truly delete on text-glyph (count 1->0, 99.59% white). Self-Check FAILED; not advancing plan — orchestrator to decide upstream fix.
+- [Phase 7 close 2026-05-28]: Plan 07-03 gap-closure 關閉 SEC-01 — Shape 1 locator 改 single-pass `_build_shape1_candidate_index` + bbox-keyed cardinality(perf 765s→1.12s,match 14%→100%);關鍵 root cause 是潛伏的 `_NUMBER` regex bug(`-?\d+\.?\d*` 解不了 PScript5 leading-dot real `-.061`,改 `[-+]?(?:\d+\.?\d*|\.\d+)`);attack precondition 重設計(Option B 已刪 source → 無 overlay 可拔 → region 乾淨仍 PASS);figure-glyph 重 sanitize 自真實 B-3012IP zero-area cluster。3 attack regression PASS。
+- [Phase 7 close 2026-05-28]: 三道閘全綠 — (1) verify PASSED 5 criteria + 4 reqs + 10 invariants;(2) code-review/fix:**deep review 抓 1 BLOCKER(CR-01:Shape 1 splice 整個 q...Q block 會過刪夾帶的 `/Fm0 Do` 等合法內容,D-A5 + regression gate 都抓不到)+ 6 WR 全修**(7 atomic commits,修法:`_DISALLOWED_IN_BLOCK` 偵測 Do/BT/sh/BI 夾帶內容就保守跳過 → fail-safe → Option A last-mile);(3) validate Nyquist no-op;(4) secure SECURED threats_open:0,14/15 CLOSED + 1 accept
+- [Phase 7 close 2026-05-28]: **T-06-01 + T-02-07 CLOSED via Option B** — content-stream gate 委派 production `count_zero_area_fills_fully_inside`(讀 content stream 非渲染像素),mixed-glyph 3396 ZAF 過 `count==0` 證明真刪非 Option A overlay 視覺遮蓋;兩道閘(white≥98% AND count==0)unconditional asserts。supersede chain 07→06→archived 06-HOTFIX 已鎖
+- [Phase 7 close 2026-05-28]: production code 改動只 `pdf_engine.py`(+helpers)+ `redact.py`(+~15 LOC,0 deletions,既有 dispatcher 一字不改);AGPL seam intact(`import fitz` 只 `pdf_engine.py:21`);baseline 338 passed + 3 skipped + 0 xfailed
+- [Phase 8 部署提醒 IN-02]: secure audit 環境是 Python 3.14,CLAUDE.md mandate 是 3.12 — Phase 8 LIVE 部署要確認 pin 3.12 維持 regex/logging 行為 parity(非 source defect)
 
 ### Pending Todos
 
@@ -95,6 +100,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T10:13:39.494Z
-Stopped at: Phase 7 context gathered
+Last session: 2026-05-28
+Stopped at: Phase 7 完成 — Option B 落地、verify + 三道閘全綠;ready for `/gsd-discuss-phase 8 --chain`(文件同步 + LIVE 部署)
 Resume file: None
