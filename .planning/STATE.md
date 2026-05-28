@@ -86,9 +86,9 @@ Progress: [███████░░░] 67%
 | Security | Form XObject 內 zero-area fills 遞迴 surgery | Deferred from v1.1 SEC-03 | v1.1 採 page-level only + log;實際樣本出現再評估 |
 | Security | Zero-area `type='s'`(stroke)surgery | Deferred from v1.1 | 威脅證據都是 type='f';stroke 未出現殘留 |
 
-**Promoted from Deferred to Active(2026-05-28):**
+**Promoted from Deferred → DONE / shipped(final-clean 2026-05-29):**
 
-- ~~Option B — content-stream surgery 真正刪除 zero-area sources~~ → **v1.1 active(Phase 7 核心)**。原 deferral 假設「Option A 對使用者實質不可恢復」已被 2026-05-28 forensic attack script 證明不成立(Illustrator 可拔 image XObject overlay)。
+- ~~Option B — content-stream surgery 真正刪除 zero-area sources~~ → **DONE / shipped(Phase 7 落地完成,v1.1 LIVE rollout 進行中 Phase 8)**。`pdf_engine.py::delete_zero_area_type_f_fills_inside` 已在 page-level content stream 真正刪除零面積 type='f' source(非 Option A overlay 視覺遮蓋);Phase 7 三道閘全綠(baseline 338 passed + 3 skipped + 0 xfailed;deep review 抓 CR-01 BLOCKER + 6 WR 全修;secure SECURED threats_open:0),**T-06-01 + T-02-07 CLOSED via Option B**。原 v1.0 deferral 假設「Option A 對使用者實質不可恢復」已被 2026-05-28 forensic attack script 證明不成立(Illustrator 可拔 image XObject overlay 讓供應商 CAD glyph 重現)— 此歷史教訓保留供日後 deferral 決策參考。
 
 ## Quick Tasks Completed
 
