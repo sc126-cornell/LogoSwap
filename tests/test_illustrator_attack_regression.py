@@ -71,15 +71,6 @@ def _load_fixtures():
 # **反置會出問題** — 若 parametrize 在下、xfail 在上,parametrize 會拿到一個
 # 已被 xfail-wrapped 的物件展開 → 行為不可預期(06-PATTERNS Risk Callout #3)。
 @pytest.mark.parametrize("fixture_pdf,manifest", _load_fixtures())
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Option B 尚未實作(Phase 7 SEC-01 待落地)— "
-        "Illustrator-class editor 拔 image XObject 後 page content stream 內的零面積 "
-        "type='f' 路徑仍會 render 出供應商商標。Phase 7 落地後請拔掉本 marker。"
-        "參 .planning/REQUIREMENTS.md SEC-01。"
-    ),
-)
 def test_illustrator_attack_residual_supplier_revealed(
     fixture_pdf,
     manifest,
