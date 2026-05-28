@@ -648,22 +648,25 @@ def render_region_white_pct(pdf_path, page_index: int, rect: tuple[float, float,
 | A6 | `pytest.ini` 沒被任何 dev / CI invocation 覆寫 `--runxfail` | Pitfall 4 | LOW — verified `pytest.ini` clean;但若 Zeabur CI 設此 flag 會破壞 handoff signal,**Mitigation:** Phase 6 PLAN.md 內 task 明文寫「驗證 CI 不加 `--runxfail`」 |
 | A7 | `samples/3013A-...pdf` 與 repo root 同檔的處置(留 vs 移到 archived 同層)由 planner 自主決定,沒有遺漏 issue | Claude's Discretion (CONTEXT.md) | LOW — CONTEXT.md 已標為 planner discretion;但提醒 planner:既有 `_attack_delete_image_xobject.py:12-13` hard-code 此路徑,若移動,scratch archived README 內須註記新位置 |
 
-## Open Questions
+## Open Questions(全部 RESOLVED 2026-05-28)
 
-1. **工程師交付 ≥2 個 supplier PDF 的時程不確定** — D-A1 假設「一週內」可交;若 Phase 6 plan 跑到實作階段仍未交付,需 fallback。
+1. **〔RESOLVED 2026-05-28〕工程師交付 ≥2 個 supplier PDF 的時程不確定** — D-A1 假設「一週內」可交;若 Phase 6 plan 跑到實作階段仍未交付,需 fallback。
    - 我們知道的: repo root 既有 `3013A-13A-C6-XX-3D02-A01-00040.pdf` 為第 1 個,夠合 1 個 fixture(planner 決定 map 到 text-glyph / figure-glyph / mixed 的哪個 slot)
    - 不明處: 其他 2 個 fixture 是否會準時到位
    - 建議: planner 在 PLAN.md tasks 列入 **contingency** — 若工程師未準時,用 synthetic CAD-glyph fallback(沿用 `test_remove_region_vector_dense_real_zero_area_paths_end_to_end` 的 fitz Shape API pattern,在 sanitization script 增加 `--synthesize` mode 或寫獨立 `tests/conftest.py::synthetic_cad_glyph_pdf_bytes` fixture builder)。記入 STATE.md「Phase 6 fixture 構成:N 個 real + M 個 synthetic」以便追蹤
+   - **Resolution:** Phase 6 plan 走 contingency(1 real + 2 synthetic) close 為 PROVISIONAL。同日 post-close maintenance round 內,工程師交付 2 個額外 supplier PDF(`3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,同為 `宁波登骐 / Ningbo Dengqi` 不同 SKU),補強 sanitize_fixture.py Impl notes C + D(commit `0045c6b`)後重跑成功,3/3 fixture 升級為 real(commit `f7f34e8`)。PROVISIONAL banner 移除。
 
-2. **`scripts/sanitize_fixture.py` 處理 CMap-encoded supplier name 的深度** — Pitfall 1 列為 corner case。
+2. **〔RESOLVED 2026-05-28〕`scripts/sanitize_fixture.py` 處理 CMap-encoded supplier name 的深度** — Pitfall 1 列為 corner case。
    - 我們知道的: scratch script 對 3013A-13A-C6-...pdf 的 supplier-name find-replace 是否有效尚未 forensic 驗證(2026-05-28 attack proof 只證明 image XObject delete 攻擊成立,沒測 text replace)
    - 不明處: 3 個 fixture 各自的供應商 wordmark 是「ASCII text-show」還是「subset font + CMap」
    - 建議: sanitize script 第一版 **不寫 CMap decoder**;遇到 CMap-encoded name 時 fall back to D-A3 brand-glyph deletion path(本來就是主路徑)+ `page.get_text("words")` self-check。若三個 fixture 都遇到 CMap 名 → 此 Open Question 升為 Phase 6 closing 的「實踐記錄」記入 STATE.md;若一個都沒遇到 → 此問題自動解決
+   - **Resolution:** Plan 06-01 原始 close 時 mixed-glyph-01 沒觸發 CMap fallback(supplier name 不在 get_text)。Post-close 2026-05-28 — text-glyph-01(`3013A-36A-C6-W4.pdf`)觸發 CMap fallback(B 不夠),補強為 Impl note C(glyph-level `add_redact_annot + apply_redactions`)後仍不足(supplier 在 Form-XObject stamp annotation appearance 內);再補強為 Impl note D(`page.delete_annot()` 整塊刪 stamp annotation)才解決。fallback chain 為 A → B → C → D,對未來 PScript5 + Acrobat 出口 PDF 通用(commit `0045c6b`)。
 
-3. **`samples/3013A-...pdf` 與 repo root 同檔的最終處置** — CONTEXT.md 列為 Claude's Discretion,但研究結論偏好:**移到 `.planning/debug/scratch/illustrator-attack-2026-05-28-archived/`** 同層,加 `.gitignore` 護欄。
+3. **〔RESOLVED 2026-05-28〕`samples/3013A-...pdf` 與 repo root 同檔的最終處置** — CONTEXT.md 列為 Claude's Discretion,但研究結論偏好:**移到 `.planning/debug/scratch/illustrator-attack-2026-05-28-archived/`** 同層,加 `.gitignore` 護欄。
    - 我們知道的: 該檔含原供應商名 — 不安全留 public repo
    - 不明處: 重命名後 `_attack_delete_image_xobject.py` 既有 path 引用是否仍需可 resolve(該 .py 即將 archived 也不執行,故 path 引用不會被執行)
    - 建議: planner 在 06-02 plan 內加一個 task 「移動 raw supplier PDF 到 archived 同層 + 更新 .gitignore + scratch archived README 註記原路徑」
+   - **Resolution:** Plan 06-02 Task 4 已執行 `git rm samples/3013A-...pdf` + 物理 mv 至 archived 路徑 + `.gitignore` archived-anchored guard 加入。Post-close 2026-05-28 — 額外的 2 個 supplier PDF(`3013A-36A-...` + `B-3012IP-...`)也走同樣處置(物理 mv 至 archived,gitignore patterns 擴充為 `/3013A-36A-*.pdf` + `/B-3012IP-*.pdf` + archived-dir 對應 patterns)。`git ls-files | grep -E '3013A\|B-3012IP'` empty,phase-level invariant 達成。
 
 ## Environment Availability
 

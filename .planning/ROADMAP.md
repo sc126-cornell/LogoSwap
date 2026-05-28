@@ -31,7 +31,7 @@ Final test count: 301 passed, 3 skipped. AGPL fitz seam preserved throughout (si
 
 **Strategy:** 「先紅燈、再轉綠燈、最後同步文件 + LIVE」三段式 — Phase 6 把今天的 forensic 攻擊腳本變 pytest regression test 並收集 ≥3 個工程師手上實際出問題的 CAD-glyph fixture(此時測試應該是紅的,因為 Option B 還沒寫);Phase 7 在 `pdf_engine.py` 落地 Option B helper(注意 minimum-change 紀律 — 5330290 incident 教訓),Phase 6 的紅燈轉綠;Phase 8 同步 docstring/HANDOFF/PROJECT + LIVE 部署 + attack-sim 全綠驗證。
 
-- [ ] **Phase 6: Regression Foundation + Threat Model Re-evaluation** — CAD-glyph fixture suite + attack-simulation pytest(red-light baseline)+ STRIDE 加入 Illustrator-class attacker (3 reqs)
+- [x] **Phase 6: Regression Foundation + Threat Model Re-evaluation** — CAD-glyph fixture suite + attack-simulation pytest(red-light baseline)+ STRIDE 加入 Illustrator-class attacker (3 reqs) **(completed 2026-05-28;production code 0 changes;3/3 fixture real supplier;三道閘綠;sanitize script 補強 Impl notes C + D)**
 - [ ] **Phase 7: Option B Implementation — Content-Stream Surgery** — `pdf_engine` helper 真正刪除零面積 type='f' fills + unit tests + Phase 6 攻擊測試轉綠 (4 reqs)
 - [ ] **Phase 8: Documentation Sync + LIVE Rollout** — LIMITATION docstring 三處同步 + HANDOFF/PROJECT/STATE 更新 + LIVE 部署 + attack-sim 全綠驗證 (4 reqs)
 
@@ -57,6 +57,11 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
 **Plans**: 2 plans
   - [x] 06-01-PLAN.md — Sanitization tooling + 3 CAD-glyph fixtures + sidecar manifests (TEST-01)
   - [x] 06-02-PLAN.md — Attack regression test (xfail strict) + 06-SECURITY.md (pre-mortem STRIDE) + scratch retirement (TEST-02, THREAT-01)
+
+**Phase 6 close 後續(2026-05-28 maintenance)**:
+- `scripts/sanitize_fixture.py` 補強 Impl notes C + D(commit `0045c6b`)— C:`add_redact_annot + apply_redactions` glyph-level redaction(CMap-encoded font 真正修法);D:`page.delete_annot()` 整塊刪除 Form-XObject stamp annotation(SEC-03 巢狀場景)。觸發點:`3013A-36A-C6-W4.pdf` PScript5 + Acrobat 出口的 supplier 名在 `/Subtype /Stamp` annotation 的 Form XObject appearance 內,Impl A + B 抓不到
+- `text-glyph-01.pdf` + `figure-glyph-01.pdf` 從 synthetic 升級為 real supplier(commit `f7f34e8`),Phase 6 close 從 PROVISIONAL 升級為 FINAL。3/3 fixture 同為 `宁波登骐 / Ningbo Dengqi` 供應商不同 SKU
+- 三道閘 review/validate/secure 全跑 — code-review 1 Critical + 7 Warnings fixed in 8 atomic commits(commits `d0370de..738e787`);secure 為 THREAT-SECURE(16/16 verifications CLOSED);Nyquist no-op(config 停用,等效 phase verification 已由 gsd-verifier 完成 4/4 + 3/3 + 10/10 PASSED)
 
 ### Phase 7: Option B Implementation — Content-Stream Surgery
 **Goal**: 在 `app/services/pdf_engine.py`(AGPL seam,fitz 唯一允許 import 的檔案)落地 Option B helper — 在 `apply_redactions` 之後、Option A overlay 之前,直接 rewrite page-level content stream 刪除 fully-inside-rect 的零面積 type='f' `m/l/f/B` 算子序列。對「正常面積 vector 商標」PDF 需 no-op(SEC-02),對 form XObject 內部巢狀 path 需安全處理不誤改(SEC-03,page-level only 策略 + log)。完成後 Phase 6 的紅燈攻擊測試應全綠。**紀律:**5330290 incident 教訓 — minimum-change,nice-to-have polish 留下個 maintenance sprint。
@@ -96,7 +101,7 @@ v1.0: 1 → 2 → 3 → 4 → 5 (complete) → v1.1: 6 → 7 → 8
 | 3. 商標置入            | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 4. 點陣圖與圖片型檔案  | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 5. 部署與穩固化        | v1.0 | 2/2 | Complete    | 2026-05-24 |
-| 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 2/2 | Complete   | 2026-05-27 |
+| 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 2/2 | Complete   | 2026-05-28 |
 | 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 0/TBD | Not started | - |
 | 8. Documentation Sync + LIVE Rollout                  | v1.1 | 0/TBD | Not started | - |
 

@@ -310,11 +310,13 @@ None — Phase 6 為純測試 + 文件層交付,無外部服務 / API key / logi
 
 ## Known Issues / Carry-forward to Phase 7
 
-### Phase 6 fixture replenishment(沿用 Plan 06-01 PROVISIONAL status)
+### ~~Phase 6 fixture replenishment~~ **〔已 RESOLVED 2026-05-28〕**
 
-`text-glyph-01.pdf` + `figure-glyph-01.pdf` 為 synthetic(`--synthesize` fallback);只有 `mixed-glyph-01.pdf` 是 real supplier PDF(`3013A-13A-C6-XX-3D02-A01-00040.pdf` sanitized)。本 Plan 06-02 已產出對 3 個 fixture 跑 attack 的 regression test,但 visual residue 證據基底仍以 1 個 real fixture 為主。
+**Original carry-forward**(已在當日內 close):`text-glyph-01.pdf` + `figure-glyph-01.pdf` 為 synthetic(`--synthesize` fallback);只有 `mixed-glyph-01.pdf` 是 real supplier PDF。
 
-**對 Plan 06-02 紅燈基線的影響**:目前 3 cases 全部以 XFAIL 出現 — 即 attack 在 3 個 fixture 上都成功(`n_deleted >= 1` precondition 通過 + 雙閘至少一個失敗)。若工程師後續補上 2 個額外 real supplier PDF + 重跑 `scripts/sanitize_fixture.py` 替換 synthetic 版本,**xfail strict marker 仍是正確選擇**(Option B 落地後 3 個 fixture 都應 PASSED,無論其 visual signature 是 synthetic 還是 real)。
+**Resolution(2026-05-28 post-close maintenance):** 工程師交付剩餘 2 個 supplier PDF(`3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,同為 `宁波登骐 / Ningbo Dengqi` 不同 SKU),sanitize_fixture.py 補強 Impl notes C + D(commit `0045c6b`)處理 PScript5 + Acrobat 出口的 CMap font + Form-XObject stamp annotation 場景,3/3 fixture 升級為 real(commit `f7f34e8`)。Phase 6 PROVISIONAL banner 已移除。詳見 `06-01-SUMMARY.md § Provisional → Final 升級記錄`。
+
+**對紅燈基線無影響**:3 個 XFAIL 仍維持(real fixtures attack 同樣成功 — 雙閘斷言基於 page-level zero-area `type='f'` source path 是否被刪,與 supplier 身份無關)。Phase 7 implementer 接手不變。
 
 ### `mixed-glyph-01.pdf` 的 brand-glyph strip 沒命中(Plan 06-01 corner case #1)
 

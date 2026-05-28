@@ -3,9 +3,9 @@ phase: 06
 plan: 01
 plan_name: sanitization-and-fixtures
 subsystem: dev-tooling + test-fixtures
-tags: [pdf-sanitization, fixtures, cad-glyph, agpl-seam-preserved, provisional]
-provisional: true
-provisional_reason: "2 / 3 fixtures synthetic — 工程師延遲交付 contingency。Phase 6 close 為 PROVISIONAL until 工程師交付剩餘 supplier PDF + 重跑 sanitize_fixture.py。"
+tags: [pdf-sanitization, fixtures, cad-glyph, agpl-seam-preserved]
+provisional: false
+provisional_history: "Original plan close 為 PROVISIONAL(2 / 3 fixtures synthetic,工程師延遲交付 contingency)。RESOLVED 2026-05-28:工程師交付 3013A-36A-C6-W4.pdf + B-3012IP-WM02-T430.pdf,sanitize_fixture.py 補強 Impl notes C + D 後重跑成功,3/3 fixture 升級為 real supplier。詳細見本文件 § Provisional → Final 升級記錄。"
 dependency_graph:
   requires:
     - app/services/pdf_engine.py::count_zero_area_fills_fully_inside  # self-assert import target
@@ -58,7 +58,9 @@ metrics:
 
 # Phase 6 Plan 01: Sanitization Script + Fixtures Summary
 
-> ⚠ **Phase 6 fixture 構成:1 real + 2 synthetic — close 條件 PROVISIONAL until 工程師交付全部 3 個 real PDFs 並重跑 sanitize_fixture.py。**
+> ✅ **UPDATE 2026-05-28 (post-close maintenance):** PROVISIONAL banner 已 RESOLVED — 3/3 fixture 升級為 real supplier(`3013A-36A-C6-W4.pdf` → text-glyph + `B-3012IP-WM02-T430.pdf` → figure-glyph + 原 mixed-glyph 不變)。詳見本文件末尾 § Provisional → Final 升級記錄。下方原 close-time 敘述(1 real + 2 synthetic)保留為歷史紀錄。
+
+> ⚠ **〔ORIGINAL CLOSE-TIME STATUS,2026-05-28 已 RESOLVED〕** Phase 6 fixture 構成:1 real + 2 synthetic — close 條件 PROVISIONAL until 工程師交付全部 3 個 real PDFs 並重跑 sanitize_fixture.py。
 
 Phase 6 紅燈基線「fixture 補給線」:一次性 CLI 工具 `scripts/sanitize_fixture.py`
 把 supplier CAD-glyph PDF 脫敏為可 commit 進 public repo 的 fixture,並以 split-coordinate
@@ -247,3 +249,44 @@ Commits verified (all FOUND in git log):
 - `d671548` — feat(06-01): add sanitize_fixture.py CLI tool
 - `cd1d84f` — fix(06-01): metadata clear requires per-field empty values on PyMuPDF 1.27.2.3
 - `a0bdb21` — chore(06-01): produce 3 cad-glyph fixtures + manifests + README + .gitignore guards [fixture PROVISIONAL]
+
+---
+
+## Provisional → Final 升級記錄(2026-05-28 maintenance)
+
+**起因:** 本 plan close 後同日,工程師交付了原本「延遲」的 2 個 supplier CAD PDF:
+- `3013A-36A-C6-W4.pdf`(`宁波登骐 / Ningbo Dengqi` 供應商,SKU 3013A-36;PScript5 + Acrobat Distiller 9.0.0 出口)
+- `B-3012IP-WM02-T430.pdf`(同供應商,SKU B-3012IP;大型 A1 plot,0 image XObjects + 13,962 個零面積 `type='f'` fills,純 CAD-glyph 攻擊面)
+
+**遇到的 script 缺陷 + 補強:**
+
+PDF 1 的 supplier 名 `宁波登骐` 不在 page content stream — 它在 `/Subtype /Stamp` annotation 的 Form XObject appearance stream 內(這正是 v1.1 SEC-03 強調的「form XObject 內巢狀」場景)。既有的 Impl notes A(brand-glyph block strip)+ B(latin-1 find-replace)都抓不到。
+
+→ `scripts/sanitize_fixture.py` 補強(commit `0045c6b`):
+- **Impl note C** — `add_redact_annot + apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level redaction(CMap-encoded font 真正修法)
+- **Impl note D** — `page.delete_annot()` 整塊刪除含 supplier_name 的 stamp annotation(Form-XObject 巢狀 stamp 的真正修法 — SEC-03 page-level-only 策略對 annotation 同樣適用)
+
+PDF 2 走 Impl A(or 直接 self-assert pass)— 0 個 image XObjects,brand 純零面積路徑編碼,本來就沒有 supplier 文字可抓。第一次跑就成功。
+
+**結果(commit `f7f34e8`):**
+
+| Slot | 原狀態 | 新狀態 | 來源 raw PDF | sanitize fallback chain 走到 |
+|---|---|---|---|---|
+| `text-glyph-01.pdf` | synthetic | **real** | `3013A-36A-C6-W4.pdf` | A(0 blocks)→ B(0 matches)→ C(redact 1 bbox,但 stamp 內 text 仍在)→ **D(刪 1 annotation,成功)** |
+| `figure-glyph-01.pdf` | synthetic | **real** | `B-3012IP-WM02-T430.pdf` | A(0 blocks)→ no supplier text in get_text → 直接 pass |
+| `mixed-glyph-01.pdf` | real(不變) | real | `3013A-13A-C6-XX-3D02-A01-00040.pdf`(原始 Phase 6 commit) | (此檔 sanitize 在本 plan close 時跑過,不重跑) |
+
+**3 / 3 fixture 升級為 real supplier**,Phase 6 PROVISIONAL banner 移除:
+- README.md 第 1 行狀態列從「⚠ PROVISIONAL」改為「✓ READY」
+- README.md Section 2 表格的 synthetic 標記更新為 real-supplier raw PDF 來源
+- README.md Section 4 末尾加 Sanitization fallback chain A→B→C→D 文件化
+- STATE.md 對應 blocker「Phase 6 fixture replenishment」標 RESOLVED
+- 本 SUMMARY.md frontmatter `provisional: true` → `false`
+
+**不變式仍全綠(本維護 round 結束時):**
+- pytest baseline `301 passed + 3 skipped + 3 xfailed`(本 round 0 變動)
+- AGPL seam `import fitz` 只在 `app/services/pdf_engine.py:19`
+- 自 v1.1 啟動 production code `app/**/*.py` 0 變更
+- `git ls-files | grep -E '3013A\|B-3012IP'` empty(raw supplier PDF 物理 mv 至 `.planning/debug/scratch/illustrator-attack-2026-05-28-archived/`,該路徑透過 `.gitignore` 屏蔽)
+
+**Commits:** `0045c6b` sanitize script 補強 + `f7f34e8` fixture 升級。

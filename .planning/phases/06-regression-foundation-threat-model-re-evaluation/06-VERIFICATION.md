@@ -193,3 +193,28 @@ Phase 7 implementer entry points:
 
 *Verified: 2026-05-28T03:30:00Z*
 *Verifier: Claude (gsd-verifier)*
+
+---
+
+## Post-close maintenance addendum(2026-05-28)
+
+**Trigger:** 工程師同日交付了 PROVISIONAL 所欠的 2 個 supplier PDF;原本「documented PROVISIONAL exit」狀態升級為 FINAL。
+
+**Action items 與最終狀態:**
+
+| 原 verification line | 原狀態 | 升級後狀態(commit) |
+|---|---|---|
+| 9a — 06-01-SUMMARY frontmatter `provisional: true` | PASS(with documented PROVISIONAL exit) | **frontmatter 更新為 `provisional: false`**(commit `f7f34e8`)+ 新增 `provisional_history` 欄位 + 新增 `§ Provisional → Final 升級記錄` section |
+| 9b — STATE.md fixture replenishment blocker open | PASS | **blocker 標 RESOLVED**(commit `f7f34e8`)— STATE.md line 59 改為 `[x] ~~Phase 6 fixture replenishment~~ 〔已 RESOLVED 2026-05-28...〕` |
+| 9c — README banner notes synthetic | PASS | **README banner 改為「✓ READY」**(commit `f7f34e8`)— Section 2 表格 synthetic 標記更新為 real-supplier raw PDF 來源 |
+
+**Sanitize script 補強(commit `0045c6b`)— 推薦的下次 code-review 範圍:**
+
+- 新增 `_redact_supplier_name_glyph(doc, page, supplier_name) -> int`(Impl note C)— glyph-level redaction 處理 CMap-encoded font
+- 新增 `_delete_supplier_annotations(doc, page, supplier_name) -> int`(Impl note D)— 整塊刪除 Form-XObject stamp annotation
+- 主流程加 fallback chain:Impl B 後若 supplier name 仍在 → 試 Impl C → 仍在則試 Impl D → 仍在才 exit 1
+- 對未來其他 PScript5 / Acrobat 來源的 PDF 通用,降低人工介入需求
+
+**Phase 6 close status 升級為 FINAL** — 3/3 fixture 為 real supplier(同供應商 `宁波登骐 / Ningbo Dengqi` 不同 SKU);PROVISIONAL exit 標記移除;不變式仍全綠(pytest `301 + 3 skipped + 3 xfailed` + AGPL seam + production code 0 changes + no raw supplier PDF tracked)。
+
+*Addendum recorded: 2026-05-28(post-close maintenance round)*

@@ -416,3 +416,37 @@ CR-01 + WR-03 + WR-07 fixes from the code review are all present and behaviorall
 
 *Audit completed: 2026-05-28*
 *Auditor: Claude (gsd-secure-phase, FORCE stance)*
+
+---
+
+## Addendum:Phase 6 sanitize script 補強(post-audit 2026-05-28)
+
+**Audit 範圍:** Audit 完成後同日,工程師交付了 PROVISIONAL 所欠的 2 個 supplier PDF,觸發 `scripts/sanitize_fixture.py` 補強 Impl notes C + D。本 addendum 確認補強 **不引入新攻擊面**、不破壞既有 16/16 verification CLOSED 狀態。
+
+**補強內容(commit `0045c6b`):**
+
+- 新增 `_redact_supplier_name_glyph()`(Impl note C)— 對 CMap-encoded font 使用 `add_redact_annot + apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level redaction
+- 新增 `_delete_supplier_annotations()`(Impl note D)— 對 Form-XObject stamp annotation 內巢狀 supplier text 使用 `page.delete_annot()` 整塊刪除
+- 主流程 fallback chain:A(brand-glyph block strip)→ B(latin-1 find-replace)→ **C(glyph redaction)**→ **D(annotation delete)**
+
+**安全影響評估:**
+
+| 面向 | 影響 |
+|---|---|
+| Production code attack surface | **不變**(`app/**/*.py` 0 改動;補強限於 `scripts/sanitize_fixture.py` — dev tooling) |
+| AGPL seam | **不變**(`scripts/` 不在 fitz import guard scope;補強用的 `add_redact_annot` / `delete_annot` 仍在 PyMuPDF 1.27.x 公開 API,不破壞 seam confinement) |
+| Sanitize self-assert 保證 | **加強**(原本 supplier name 在 CMap font / stamp annotation 內無法移除時 exit 1;補強後可在這些 corner case 內也達成「supplier name 不在 get_text」+ 同樣的 exit-1 fail-loud 保證) |
+| Fixture commit 安全 | **加強**(原本只能對 plain text supplier name 的 PDF 自動脫敏;補強後對 PScript5 + Acrobat 出口的 PDF 同樣可自動脫敏,降低人工介入需求 — 人工介入是潛在的 supplier IP 洩漏 vector) |
+| Threat model T-06-01 / T-02-07 | **不變**(兩者仍 `accept (P0, transition-pending until Phase 7 Option B)`;補強只影響 fixture 製作,不影響 page-level Option A overlay 或 future Option B 的 mitigations) |
+
+**Sanitize fallback chain A → B → C → D 補強後,3/3 fixture 為 real supplier:**
+
+| Fixture | 用到的 fallback level | sanitize 結果 |
+|---|---|---|
+| `text-glyph-01.pdf`(from `3013A-36A-C6-W4.pdf`) | A → B → C → **D**(刪 1 stamp annotation,成功) | ✓ |
+| `figure-glyph-01.pdf`(from `B-3012IP-WM02-T430.pdf`) | A(0 blocks)→ no supplier text → 直接 pass | ✓ |
+| `mixed-glyph-01.pdf`(原始 commit,不重跑) | A(0 blocks)→ no supplier text → 直接 pass(原始 close) | ✓ |
+
+**驗證後 16/16 critical verifications 仍 CLOSED**;Phase 6 close 狀態從 PROVISIONAL 升級為 **FINAL THREAT-SECURE**。
+
+*Addendum recorded: 2026-05-28(post-audit maintenance round)*

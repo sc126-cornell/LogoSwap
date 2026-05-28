@@ -41,7 +41,12 @@ Target features(roadmap 階段細分):
 4. **攻擊腳本變 regression test** — 今天的 `_attack_delete_image_xobject.py` 改寫為 pytest fixture,每次 release 自動跑「拔 image XObject → assert region 仍乾淨」
 5. **HANDOFF.md + PROJECT.md 同步** — Option B 落地後更新 Key Decisions、核心領域知識備忘、Deferred 清單
 
-起因:2026-05-28 forensic attack script 實測證實 — 對「正常面積 vector 商標」PDF 安全(`apply_redactions` 真正刪了),但對「CAD-glyph 零面積 fill 商標」PDF,Option A overlay 是唯一防線,Illustrator 可拔。原 v1.0 close 時 Option B deferral 假設(「Option A 對使用者實質不可恢復」)已被證明不成立。證據已歸檔於 `.planning/debug/scratch/illustrator-attack-2026-05-28/`(6 個檔)。
+起因:2026-05-28 forensic attack script 實測證實 — 對「正常面積 vector 商標」PDF 安全(`apply_redactions` 真正刪了),但對「CAD-glyph 零面積 fill 商標」PDF,Option A overlay 是唯一防線,Illustrator 可拔。原 v1.0 close 時 Option B deferral 假設(「Option A 對使用者實質不可恢復」)已被證明不成立。證據已歸檔於 `.planning/debug/scratch/illustrator-attack-2026-05-28-archived/`(6 個檔,Plan 06-02 Task 4 已 `git mv` 至 archived 路徑 + .py 退役)。
+
+**Milestone v1.1 進度(2026-05-28):**
+- ✓ Phase 6 完成 — 紅燈基線就位(3 個 real-supplier sanitized fixture + xfail-strict regression test + 06-SECURITY.md pre-mortem STRIDE)。三道閘 review/validate/secure 全綠;sanitize_fixture.py 補強 Impl notes C + D 處理 PScript5 + Acrobat 出口 PDF 的 CMap font + Form-XObject stamp annotation 場景
+- ⏳ Phase 7 待跑 — Option B 內容串流真正刪除零面積 type='f' fills
+- ⏳ Phase 8 待跑 — 文件同步(LIMITATION docstring 三處 + HANDOFF.md 6.5 + PROJECT.md Key Decisions)+ LIVE 部署
 
 ### Deferred (carried forward from v1.0 close)
 
@@ -102,6 +107,9 @@ _2026-05-28 移除:Option B(content-stream surgery)— 已升格為 v1.1 active 
 | Hotfix 07 — UI loader 包住 result-image swap | 套用變更後瀏覽器 `<img>` 繼續顯示舊圖直到新 fetch 完成,使用者誤以為套用沒生效;`showPageLoader(true/false)` 包住 src swap | ✓ Validated (LIVE-UAT 2026-05-27) |
 | Hotfix 07 — apply-fail 訊息建議「重新開啟檔案」 | 使用者經驗顯示重開檔常解決 session-state 問題;4 條 COPY 訊息加 escalation path,downloadFailed 維持不變(避免丟失 work copy) | ✓ Validated (LIVE 2026-05-27;真實 LIVE 觸發等下次自然發生) |
 | `revert + cherry-pick` 比 `git reset --hard + force push` 更安全(5330290 recovery) | 保留 history;砍掉的失敗 commits 仍在 git log 可審計;不破壞遠端 | ✓ Validated (e5700e5 revert + 0a2fa99..724253a cherry-pick) |
+| **Phase 6 — pure test+doc phase 可在不動 production code 下立紅燈基線** | 沒動 `app/**/*.py` 任一行就交付:`tests/fixtures/cad-glyph/` 3 個 real-supplier sanitized fixture、`tests/_illustrator_attack.py` 共用 helper、`tests/test_illustrator_attack_regression.py` 3 個 `xfail(strict=True)` 紅燈、`06-SECURITY.md` 加入 Illustrator-class editor actor。Phase 7 落地 Option B 後 XPASS(strict) 強迫拔 marker = 自動 handoff signal | ✓ Validated (Phase 6 三道閘全綠 2026-05-28) |
+| **Sanitize fixture 4-tier fallback chain(Impl notes A → B → C → D)** | A:brand-glyph `q...Q` content-stream block strip;B:latin-1 content-stream find-replace;C(新)`add_redact_annot + apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level redaction 處理 CMap-encoded 字型;D(新)`page.delete_annot()` 整塊刪除 Form-XObject stamp annotation。PScript5 + Acrobat Distiller 出口的 PDF 把 supplier 名放在 stamp annotation 的 appearance stream 內(SEC-03 巢狀場景),A/B 抓不到、C 抓不到、D 才能處理 | ✓ Validated (commit 0045c6b;3013A-36A + B-3012IP fixture 升級成功 2026-05-28) |
+| **`tests/fixtures/cad-glyph/` 是 conftest「never commit binary」convention 的唯一例外** | v1.1 SEC-03 + Illustrator-class threat model 需要對真實 supplier CAD PDF 跑 regression test;真實 PDF 帶的 corner cases(PScript5 quirk、CMap encoding、Form-XObject stamp、零面積 type='f' 密度梯度)是 in-memory `_build_pdf` 漏掉的;受控例外 + sanitize_fixture.py self-asserts + AGPL §13 README 文件化是合理 trade-off | ✓ Validated (Phase 6 close 2026-05-28) |
 
 ## Evolution
 

@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: verifying
-stopped_at: Phase 6 context gathered
-last_updated: "2026-05-27T19:16:48.523Z"
-last_activity: 2026-05-27
+status: complete
+stopped_at: Phase 6 complete — quality gates green + fixtures upgraded to real
+last_updated: "2026-05-28T01:40:00.000Z"
+last_activity: 2026-05-28
 progress:
   total_phases: 3
   completed_phases: 1
@@ -21,14 +21,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 6 — Regression Foundation + Threat Model Re-evaluation
+**Current focus:** Phase 6 完成(2026-05-28)— 三道閘 review/validate/secure 全綠 + 3/3 fixture 為 real supplier。下一步:`/gsd-discuss-phase 7 --chain` 起跑 Option B 實作。
 
 ## Current Position
 
-Phase: 6 (Regression Foundation + Threat Model Re-evaluation) — EXECUTING
+Phase: 6 (Regression Foundation + Threat Model Re-evaluation) — COMPLETE
 Plan: 2 of 2
-Status: Phase complete — ready for verification
-Last activity: 2026-05-27
+Status: Quality gates 全綠(review/fix + secure 已跑;validate Nyquist 因配置停用為 no-op);3/3 fixture 為 real supplier(synthetic 升級已完成,PROVISIONAL 已移除)
+Last activity: 2026-05-28
 
 Progress: [██████████] 100%
 
@@ -48,6 +48,10 @@ Progress: [██████████] 100%
 - [Phase ?]: Phase 6 紅燈基線就位: tests/test_illustrator_attack_regression.py 3 個 XFAIL,pytest baseline 升級為 301 passed + 3 skipped + 3 xfailed;Phase 7 落地 Option B 後 xfail strict 強迫拔 marker 為 handoff completion 動作
 - [Phase ?]: Phase 6 Plan 06-02: STRIDE 加入 Illustrator-class editor attacker actor;T-02-07 RE-OPENED + T-06-01 NEW 兩條皆 accept (P0 transition-pending until Phase 7);06-SECURITY.md frontmatter threats_open:0 + threats_accepted:2 滿足 gsd-secure-phase non-block
 - [Phase ?]: Phase 6 repo phase-level invariant: git ls-files | grep '3013A-13A-C6-XX' returns empty (samples/ raw supplier PDF 已 git rm + repo root 副本物理 mv 到 archived dir);git mv 保住 history follow for forensic PNG/PDF artefacts
+- [Phase 6 close 2026-05-28]: Phase 6 三道閘全綠 — code-review/fix 過(1 Critical + 7 Warnings fixed in 8 atomic commits;5 Info 留作 maintenance);validate-phase Nyquist 為 no-op(`workflow.nyquist_validation=false` 配置停用,等效 phase verification 已由 gsd-verifier 完成);secure-phase 為 THREAT-SECURE(threats_open:0/threats_accepted:2,16/16 critical verifications CLOSED)
+- [Phase 6 close 2026-05-28]: PROVISIONAL 已移除 — 工程師交付 2 個額外 supplier PDF(`3013A-36A-C6-W4.pdf` + `B-3012IP-WM02-T430.pdf`,同為 `宁波登骐 / Ningbo Dengqi` 供應商不同 SKU)。3/3 fixture 全 real supplier 來源
+- [Phase 6 close 2026-05-28]: `scripts/sanitize_fixture.py` 補強 Impl notes C + D(commit `0045c6b`)— C:`add_redact_annot + apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level 處理 CMap-encoded font;D:`page.delete_annot()` 整塊刪除 Form-XObject stamp annotation 內含 supplier_name 的 stamp。對未來其他 PScript5 / Acrobat 來源的 PDF 通用
+- [Phase 6 close 2026-05-28]: Phase 6 production code 0 改動驗證 — `git diff --stat c27ffea..HEAD -- app/` empty;AGPL seam(`import fitz` 只在 `app/services/pdf_engine.py`)未被本 phase 任何 commit 動到
 
 ### Pending Todos
 
@@ -87,6 +91,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-27T19:16:01.508Z
-Stopped at: Phase 6 context gathered
+Last session: 2026-05-28
+Stopped at: Phase 6 complete — 三道閘全綠 + fixtures upgraded to real;ready for `/gsd-discuss-phase 7 --chain`
 Resume file: None

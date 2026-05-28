@@ -514,3 +514,29 @@ Phase 6 close 不修;若 Phase 7+ 修 sanitize script 時順手帶可,但不強�
 _Fixed: 2026-05-28T00:00:00Z_
 _Fixer: Claude (gsd-code-fixer)_
 _Commits: d0370de → e3ac65f(8 atomic commits on `gsd-reviewfix/06-114654`)_
+
+---
+
+## Post-review maintenance addendum(2026-05-28)
+
+**範圍外 maintenance commit(不屬於本 review/fix 的 scope):**
+
+Post-review 同日,sanitize_fixture.py 補強了兩個新 fallback function(commit `0045c6b`):
+- `_redact_supplier_name_glyph()` — glyph-level redaction for CMap-encoded fonts(Impl note C)
+- `_delete_supplier_annotations()` — Form-XObject stamp annotation 整塊刪除(Impl note D)
+
+**為什麼不在本 review/fix scope:**
+
+1. 這兩個 fallback 的觸發點是「sanitize_fixture.py 處理工程師後續交付的 supplier PDF 時遇到 CMap-encoded font + Form-XObject stamp annotation」,**不是 review-time 已知問題**
+2. 觸發場景需要 real supplier PDF 才能 surface(synthetic PDFs 不會走到這條 path)
+3. 兩個新 function 沒有改既有 fallback chain 的 A/B 行為,只是擴充 C/D
+4. 上線同日 maintenance 加 + 對應的 fixture 升級已分別 atomic commit(`0045c6b` + `f7f34e8`),git history 清楚
+
+**建議:** 下次 `/gsd-code-review 6 --fix` re-run 時,新增的兩個 function 自動進入掃描 scope。若有額外的安全 / 邏輯問題會被抓出。本 maintenance round 不主動重跑 review(per 5330290 教訓 — minimum-change,加 polish 留下個 sprint)。
+
+**Phase 6 截至 2026-05-28 close 時的 review/fix 狀態:**
+- 本 review 識別的 1 Critical + 7 Warnings:**全部 fixed**
+- 5 Info:**deferred**(不在 default `--fix` scope)
+- Phase 6 close 後 maintenance:`sanitize_fixture.py` Impl C + D 補強 + 3/3 fixture real upgrade — **無 reviewed-but-unfixed findings**
+
+*Addendum recorded: 2026-05-28(post-review maintenance round)*
