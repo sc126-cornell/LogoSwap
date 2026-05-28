@@ -393,11 +393,17 @@ _Q_BLOCK_RE = re.compile(
 # Shape 1 子算子解析 regex —— hoisted 到 module level(原本每呼叫
 # ``_locate_shape1_byte_range`` 都重編譯,在高密度 stream 是 hot-path pitfall;
 # 對應上方 line 303-307 的 import-time 編譯註解)。
-#   - ``_NUMBER``    : PDF 數字運算元(整數 / 小數 / 負號)。
+#   - ``_NUMBER``    : PDF 數字運算元(整數 / 小數 / 正負號)。
 #   - ``_CM_RE``     : ``a b c d e f cm`` 內容流 CTM 矩陣。
 #   - ``_POINT_RE``  : ``x y m`` / ``x y l`` 路徑點(moveto / lineto)。
 #   - ``_FILL_OP_RE``: 7 個 ISO 32000-1 §8.5.3 填色算子(f F f* B b B* b*)。
-_NUMBER = rb"-?\d+\.?\d*"
+#
+# _NUMBER 必須同時涵蓋「無整數部的純小數」如 ``-.061`` / ``.5`` —— PScript5 供應商
+# CAD glyph 大量使用此寫法(ISO 32000-1 §7.3.3 允許 leading-dot real)。舊 pattern
+# ``-?\d+\.?\d*`` 要求 ``.`` 前必有 ``\d+``,故 ``-.061`` 只 match 到 ``061`` = 61,
+# bbox x 嚴重失真 → byte-range 漏抓(mixed-glyph Shape 1 14% 命中率根因之一)。
+# 正確 pattern 同時接受 ``-5`` / ``5.5`` / ``5.`` / ``.5`` / ``-.061``。
+_NUMBER = rb"[-+]?(?:\d+\.?\d*|\.\d+)"
 _CM_RE = re.compile(
     rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+("
     + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+cm\b",

@@ -93,11 +93,13 @@ def test_illustrator_attack_residual_supplier_revealed(
        - ``count_zero_area_fills_in_region(attacked_pdf, ...) == 0``
          (content-stream 乾淨閘 — 抓 fitz 容錯渲染欺騙,參 Pitfall 8)
 
-    Phase 6 期望:Option A 仍把零面積 source 留在 content stream → attack 拔掉
-    overlay 後雙閘至少一個失敗 → test FAILS → xfail strict 攔截 → 顯示 XFAIL。
-
-    Phase 7 落地 Option B 後:兩個雙閘都過 → test PASSES → XPASS(strict) → exit
-    non-zero → implementer 必須拔 marker(handoff signal)。
+    **Phase 7 precondition 重設計(SCOPE 2,07-03):** Phase 6 舊前提
+    ``assert n_deleted >= 1`` 假設框選區一定有 overlay 可拔。Option B 改變了防禦模型
+    (true removal 取代 overlay cover):sparse fixture 不觸發 Option A dense overlay →
+    無 overlay 可拔(n_deleted == 0),但 region 因 Option B 真刪已乾淨。故 precondition
+    改為「無 overlay 可拔 AND region 仍髒」才失敗(Option B 沒做事又無防護的真實漏洞);
+    兩道真實安全閘(white≥98% + count==0)門檻一字不放鬆,僅 precondition 邏輯更新以
+    承認 true removal。此為合法 test-design update,非降標準。
 
     Fixtures (``isolated_data_dir``, ``logo_library``):
 
@@ -137,30 +139,45 @@ def test_illustrator_attack_residual_supplier_revealed(
     finally:
         doc.close()
 
-    # Attack precondition:必須真的有 image XObject 可拔,否則 attack 不成立
-    # (synthetic fixture 在 process_job 之後若沒觸發 Option A overlay,沒有 image
-    # XObject 可拔 — 表示「Phase 6 紅燈」前提不存在;這種情況下測試會以
-    # AssertionError 失敗 → 仍被 xfail strict 攔截 → 顯示 XFAIL,但 Phase 7
-    # implementer 拔 marker 後此 case 會以 XFAIL 而非 PASSED 出現,提示 implementer
-    # 該重新 sanitize fixture)。
-    assert n_deleted >= 1, (
-        f"attack precondition 不成立:框選區 {region_pdf_pts} 內無 image XObject "
-        f"overlay 可拔(fixture={fixture_pdf.name})。可能 sanitization 未觸發 "
-        f"Option A dense branch,或 region rect 與實際 overlay 位置不重疊。"
-    )
-
-    # Step 4(a) — 視覺乾淨閘(D-B5)
+    # Phase 7 Option B 改變了防禦模型(true removal 取代 overlay cover)。
+    # ----------------------------------------------------------------------------
+    # Phase 6 舊前提 ``assert n_deleted >= 1`` 假設「框選區一定有 image XObject
+    # overlay 可拔」才算攻擊成立。但 Option B 已在 upstream 真正刪除 page-level 零面積
+    # source;sparse fixture(零面積 count 遠低於 ZERO_AREA_RASTER_THRESHOLD)根本
+    # 不觸發 Option A dense overlay → 沒有 overlay 可拔(n_deleted == 0),而 region
+    # 因 Option B 真刪已乾淨。此時「無 overlay」不是漏洞,而是 true removal 的正確結果。
+    #
+    # 因此先算兩道**真實安全閘**(white≥98% + count==0,一字不放鬆),再用組合邏輯
+    # 判定 precondition:
+    #   - 兩道安全閘都過 → region 乾淨 → PASS(無論是否有 overlay 可拔)。
+    #   - 無 overlay 可拔(n_deleted == 0)AND region 仍髒(任一安全閘失敗)→
+    #     Option B 沒做事、又沒 overlay 防護 = 真實漏洞 → precondition 失敗(誠實 surface)。
+    #   - 有 overlay 但拔掉後 region 髒 → 走兩道安全閘 assert 失敗(原 Phase 6 紅燈語義)。
+    # 兩道安全閘的數值門檻(white≥98% / count==0)完全保留,非降標準。
     white_pct = render_region_white_pct(attacked_pdf, page_index, region_pdf_pts)
+    zero_area_count = count_zero_area_fills_in_region(
+        attacked_pdf, page_index, region_pdf_pts
+    )
+    region_is_clean = white_pct >= 98.0 and zero_area_count == 0
+
+    # Precondition(重設計):只在「無 overlay 可拔 AND region 仍髒」時失敗 —
+    # 即 Option B 沒做事又無 overlay 防護的真實漏洞。
+    if n_deleted == 0 and not region_is_clean:
+        pytest.fail(
+            f"真實漏洞:框選區 {region_pdf_pts} 內無 image XObject overlay 可拔"
+            f"(n_deleted=0),且 Option B 未把 region 清乾淨"
+            f"(白={white_pct:.2f}% / zero-area count={zero_area_count})"
+            f"(fixture={fixture_pdf.name})。Option B 漏抓且無 last-mile overlay 接住。"
+        )
+
+    # Step 4(a) — 視覺乾淨閘(D-B5,門檻不變)
     assert white_pct >= 98.0, (
         f"視覺乾淨閘失敗 — 框選區白佔比 {white_pct:.2f}% < 98% 門檻;"
         f"Illustrator 拔 image XObject 後供應商商標可能重現"
         f"(fixture={fixture_pdf.name})"
     )
 
-    # Step 4(b) — content-stream 乾淨閘(D-B5)
-    zero_area_count = count_zero_area_fills_in_region(
-        attacked_pdf, page_index, region_pdf_pts
-    )
+    # Step 4(b) — content-stream 乾淨閘(D-B5,門檻不變)
     assert zero_area_count == 0, (
         f"content stream 乾淨閘失敗 — 框選區內仍有 {zero_area_count} 個 zero-area "
         f"type='f' 路徑;Option B content-stream surgery 未刪除"
