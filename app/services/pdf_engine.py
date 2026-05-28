@@ -390,6 +390,23 @@ _Q_BLOCK_RE = re.compile(
     re.VERBOSE | re.DOTALL,
 )
 
+# Shape 1 子算子解析 regex —— hoisted 到 module level(原本每呼叫
+# ``_locate_shape1_byte_range`` 都重編譯,在高密度 stream 是 hot-path pitfall;
+# 對應上方 line 303-307 的 import-time 編譯註解)。
+#   - ``_NUMBER``    : PDF 數字運算元(整數 / 小數 / 負號)。
+#   - ``_CM_RE``     : ``a b c d e f cm`` 內容流 CTM 矩陣。
+#   - ``_POINT_RE``  : ``x y m`` / ``x y l`` 路徑點(moveto / lineto)。
+#   - ``_FILL_OP_RE``: 7 個 ISO 32000-1 §8.5.3 填色算子(f F f* B b B* b*)。
+_NUMBER = rb"-?\d+\.?\d*"
+_CM_RE = re.compile(
+    rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+("
+    + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+cm\b",
+)
+_POINT_RE = re.compile(
+    rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+[ml]\b",
+)
+_FILL_OP_RE = re.compile(rb"\b(?:f\*|f|F|B\*|b\*|B|b)\b")
+
 
 def map_tuple_to_rect(
     rect_tuple: tuple[float, float, float, float],
@@ -1016,43 +1033,47 @@ def _splice_out(stream: bytes, ranges: list[tuple[int, int]]) -> bytes:
     return bytes(out)
 
 
-def _locate_shape1_byte_range(
+def _build_shape1_candidate_index(
     stream: bytes,
     mask: bytearray,
-    zaf: dict,
     tolerance: float,
     page_transform: "fitz.Matrix",
-) -> tuple[int, int] | None:
-    """Locate the byte range of a Shape 1 (PScript5 m/l/f*) ZAF.
+) -> dict:
+    """Single-pass build of ``{(x0,y0,x1,y1)_rounded → [byte_ranges]}`` for zero-area
+    Shape 1 (PScript5 ``q ... cm? m/l ... fillop ... Q``) candidates.
 
-    For each q...Q block in the stream:
-      1. Verify the block is fully outside any safe-skip region.
-      2. Parse the optional ``cm`` matrix (defaults to identity).
-      3. Collect all m/l operand points inside the body.
-      4. Transform the local-space path bbox through ``cm`` (content-stream CTM)
-         then through ``page_transform`` (PDF bottom-left → MuPDF top-left
-         user-space) so the candidate bbox is in the SAME coordinate space as
-         ``zaf['rect']`` returned by ``get_drawings()``.
-      5. Compare against the ZAF's user-space rect (with ``tolerance`` slack).
-      6. Confirm at least one fill-producing operator (f/F/f*/B/b/B*/b*) appears.
+    這是 ``_build_shape2_candidate_index`` 的 Shape 1 對應版本 —— 一次掃描
+    ``_Q_BLOCK_RE.finditer(stream)``(取代舊 ``_locate_shape1_byte_range`` 對每個
+    ZAF 重跑全串流 finditer 的 O(zafs × stream) 行為),逐 q...Q block:
 
-    Returns ``(start, end)`` of the q...Q byte range, or ``None`` if no unique
-    match is found (the cardinality assertion in the caller will then trip and
-    fail-safe per D-A5).
+      1. ``_is_unmasked`` 先過 5-context safe-skip(D-A2)。
+      2. 解析可選的 ``cm`` 矩陣(無則 ``fitz.Identity``)。
+      3. 收集 body 內所有 m/l 運算元點(無點則 skip)。
+      4. local bbox = min/max(points)→ ``local_rect * ctm * page_transform``
+         → ``.normalize()`` → MuPDF top-left user-space(與 ``zaf['rect']`` 同空間)。
+      5. ``_FILL_OP_RE.search(body)`` 驗證至少一個填色算子(無則 skip)。
+      6. **只 index zero-area 候選**(鏡像 Shape 2):``user_match.width < tolerance``
+         OR ``user_match.height < tolerance``(rect 已 normalize,width/height 恆正)。
+
+    key = ``(round(x0,3), round(y0,3), round(x1,3), round(y1,3))``;value 為
+    ``list[(start,end)]`` —— ``setdefault(key, []).append(...)`` **累加所有同 bbox 的
+    byte-range**。這是與舊「``len(matches) == 1`` 唯一匹配」規則的關鍵差異:供應商常把
+    單一 logo 分解為多筆**同 bbox** 描邊(diagnostic mixed-glyph 的 1466 missed +
+    27 dup-collision 即此),value 是 list 才能在 dispatch 時把該 bbox 的全部描邊一次
+    刪除(合法重複-bbox glyph,Option ii cardinality)。
+
+    HONEST LIMITATION
+    -----------------
+    本索引採 regex anchor matching;PDF 內容流的 byte-level 表達細節(operator 間
+    任意 whitespace、CTM nested q/Q stack、PScript5 vs Acrobat 寫法差異、超過
+    ``_Q_BLOCK_RE`` 的 2048-byte body 上限的超長 path)可能讓某些 zero-area path 的
+    byte 範圍漏進索引。漏抓時對應 zaf-bbox 在 index 找不到 → dispatch 端 cardinality
+    判定為 missing → fail-safe return 0 + ``logger.warning("option_b_parse_anomaly")``
+    → 既有 dispatcher(Phase 4-6 Option A overlay + cover_zero_area_artefacts)接
+    last-mile defense。value 為 list(非唯一)以支援合法重複-bbox glyph。
+    詳見 06-PATTERNS Risk Callout #4 + 07-RESEARCH § Common Pitfalls Pitfall 1。
     """
-    zaf_rect = zaf["rect"]  # fitz.Rect, post-CTM in user-space
-
-    _NUMBER = rb"-?\d+\.?\d*"
-    _CM_RE = re.compile(
-        rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+("
-        + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+cm\b",
-    )
-    _POINT_RE = re.compile(
-        rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+[ml]\b",
-    )
-    _FILL_OP_RE = re.compile(rb"\b(?:f\*|f|F|B\*|b\*|B|b)\b")
-
-    matches: list[tuple[int, int]] = []
+    index: dict[tuple[float, float, float, float], list[tuple[int, int]]] = {}
     for q_match in _Q_BLOCK_RE.finditer(stream):
         start, end = q_match.start(), q_match.end()
         if not _is_unmasked(mask, start, end):
@@ -1079,6 +1100,10 @@ def _locate_shape1_byte_range(
         if not points:
             continue
 
+        # 驗證至少一個填色算子 —— 沒有 fill 的純描邊 / clip path 不是 type='f' ZAF。
+        if not _FILL_OP_RE.search(body):
+            continue
+
         loc_x0 = min(p[0] for p in points)
         loc_y0 = min(p[1] for p in points)
         loc_x1 = max(p[0] for p in points)
@@ -1089,20 +1114,19 @@ def _locate_shape1_byte_range(
         user_match = local_rect * ctm * page_transform
         user_match.normalize()
 
-        # Match against ZAF's user-space rect with per-coordinate tolerance.
-        if (
-            abs(user_match.x0 - zaf_rect.x0) < tolerance
-            and abs(user_match.y0 - zaf_rect.y0) < tolerance
-            and abs(user_match.x1 - zaf_rect.x1) < tolerance
-            and abs(user_match.y1 - zaf_rect.y1) < tolerance
-        ):
-            if _FILL_OP_RE.search(body):
-                matches.append((start, end))
+        # 只 index zero-area 候選(鏡像 Shape 2 + STEP A pre-screen 同 epsilon)。
+        # user_match 已 normalize → width/height 恆正,用 ``<`` 即可。
+        if not (user_match.width < tolerance or user_match.height < tolerance):
+            continue
 
-    # Unique match → return; ambiguous / missing → None (cardinality fail-safe).
-    if len(matches) == 1:
-        return matches[0]
-    return None
+        key = (
+            round(user_match.x0, 3),
+            round(user_match.y0, 3),
+            round(user_match.x1, 3),
+            round(user_match.y1, 3),
+        )
+        index.setdefault(key, []).append((start, end))
+    return index
 
 
 def _build_shape2_candidate_index(
@@ -1254,51 +1278,77 @@ def delete_zero_area_type_f_fills_inside(
     # page transformation matrix bridges the two so byte-range bboxes and ZAF rects
     # are comparable.
     page_transform = page.transformation_matrix
-    # Build the Shape 2 candidate index ONCE (dict-lookup over O(N+M) regex scan
-    # of the whole stream) — per-ZAF lookup is then O(1). Shape 1 still runs the
-    # bounded q...Q regex per ZAF but the [^Q]{0,2048}? bound caps the work.
+    # Build BOTH shape candidate indexes ONCE (single-pass O(N+M) regex scan of the
+    # whole stream each) — per-ZAF lookup is then O(1) dict access. The old Shape 1
+    # path ran a bounded q...Q regex PER ZAF (O(zafs × stream)); for the mixed-glyph
+    # 框選區 that was 765s. Mirroring the Shape 2 single-pass index drops it to <5s.
     shape2_index = _build_shape2_candidate_index(
         stream, mask, tolerance, page_transform
     )
-    ranges_to_delete: list[tuple[int, int]] = []
-    seen: set[tuple[int, int]] = set()
+    shape1_index = _build_shape1_candidate_index(
+        stream, mask, tolerance, page_transform
+    )
+
+    # Dispatch by item type, grouping ZAFs by their rounded user-space bbox KEY (not
+    # 1:1): 're'-only items → Shape 2; m/l-only items → Shape 1; mixed / empty-item
+    # ZAFs → cannot be located → must trigger fail-safe (never silently ignored).
+    def _zaf_key(zaf: dict) -> tuple[float, float, float, float]:
+        zr = zaf["rect"]
+        return (round(zr.x0, 3), round(zr.y0, 3), round(zr.x1, 3), round(zr.y1, 3))
+
+    shape1_zaf_keys: set[tuple[float, float, float, float]] = set()
+    shape2_zaf_keys: set[tuple[float, float, float, float]] = set()
+    has_mixed_empty_zaf = False
     for zaf in zafs:
         items = zaf.get("items") or []
-        # Dispatch by item type: 're' → Shape 2 dict lookup; m/l → Shape 1 q...Q
-        # search. Mixed items (rare/unknown) → None → cardinality fail-safe.
         if items and all(it and it[0] == "re" for it in items):
-            byte_range = _locate_shape2_byte_range(zaf, shape2_index, tolerance)
+            shape2_zaf_keys.add(_zaf_key(zaf))
         elif items and all(it and it[0] in ("l", "m") for it in items):
-            byte_range = _locate_shape1_byte_range(
-                stream, mask, zaf, tolerance, page_transform
-            )
+            shape1_zaf_keys.add(_zaf_key(zaf))
         else:
-            byte_range = None
-        if byte_range is None:
-            continue
-        # Defence in depth: refuse to splice the same byte range twice (would create
-        # an overlapping-ranges ValueError in _splice_out anyway, but explicit is
-        # better than implicit when the failure is a silent data-loss bug).
-        if byte_range in seen:
-            continue
-        seen.add(byte_range)
-        ranges_to_delete.append(byte_range)
+            # Mixed / empty-item ZAF — cannot be located by either shape detector.
+            # Conservative: flag for fail-safe rather than silently dropping it.
+            has_mixed_empty_zaf = True
 
-    # STEP D — cardinality assertion (D-A5 fail-safe).
-    # If the byte ranges we located do NOT match the ZAF count from get_drawings(),
-    # we abort WITHOUT writing back. The existing Phase 4-6 dispatcher (Option A
-    # overlay + cover_zero_area_artefacts) takes over as last-mile defence.
-    if len(ranges_to_delete) != len(zafs):
+    # STEP D — cardinality (D-A5 fail-safe), Option (ii): per-zaf-bbox ≥1 覆蓋。
+    # 每個 zaf-bbox 在對應 index 必須有 ≥1 byte-range;任一 bbox 找不到(真實漏抓)
+    # → missing_keys 非空 → fail-safe return 0,絕不破壞性寫回(Risk Callout #2)。
+    # 不採 Option (i) M==N 精確 —— 供應商把單一 logo 分解為多筆同 bbox 描邊,該
+    # bbox 的全部 M 個 range 都該刪;真實安全閘是 attack post-condition
+    # count_zero_area_fills_in_region == 0 + 白≥98%,不是 byte-range 計數。
+    missing_keys_1 = [k for k in shape1_zaf_keys if k not in shape1_index]
+    missing_keys_2 = [k for k in shape2_zaf_keys if k not in shape2_index]
+    if missing_keys_1 or missing_keys_2 or has_mixed_empty_zaf:
         logger.warning(
             "option_b_parse_anomaly",
             extra={
                 "page_index": page.number,
                 "user_rect": list(user_rect_tuple),
                 "expected": len(zafs),
-                "matched": len(ranges_to_delete),
+                "matched": 0,  # we abort before collecting ranges
+                "missing_shape1": len(missing_keys_1),
+                "missing_shape2": len(missing_keys_2),
+                "mixed_empty": has_mixed_empty_zaf,
             },
         )
         return 0
+
+    # 成功路徑:每個 zaf-bbox 都在對應 index 有 ≥1 range → 蒐集所有匹配 key 的全部
+    # byte-range(跨 Shape 1+2),用 ``seen`` set 去重(同一 (start,end) 不重複加)。
+    ranges_to_delete: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for key in shape1_zaf_keys:
+        for byte_range in shape1_index[key]:
+            if byte_range in seen:
+                continue
+            seen.add(byte_range)
+            ranges_to_delete.append(byte_range)
+    for key in shape2_zaf_keys:
+        for byte_range in shape2_index[key]:
+            if byte_range in seen:
+                continue
+            seen.add(byte_range)
+            ranges_to_delete.append(byte_range)
 
     # STEP E — splice and multi-stream write-back (PATTERNS S1 VERBATIM).
     new_bytes = _splice_out(stream, ranges_to_delete)
