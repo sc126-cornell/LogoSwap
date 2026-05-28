@@ -341,6 +341,26 @@ _SAFE_SKIP_REGIONS_RE = re.compile(
 # regex alternation is greedy left-to-right and a bare `f` would shadow `f*` (Pitfall
 # 2). All 7 ISO 32000-1 §8.5.3 fill-producing operators must be covered:
 # ``f``, ``F``, ``f*``, ``B``, ``b``, ``B*``, ``b*``.
+#
+# The ``between`` group absorbs the operators a renderer may emit AFTER ``re`` and
+# BEFORE the fill operator WITHOUT starting a new subpath. Real-supplier PScript5
+# usually emits ``re f`` adjacently, but PyMuPDF's own ``Shape.draw_rect`` synthesises
+# ``re h <colour> rg f`` (closepath + set-fill-colour) — both must match the SAME ZAF.
+# It is a sequence of zero-or-more "safe" tokens, each being either a numeric operand
+# or one of the closepath / colour-setting / clip operators that do NOT alter the
+# current path geometry: ``h`` (closepath), ``n`` (end-path-no-paint is NOT here — it
+# would terminate the path before the fill), ``W``/``W*`` (clip), and the colour
+# operators ``g G rg RG k K cs CS sc SC scn SCN``. Crucially the path-construction
+# operators ``m l c v y re`` are EXCLUDED — allowing them would let the regex skip
+# across into a DIFFERENT path's fill and mis-attribute the byte range.
+_SAFE_BETWEEN_TOKEN = (
+    rb"(?:"
+    rb"-?\d+\.?\d* "                                  # numeric operand
+    rb"| /[^\s/<>\[\]()]+ "                           # name operand (e.g. /DeviceRGB)
+    rb"| (?:h|W\*|W|g|G|rg|RG|k|K|cs|CS|scn|SCN|sc|SC) \b "  # safe operators
+    rb"| \s+ "                                        # whitespace
+    rb")"
+)
 _RE_FILL_RECT_RE = re.compile(
     rb"""
       (?P<x>-?\d+\.?\d*)   \s+
@@ -348,7 +368,7 @@ _RE_FILL_RECT_RE = re.compile(
       (?P<w>-?\d+\.?\d*)   \s+
       (?P<h>-?\d+\.?\d*)   \s+
       re \b
-      (?P<between>\s+)
+      (?P<between> \s+ """ + _SAFE_BETWEEN_TOKEN + rb"""{0,16} )
       (?P<fillop>f\*|f|F|B\*|b\*|B|b)
       \b
     """,
@@ -1001,6 +1021,7 @@ def _locate_shape1_byte_range(
     mask: bytearray,
     zaf: dict,
     tolerance: float,
+    page_transform: "fitz.Matrix",
 ) -> tuple[int, int] | None:
     """Locate the byte range of a Shape 1 (PScript5 m/l/f*) ZAF.
 
@@ -1008,7 +1029,10 @@ def _locate_shape1_byte_range(
       1. Verify the block is fully outside any safe-skip region.
       2. Parse the optional ``cm`` matrix (defaults to identity).
       3. Collect all m/l operand points inside the body.
-      4. Transform the local-space path bbox through ``cm`` to user-space.
+      4. Transform the local-space path bbox through ``cm`` (content-stream CTM)
+         then through ``page_transform`` (PDF bottom-left → MuPDF top-left
+         user-space) so the candidate bbox is in the SAME coordinate space as
+         ``zaf['rect']`` returned by ``get_drawings()``.
       5. Compare against the ZAF's user-space rect (with ``tolerance`` slack).
       6. Confirm at least one fill-producing operator (f/F/f*/B/b/B*/b*) appears.
 
@@ -1060,7 +1084,9 @@ def _locate_shape1_byte_range(
         loc_x1 = max(p[0] for p in points)
         loc_y1 = max(p[1] for p in points)
         local_rect = fitz.Rect(loc_x0, loc_y0, loc_x1, loc_y1)
-        user_match = local_rect * ctm
+        # Apply the content-stream CTM, then the page transform (PDF → MuPDF
+        # user-space) so the candidate bbox lands in the same space as zaf['rect'].
+        user_match = local_rect * ctm * page_transform
         user_match.normalize()
 
         # Match against ZAF's user-space rect with per-coordinate tolerance.
@@ -1080,7 +1106,10 @@ def _locate_shape1_byte_range(
 
 
 def _build_shape2_candidate_index(
-    stream: bytes, mask: bytearray, tolerance: float
+    stream: bytes,
+    mask: bytearray,
+    tolerance: float,
+    page_transform: "fitz.Matrix",
 ) -> dict:
     """Single-pass build of ``{(x0,y0,x1,y1)_rounded → [byte_ranges]}`` for zero-area
     Shape 2 (``<x> <y> <w> <h> re ... fillop``) candidates.
@@ -1089,8 +1118,15 @@ def _build_shape2_candidate_index(
     indexed (per Pitfall 5 — a NEGATIVE w/h does NOT imply zero-area; ``re`` with
     ``-1 -1`` defines a unit-area rectangle).
 
+    The ``re`` operands live in PDF content-stream coordinates (bottom-left
+    origin); ``page_transform`` (``page.transformation_matrix``) maps them into the
+    MuPDF top-left user-space that ``get_drawings()`` reports for ``zaf['rect']``,
+    so the dict key and the lookup key agree (the live-spike supplier PDFs put their
+    ``re`` inside a ``cm`` block so the bbox was already device-space; PyMuPDF's own
+    ``Shape.draw_rect`` emits a top-level ``re`` that needs this page transform).
+
     Rounding to 3 decimals stabilises the dict key across float-printing precision
-    noise between PScript5 emit and fitz's float64 round-trip.
+    noise between the PDF emit and fitz's float64 round-trip.
     """
     index: dict[tuple[float, float, float, float], list[tuple[int, int]]] = {}
     for m in _RE_FILL_RECT_RE.finditer(stream):
@@ -1108,9 +1144,16 @@ def _build_shape2_candidate_index(
         # negative w/h is a valid non-degenerate rectangle.
         if abs(w) >= tolerance and abs(h) >= tolerance:
             continue
-        x0, x1 = sorted((x, x + w))
-        y0, y1 = sorted((y, y + h))
-        key = (round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3))
+        # PDF-space rect from raw re operands, then map to MuPDF user-space.
+        pdf_rect = fitz.Rect(x, y, x + w, y + h)
+        user_rect = pdf_rect * page_transform
+        user_rect.normalize()
+        key = (
+            round(user_rect.x0, 3),
+            round(user_rect.y0, 3),
+            round(user_rect.x1, 3),
+            round(user_rect.y1, 3),
+        )
         index.setdefault(key, []).append((start, end))
     return index
 
@@ -1206,10 +1249,17 @@ def delete_zero_area_type_f_fills_inside(
     mask = _build_safe_skip_mask(stream)
 
     # STEP C — anchor-based byte-range discovery.
+    # ``re`` / ``m``/``l`` operands in the content stream are in PDF bottom-left
+    # space; get_drawings() reports zaf['rect'] in MuPDF top-left user-space. The
+    # page transformation matrix bridges the two so byte-range bboxes and ZAF rects
+    # are comparable.
+    page_transform = page.transformation_matrix
     # Build the Shape 2 candidate index ONCE (dict-lookup over O(N+M) regex scan
     # of the whole stream) — per-ZAF lookup is then O(1). Shape 1 still runs the
     # bounded q...Q regex per ZAF but the [^Q]{0,2048}? bound caps the work.
-    shape2_index = _build_shape2_candidate_index(stream, mask, tolerance)
+    shape2_index = _build_shape2_candidate_index(
+        stream, mask, tolerance, page_transform
+    )
     ranges_to_delete: list[tuple[int, int]] = []
     seen: set[tuple[int, int]] = set()
     for zaf in zafs:
@@ -1219,7 +1269,9 @@ def delete_zero_area_type_f_fills_inside(
         if items and all(it and it[0] == "re" for it in items):
             byte_range = _locate_shape2_byte_range(zaf, shape2_index, tolerance)
         elif items and all(it and it[0] in ("l", "m") for it in items):
-            byte_range = _locate_shape1_byte_range(stream, mask, zaf, tolerance)
+            byte_range = _locate_shape1_byte_range(
+                stream, mask, zaf, tolerance, page_transform
+            )
         else:
             byte_range = None
         if byte_range is None:
@@ -1291,21 +1343,25 @@ def log_xobject_intersect(
         logger = logging.getLogger(__name__)
     n = 0
     for entry in page.get_xobjects():
-        # PyMuPDF 1.27.x returns (xref, name, invoker, bbox); bbox is fitz.Rect in
-        # page user-space (no CTM math needed — verified via Context7 + WebFetch).
-        # Defensive unpack: skip malformed entries rather than crashing on
-        # forward-compat changes.
+        # PyMuPDF 1.27.x returns (xref, name, invoker, bbox) where bbox is a plain
+        # 4-tuple (x0, y0, x1, y1) in page user-space — NOT a fitz.Rect (verified on
+        # 1.27.2.3 dev install: the WebFetch-documented "fitz.Rect" claim was for a
+        # different API; the live return is a tuple). Wrap it so .intersects() works.
+        # Defensive unpack: skip malformed entries rather than crashing on a
+        # forward-compat change to the tuple shape.
         if len(entry) < 4:
             continue
         bbox = entry[3]
         if bbox is None:
             continue
         try:
-            if bbox.intersects(user_rect):
-                n += 1
-        except (AttributeError, TypeError):
-            # bbox not a fitz.Rect — defensive skip (should not happen on 1.27.x).
+            xobj_rect = fitz.Rect(bbox)
+            xobj_rect.normalize()
+        except (ValueError, TypeError):
+            # bbox not coercible to a Rect — defensive skip.
             continue
+        if xobj_rect.intersects(user_rect):
+            n += 1
     if n > 0:
         logger.warning(
             "option_b_xobject_intersect",
