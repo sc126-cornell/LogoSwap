@@ -388,3 +388,147 @@ def test_option_b_no_xobject_no_log(caplog):
         assert not matching, "no log should be emitted when there is no form XObject"
     finally:
         doc.close()
+
+
+# --- Shape 1 rework (07-03 Task 1 行為鎖定:3 cases) -----------------------------------
+#
+# Shape 1(PScript5 m/l 算子)零面積 fill 的單元測試。注意 Shape API 算子型別
+# (07-03 Task 2 spike 確認):
+#   - Shape.draw_rect(W=0)  → items [('re', ...)] → Shape 2 路徑
+#   - Shape.draw_line(...)   → items [('l',  ...)] → Shape 1 路徑(type='f')
+# 故本節 Shape 1 fixture 一律用 draw_line(零面積垂直線 + fill)以命中 m/l 索引。
+
+def test_option_b_shape1_high_density_all_matched():
+    """高密度 Shape 1:~500 筆不同 bbox 的 m/l 零面積 fill 全在 user_rect 內 → 全刪。
+
+    鎖定 07-03 Task 1 的 single-pass _build_shape1_candidate_index:取代舊
+    per-zaf 全串流 finditer(14% 匹配 / 765s),新索引讓高密度 Shape 1 100% 匹配。
+    主斷言為正確性(deleted == N + 刪後 count == 0);附帶 perf soft-assert < 5s。
+    """
+    import time
+
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=700, height=400)
+        user_rect = fitz.Rect(50.0, 100.0, 650.0, 300.0)
+        n = 500
+        for i in range(n):
+            x = 55.0 + i * 1.0  # 各不同 x → 各不同 bbox(最大 x=554 < 650,全在框內)
+            shape = page.new_shape()
+            shape.draw_line(fitz.Point(x, 110.0), fitz.Point(x, 290.0))  # 零寬垂直線
+            shape.finish(fill=(0.0, 0.0, 0.0), color=None, width=0, closePath=False)
+            shape.commit()
+
+        ds = page.get_drawings()
+        assert ds and ds[0].get("items")[0][0] == "l", (
+            "fixture 必須命中 Shape 1(m/l)路徑"
+        )
+        count_before = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert count_before == n, f"density mismatch: expected {n}, got {count_before}"
+
+        t0 = time.perf_counter()
+        deleted = pdf_engine.delete_zero_area_type_f_fills_inside(page, user_rect)
+        elapsed = time.perf_counter() - t0
+
+        assert deleted == n, f"high-density Shape 1 應全刪 {n},實際 {deleted}"
+        count_after = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert count_after == 0, "刪除後框選區應無零面積 type='f' 殘留"
+        # Perf soft-assert(single-pass 索引):500 筆遠快於 5s。
+        assert elapsed < 5.0, f"high-density Shape 1 處理過慢:{elapsed:.3f}s"
+    finally:
+        doc.close()
+
+
+def test_option_b_shape1_duplicate_bbox_all_deleted():
+    """重複 bbox Shape 1:N 筆完全相同 bbox 的 m/l 零面積 fill(單一 logo 分解為多筆
+    同位置描邊)→ 全刪(Option (ii) cardinality)。
+
+    鎖定 07-03 Task 1 的關鍵修正:value 為 list(setdefault 累加)而非舊「唯一匹配」
+    規則。舊規則在重複 bbox 下 len(matches) != 1 → return None → 漏刪;新 bbox-keyed
+    索引把同 bbox 的全部 byte-range 收進 list,該 bbox 全部描邊一次刪除。
+    """
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=400, height=300)
+        user_rect = fitz.Rect(50.0, 100.0, 350.0, 200.0)
+        n = 5
+        for _ in range(n):
+            shape = page.new_shape()
+            # 完全相同的零寬垂直線 → 同一 bbox。
+            shape.draw_line(fitz.Point(100.0, 110.0), fitz.Point(100.0, 190.0))
+            shape.finish(fill=(0.0, 0.0, 0.0), color=None, width=0, closePath=False)
+            shape.commit()
+
+        count_before = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert count_before == n, f"duplicate-bbox fixture 應有 {n} 筆,實際 {count_before}"
+
+        deleted = pdf_engine.delete_zero_area_type_f_fills_inside(page, user_rect)
+        assert deleted >= 1, "重複 bbox 應被視為覆蓋成功(≥1),不再因唯一匹配規則漏刪"
+
+        count_after = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert count_after == 0, "同 bbox 的全部 N 筆描邊都應刪除,刪後 count == 0"
+    finally:
+        doc.close()
+
+
+def test_option_b_shape1_genuine_miss_failsafe(caplog):
+    """genuine-miss fail-safe:get_drawings 偵測到一個 ZAF,但其無法被 shape 定位
+    (此處用 items=['c'] 的 mixed/empty-item ZAF — 既非全 re 亦非全 m/l)→
+    delete_zero_area_type_f_fills_inside return 0 + content stream 一字未改 +
+    caplog 捕獲 option_b_parse_anomaly。
+
+    鎖定 07-03 D-A5 fail-safe 在新 bbox-keyed cardinality 下仍成立:真實漏抓
+    (無法定位的 ZAF)絕不破壞性寫回。draw_bezier 產生 items=['c'] 的零面積 type='f'
+    ZAF → has_mixed_empty_zaf=True → fail-safe。
+    """
+    doc = fitz.open()
+    try:
+        page = doc.new_page(width=400, height=300)
+        user_rect = fitz.Rect(50.0, 100.0, 350.0, 200.0)
+        # 零寬 Bezier → 零面積 type='f' ZAF,但 items=['c'](非 re、非 m/l)。
+        shape = page.new_shape()
+        shape.draw_bezier(
+            fitz.Point(100.0, 110.0),
+            fitz.Point(100.0, 130.0),
+            fitz.Point(100.0, 160.0),
+            fitz.Point(100.0, 190.0),
+        )
+        shape.finish(fill=(0.0, 0.0, 0.0), color=None, width=0, closePath=False)
+        shape.commit()
+
+        items_kinds = [it[0] for it in page.get_drawings()[0].get("items")]
+        assert "c" in items_kinds and "re" not in items_kinds and "l" not in items_kinds, (
+            "fixture 必須是無法被 shape 定位的 mixed/empty-item ZAF"
+        )
+        count_before = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+        )
+        assert count_before == 1, "precondition: 1 個被偵測到的 ZAF"
+
+        bytes_before = page.read_contents()
+        with caplog.at_level(logging.WARNING, logger="app.services.pdf_engine"):
+            deleted = pdf_engine.delete_zero_area_type_f_fills_inside(page, user_rect)
+
+        assert deleted == 0, "genuine-miss 必須走 fail-safe(return 0)"
+        bytes_after = page.read_contents()
+        assert bytes_after == bytes_before, (
+            "fail-safe 絕不破壞性寫回 — content stream bytes 必須一字未改"
+        )
+        matching = [
+            r for r in caplog.records if "option_b_parse_anomaly" in r.message
+        ]
+        assert matching, "expected 'option_b_parse_anomaly' warning on genuine miss"
+        rec = matching[0]
+        assert rec.expected >= 1  # extra={"expected": ...} surfaces as attr
+        # mixed/empty-item ZAF 觸發 mixed_empty 旗標(新增診斷欄位)。
+        assert getattr(rec, "mixed_empty", False) is True
+    finally:
+        doc.close()
