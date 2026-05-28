@@ -353,24 +353,35 @@ _SAFE_SKIP_REGIONS_RE = re.compile(
 # operators ``g G rg RG k K cs CS sc SC scn SCN``. Crucially the path-construction
 # operators ``m l c v y re`` are EXCLUDED — allowing them would let the regex skip
 # across into a DIFFERENT path's fill and mis-attribute the byte range.
+# PDF 數字運算元 pattern(整數 / 小數 / 正負號 + leading-dot real)。WR-01:此常數
+# hoisted 到 Shape 2 detector 之前,讓 Shape 1(_CM_RE/_POINT_RE)與 Shape 2
+# (_RE_FILL_RECT_RE / _SAFE_BETWEEN_TOKEN)共用同一套 number 解析。
+#
+# _NUMBER 必須同時涵蓋「無整數部的純小數」如 ``-.061`` / ``.5`` —— PScript5 供應商
+# CAD glyph 大量使用此寫法(ISO 32000-1 §7.3.3 允許 leading-dot real)。舊 pattern
+# ``-?\d+\.?\d*`` 要求 ``.`` 前必有 ``\d+``,故 ``-.061`` 只 match 到 ``061`` = 61,
+# bbox x 嚴重失真;``.0`` 高度的 re 則整段不 match(byte-range 漏抓)。
+# 正確 pattern 同時接受 ``-5`` / ``5.5`` / ``5.`` / ``.5`` / ``-.061``。
+_NUMBER = rb"[-+]?(?:\d+\.?\d*|\.\d+)"
+
 _SAFE_BETWEEN_TOKEN = (
     rb"(?:"
-    rb"-?\d+\.?\d* "                                  # numeric operand
-    rb"| /[^\s/<>\[\]()]+ "                           # name operand (e.g. /DeviceRGB)
-    rb"| (?:h|W\*|W|g|G|rg|RG|k|K|cs|CS|scn|SCN|sc|SC) \b "  # safe operators
-    rb"| \s+ "                                        # whitespace
-    rb")"
+    + _NUMBER + rb" "                                 # numeric operand (WR-01: leading-dot)
+    + rb"| /[^\s/<>\[\]()]+ "                         # name operand (e.g. /DeviceRGB)
+    + rb"| (?:h|W\*|W|g|G|rg|RG|k|K|cs|CS|scn|SCN|sc|SC) \b "  # safe operators
+    + rb"| \s+ "                                      # whitespace
+    + rb")"
 )
 _RE_FILL_RECT_RE = re.compile(
     rb"""
-      (?P<x>-?\d+\.?\d*)   \s+
-      (?P<y>-?\d+\.?\d*)   \s+
-      (?P<w>-?\d+\.?\d*)   \s+
-      (?P<h>-?\d+\.?\d*)   \s+
+      (?P<x>""" + _NUMBER + rb""")   \s+
+      (?P<y>""" + _NUMBER + rb""")   \s+
+      (?P<w>""" + _NUMBER + rb""")   \s+
+      (?P<h>""" + _NUMBER + rb""")   \s+
       re \b
       (?P<between> \s+ """ + _SAFE_BETWEEN_TOKEN + rb"""{0,16} )
       (?P<fillop>f\*|f|F|B\*|b\*|B|b)
-      \b
+      (?![A-Za-z*])
     """,
     re.VERBOSE,
 )
@@ -392,18 +403,11 @@ _Q_BLOCK_RE = re.compile(
 
 # Shape 1 子算子解析 regex —— hoisted 到 module level(原本每呼叫
 # ``_locate_shape1_byte_range`` 都重編譯,在高密度 stream 是 hot-path pitfall;
-# 對應上方 line 303-307 的 import-time 編譯註解)。
-#   - ``_NUMBER``    : PDF 數字運算元(整數 / 小數 / 正負號)。
+# 對應上方 line 303-307 的 import-time 編譯註解)。共用上方 ``_NUMBER``
+# (WR-01:已 hoisted 到 Shape 2 detector 之前,Shape 1 + Shape 2 同套 number 解析)。
 #   - ``_CM_RE``     : ``a b c d e f cm`` 內容流 CTM 矩陣。
 #   - ``_POINT_RE``  : ``x y m`` / ``x y l`` 路徑點(moveto / lineto)。
 #   - ``_FILL_OP_RE``: 7 個 ISO 32000-1 §8.5.3 填色算子(f F f* B b B* b*)。
-#
-# _NUMBER 必須同時涵蓋「無整數部的純小數」如 ``-.061`` / ``.5`` —— PScript5 供應商
-# CAD glyph 大量使用此寫法(ISO 32000-1 §7.3.3 允許 leading-dot real)。舊 pattern
-# ``-?\d+\.?\d*`` 要求 ``.`` 前必有 ``\d+``,故 ``-.061`` 只 match 到 ``061`` = 61,
-# bbox x 嚴重失真 → byte-range 漏抓(mixed-glyph Shape 1 14% 命中率根因之一)。
-# 正確 pattern 同時接受 ``-5`` / ``5.5`` / ``5.`` / ``.5`` / ``-.061``。
-_NUMBER = rb"[-+]?(?:\d+\.?\d*|\.\d+)"
 _CM_RE = re.compile(
     rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+("
     + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+cm\b",

@@ -584,3 +584,83 @@ def test_shape1_block_with_any_disallowed_token_not_indexed(disallowed):
     assert index == {}, (
         f"夾帶 {disallowed!r} 的 q...Q block 不可入索引(CR-01 over-delete guard)"
     )
+
+
+# --- WR-06: Shape 2 fill-operator 變體 + leading-dot reals + 負 w/h ----------------------
+#
+# 既有 17 個 fixture 全用 PyMuPDF Shape.draw_rect/draw_line,只 emit 平 `f`。沒有任何
+# test 觸及 ``f*`` / ``B`` / ``b`` / ``B*`` / ``b*`` 填色算子變體、leading-dot real
+# 運算元、或負 w/h(Pitfall 5)。以下對 raw content-stream 直接驗證 Shape 2 detector
+# (鎖定 WR-01 leading-dot + WR-02 dangling-* + Pitfall 5 負 w/h 不誤判)。
+
+@pytest.mark.parametrize("fillop", [b"f", b"f*", b"F", b"B", b"b", b"B*", b"b*"])
+def test_shape2_all_fill_operators_indexed(fillop):
+    """WR-06:7 個 ISO 32000-1 §8.5.3 填色算子變體下,零面積 ``re`` fill 皆被索引。
+
+    ``0 80 re`` 為零寬(w=0)→ zero-area;每種 fillop 都應命中 Shape 2 detector 並
+    產生一筆 byte-range。``f*`` / ``b*`` / ``B*`` 的 ``*`` 必須被完整 capture(WR-02)。
+    """
+    stream = b"10 20 0 80 re " + fillop
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    index = pdf_engine._build_shape2_candidate_index(
+        stream, mask, pdf_engine._DEGENERATE_BBOX_EPS, fitz.Identity
+    )
+    assert len(index) == 1, (
+        f"零面積 re fill(fillop={fillop!r})應被 Shape 2 索引,實際 index={index!r}"
+    )
+    # 取出唯一 byte-range,確認它 cover 到整段(含 fillop 尾端的 `*`,WR-02)。
+    (byte_range,) = next(iter(index.values()))
+    start, end = byte_range
+    assert stream[start:end].rstrip().endswith(fillop), (
+        f"byte-range 必須含完整 fillop {fillop!r}(WR-02:`*` 不可被遺漏)"
+    )
+
+
+def test_shape2_star_operator_no_dangling_after_splice():
+    """WR-02 end-to-end:splice 掉 ``re f*`` fill 後不可遺留 dangling ``*``。
+
+    REVIEW.md 重現:``q 10 20 0 80 re f* Q`` splice 後不可變成 ``q * Q``。
+    """
+    stream = b"q 10 20 0 80 re f* Q"
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    index = pdf_engine._build_shape2_candidate_index(
+        stream, mask, pdf_engine._DEGENERATE_BBOX_EPS, fitz.Identity
+    )
+    assert len(index) == 1
+    ranges = [r for rs in index.values() for r in rs]
+    spliced = pdf_engine._splice_out(stream, ranges)
+    assert b"*" not in spliced, (
+        f"splice 後不可遺留 dangling `*`(WR-02);實際 spliced={spliced!r}"
+    )
+
+
+def test_shape2_leading_dot_real_operands_indexed():
+    """WR-01:leading-dot real 運算元(.5 .061 0 .0 re f)正確解析 bbox 並索引。
+
+    舊 ``-?\\d+\\.?\\d*`` pattern 對 ``.0`` 高度的 re 整段不 match → byte-range 漏抓。
+    修正後 ``_NUMBER`` 同時接受 leading-dot real,此零面積(w=0)fill 應被索引。
+    """
+    stream = b".5 .061 0 .0 re f"
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    index = pdf_engine._build_shape2_candidate_index(
+        stream, mask, pdf_engine._DEGENERATE_BBOX_EPS, fitz.Identity
+    )
+    assert len(index) == 1, (
+        f"leading-dot real re fill 應被 Shape 2 索引(WR-01),實際 index={index!r}"
+    )
+
+
+def test_shape2_negative_wh_not_zero_area_not_indexed():
+    """Pitfall 5:負 w/h 不蘊含零面積 —— ``10 20 -5 -80 re f`` 是 5×80 合法矩形,不索引。
+
+    ``re`` 以 ``-5 -80`` 定義的是有面積矩形(往左下展開),abs(w)=5、abs(h)=80 皆
+    遠大於 epsilon → 非零面積 → 不可被當零面積 fill 刪除(WR-06 鎖 Pitfall 5)。
+    """
+    stream = b"10 20 -5 -80 re f"
+    mask = pdf_engine._build_safe_skip_mask(stream)
+    index = pdf_engine._build_shape2_candidate_index(
+        stream, mask, pdf_engine._DEGENERATE_BBOX_EPS, fitz.Identity
+    )
+    assert index == {}, (
+        f"負 w/h 的非零面積矩形不可被索引刪除(Pitfall 5),實際 index={index!r}"
+    )
