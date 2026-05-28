@@ -1299,29 +1299,13 @@ def _build_shape2_candidate_index(
     return index
 
 
-def _locate_shape2_byte_range(
-    zaf: dict, index: dict, tolerance: float
-) -> tuple[int, int] | None:
-    """Look up a Shape 2 ZAF in the pre-built candidate index.
-
-    Returns the byte range if exactly one candidate matches the ZAF's rounded
-    user-space rect key; returns ``None`` if zero or multiple matches found
-    (cardinality assertion will then fail-safe).
-    """
-    zaf_rect = zaf["rect"]
-    key = (
-        round(zaf_rect.x0, 3),
-        round(zaf_rect.y0, 3),
-        round(zaf_rect.x1, 3),
-        round(zaf_rect.y1, 3),
-    )
-    candidates = index.get(key, [])
-    if len(candidates) == 1:
-        return candidates[0]
-    # ``tolerance`` parameter accepted for signature symmetry with Shape 1; the
-    # index key rounding already absorbs sub-millipoint precision noise.
-    _ = tolerance
-    return None
+# WR-04: ``_locate_shape2_byte_range`` was removed. The 07-03 rework made the dispatch
+# loop iterate ``shape2_index[key]`` directly (≥1 bbox-keyed cardinality), so the
+# helper had zero callers. It also still encoded the OLD ``if len(candidates) == 1``
+# single-match rule — the exact rule 07-03 abandoned for the duplicate-bbox bug — so
+# wiring it back in would silently reintroduce that miss. The dispatch loop in
+# ``delete_zero_area_type_f_fills_inside`` is the single source of truth for Shape 2
+# byte-range lookup.
 
 
 def delete_zero_area_type_f_fills_inside(
