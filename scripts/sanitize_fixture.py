@@ -336,6 +336,26 @@ def _strip_brand_glyph_block(
 
     對 multi-stream page:scratch script 已 proven「write modified to [0],write b'' to [1:]」
     pattern(Pitfall 3)。
+
+    **WR-04 已知限制(2026-05-28 documented):**
+    本啟發式只比對 ``m`` / ``l`` 算子的「原始操作數」與 ``union_bbox``(page-coord)。
+    它**忽略** ``cm``(CTM 變換矩陣)— 若 brand 區塊以
+    ``1 0 0 1 700 490 cm 0 0 m 10 0 l ...`` 形式出現(先 translate,再用 local-coord
+    繪製),regex 看到的座標是 ``(0, 0)`` / ``(10, 0)``,**不落在** page-coord
+    ``union_bbox`` 內 → 該 block **不會被 strip** → fallback 走 CMap supplier-name
+    find-replace(對純字串 supplier name 有效;對 glyph-encoded brand 仍可能漏)。
+
+    2026-05-28 的 forensic 樣本 ``3013A-13A-C6-XX-3D02-A01-00040.pdf`` 對此啟發式
+    work(N=1),但只要新真實 supplier PDF 用 CTM 變換,就會曝光此限制。
+
+    **未來修復方案(>30 行,故 Phase 6 不實作 — 留 TODO):**
+    Option 2 per 06-REVIEW.md WR-04 — 改用 ``page.get_drawings()`` 已給出的
+    bbox(已 cm-aware),直接以 bbox intersects union_bbox 作 hit test,不再自行
+    parse 算子。需要對齊 ``get_drawings()`` 回傳的 drawing 對應到 content stream
+    哪段 byte offset(目前 PyMuPDF 沒直接 expose)— 需 reverse-map,或改用
+    bottom-up rebuild(對所有 type='f' fills 中與 union_bbox 不相交者 keep,
+    其餘 strip)。實作預估 30-50 行 + 需要對 multi-fixture 樣本驗證;
+    Phase 7+ 接手實作。
     """
     stream_bytes = page.read_contents()
     stream_text = stream_bytes.decode("latin-1")
@@ -349,6 +369,8 @@ def _strip_brand_glyph_block(
     # 算子座標 regex:`<float> <float> [m|l]`(moveto / lineto with x y operand)
     # 此 byte-offset 啟發式:若 block 內任一 m/l 座標落在 union_bbox 內(PDF 點座標),
     # 視為 brand-glyph block。
+    # WR-04 LIMITATION:此 regex 不解析 `cm`(CTM)— 若 brand block 用 cm 變換 +
+    # local-coord m/l,operand 不會落在 union_bbox 內;見上方 docstring「已知限制」。
     coord_re = re.compile(
         rb"(-?\d+(?:\.\d+)?)\s+(-?\d+(?:\.\d+)?)\s+[ml]\b"
     )
