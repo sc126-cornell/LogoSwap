@@ -1,39 +1,40 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-24T12:30:00.000Z",
-  "phase": "5",
-  "phase_name": "ubuntu",
-  "phase_dir": ".planning/phases/05-ubuntu",
-  "plan": null,
-  "task": null,
-  "total_tasks": null,
-  "status": "milestone_close_pending",
-  "milestone": "v1.0",
-  "milestone_status": "DELIVERED — LIVE at https://logoswap.scottchen0622.com",
+  "timestamp": "2026-05-28T17:20:23.703Z",
+  "phase": "08",
+  "phase_name": "Documentation Sync + LIVE Rollout",
+  "phase_dir": ".planning/phases/08-documentation-sync-live-rollout",
+  "plan": 3,
+  "task": 2,
+  "total_tasks": 3,
+  "status": "paused",
+  "milestone": "v1.1",
+  "milestone_status": "EXECUTING — Phase 8 (last of 6/7/8); LIVE-UAT in progress, paused for colleague Illustrator verification",
   "completed_tasks": [
-    {"id": "Phase 1", "name": "輸入與預覽骨幹", "status": "done"},
-    {"id": "Phase 2", "name": "框選與真正移除(向量) + 下載", "status": "done"},
-    {"id": "Phase 3", "name": "商標置入", "status": "done"},
-    {"id": "Phase 4", "name": "點陣圖與圖片型檔案支援", "status": "done"},
-    {"id": "Phase 5", "name": "部署與穩固化(Ubuntu)", "status": "done", "live": "https://logoswap.scottchen0622.com"}
+    {"id": 1, "name": "Plan 03 Task 1 — harden .gitignore against scratch/supplier-PDF leak", "status": "done", "commit": "946da28"},
+    {"id": 2, "name": "Plan 03 Task 2 — single push + LIVE deploy + LIVE-UAT", "status": "in_progress", "progress": "Push done (master on origin); Zeabur LIVE confirmed (/health 200, section-13 footer = sc126-cornell). LIVE-UAT running: content-stream deep_check PASS on F1, F2 (prior session), F3, F4 (this session). PAUSED awaiting colleague Illustrator batch verification before UAT is declared passed."}
   ],
   "remaining_tasks": [
-    {"id": "milestone-close", "name": "/gsd-complete-milestone v1.0 歸檔 + git tag", "status": "not_started"},
-    {"id": "uat-deferred-1", "name": "50MB CAD PDF 觸發 504 timeout 實機驗證", "status": "deferred"},
-    {"id": "uat-deferred-2", "name": "本機 Python 套裝 `python -m app` 跨平台跑", "status": "deferred"},
-    {"id": "uat-deferred-3", "name": "Ubuntu 公司入口網站 nginx 嵌入(長期)", "status": "deferred"}
+    {"id": 3, "name": "Plan 03 Task 3 — D-04 one-off attack-sim scratch (formal two-gate: render >=98% white AND zero-area type='f' ==0) + RETIRE scratch (delete supplier PDFs/scripts/attacked.pdf, prove git ls-files clean) + flip DEPLOY-01 checkbox + write 08-03-SUMMARY.md", "status": "not_started"},
+    {"id": 4, "name": "Plan 04 Task 1 — final code-review/fix (narrow scope: only doc/comment/.gitignore changed, AGPL seam still 1 import line, 3x section-1.4 markers untouched) + confirm 4 req checkboxes (THREAT-02/DOC-01/DOC-02/DEPLOY-01)", "status": "not_started"},
+    {"id": 5, "name": "Plan 04 Task 2 — push origin + run /gsd-complete-milestone (archives ROADMAP/REQUIREMENTS, creates + pushes git tag v1.1; workflow OWNS the tag, do NOT create it separately)", "status": "not_started"}
   ],
-  "blockers": [],
-  "human_actions_pending": [],
+  "blockers": [
+    {"description": "UAT-pass confirmation is gated on the colleague's Adobe Illustrator verification of all 4 UAT output files (F1-F4) — the authoritative truth-test. Scheduled ~2026-05-30 (the day after this pause).", "type": "human_action", "workaround": "None — this is the authoritative gate by design; scripted content-stream checks are only supporting evidence."}
+  ],
+  "human_actions_pending": [
+    {"action": "Colleague opens F1-F4 OUTPUT PDFs in Adobe Illustrator and attempts to recover the supplier logos in the FRAMED regions (delete overlay/clipping mask, ungroup, delete layers). Reports per-file result.", "context": "Illustrator is the authoritative 'truly removed' test for v1.1 (threat model = Illustrator-class editor attacker). UAT passes only if the framed supplier marks cannot be recovered in Illustrator.", "blocking": true}
+  ],
   "decisions": [
-    {"decision": "Repo 轉 public (sc126-cornell/LogoSwap)", "rationale": "AGPL §13 公開部署的合規前提", "phase": "5"},
-    {"decision": "GitHub repo 名稱 logoswap → LogoSwap (PascalCase)", "rationale": "與系統名稱對齊", "phase": "5"},
-    {"decision": "Cloudflare DNS 用 灰色雲 (DNS-only) 而非 橘色雲 (Proxied)", "rationale": "讓 Zeabur 自動發 Let's Encrypt;CDN/DDoS 對內部工具過度設計", "phase": "5"},
-    {"decision": "Dockerfile 加 ENV PATH=/install/bin:$PATH", "rationale": "pip install --target /install 把 uvicorn 放 /install/bin,不在 slim 預設 PATH 內 — Zeabur 第一次 build 抓到的", "phase": "5"},
-    {"decision": "移除 1h TTL sticky bar", "rationale": "UAT 反饋:實際處理常見 1 分鐘內,提示過度強調反成噪音", "phase": "5"},
-    {"decision": "Button rename 「更換檔案」→「開啟新檔」", "rationale": "UAT 直觀度反饋", "phase": "5"}
+    {"decision": "Gate UAT-pass on the colleague's Illustrator batch verification of all 4 files, not on my scripted checks alone.", "rationale": "Illustrator is the authoritative truth-test; render/script analysis is supporting evidence only (per project principle).", "phase": "08"},
+    {"decision": "F3 (B-3012IP-WM02-T430) dCt/DAN-CHIEF logo = truly removed (vector). Region is empty 255.0 white, NO white cover (0 images, 0 white fills), zero-area type='f' ==0.", "rationale": "Content-stream + visual crop confirm content deleted via apply_redactions, not covered.", "phase": "08"},
+    {"decision": "F4 (3013A-19-C3-W4-3D02-A01-00071) DCE/NINGBO DAN-CHIEF NETWORK = truly removed (RASTER). The 7566 logo pixels are 100% white (255.0) in the single page image; output has only 1 image (no separate white overlay), so pixels were rewritten, not covered.", "rationale": "File is a 300-DPI scanned PDF, 0 vectors; PyMuPDF raster redaction whitened pixels in-place and re-encoded the image.", "phase": "08"},
+    {"decision": "Unframed supplier marks (top-left red stamps on F2/F3/F4, bottom-right red approval stamps on F3/F4, 'All Copy Rights Reserved' text) are OUT OF SCOPE for the UAT verdict.", "rationale": "They were not framed by the user, so they are not part of what the tool was asked to remove. Illustrator finding them is NOT a tool failure. To remove them: re-frame and re-process.", "phase": "08"}
   ],
-  "uncommitted_files": [],
-  "next_action": "執行 /gsd-complete-milestone — 跑 milestone audit + 寫 v1.0 release notes + 標 git tag v1.0 + 準備 v2 roadmap(或進 maintenance mode)",
-  "context_notes": "milestone v1.0 完整交付。Phase 1–5 全綠,11/11 plans 完成,291 tests pass + 3 platform-skipped 零回歸,STRIDE 27/27 closed。Production LIVE 於 https://logoswap.scottchen0622.com(Zeabur on user-owned Tencent Tokyo K3s + Cloudflare DNS + Let's Encrypt TLS + AGPL §13 三件套合規)。Repo public 於 https://github.com/sc126-cornell/LogoSwap。Memory 已更新 deployment_licensing + Dockerfile PATH pitfall。下次 session 自然路徑是 /gsd-complete-milestone 歸檔 + 標 tag,或開啟 v2 規劃(BATCH-01 批次 / INTEG-01 入口網站嵌入 / AUTH-01 登入 / ADV-01..04 進階編輯)。"
+  "uncommitted_files": [
+    {"path": ".planning/STATE.md", "note": "Pre-existing modification; owned by /gsd-complete-milestone reconciliation, NOT part of this WIP commit."},
+    {"path": ".planning/config.json", "note": "Pre-existing modification; not part of this WIP commit."}
+  ],
+  "next_action": "Ask the user for the colleague's Illustrator verification result on F1-F4. If ALL pass (no supplier logo recoverable in the framed regions) -> proceed to Plan 03 Task 3 (D-04 attack-sim two-gate, retire scratch, flip DEPLOY-01, write 08-03-SUMMARY). If ANY file fails -> /gsd-debug that file (likely an Option B blind spot, e.g. zero-area source inside a form XObject, SEC-03 deferred). Do NOT auto-advance to milestone close before the Illustrator sign-off.",
+  "context_notes": "We are paused mid Plan-03-Task-2 (the LIVE-UAT substep) at the user's request to wait for the colleague's Illustrator check. UAT files live OUTSIDE the repo: F3 in C:\\Users\\scott\\Downloads\\test 3\\, F4 in C:\\Users\\scott\\Downloads\\test 4\\ (output = *_logoswap*.pdf, original = same name without suffix). Standard per-file check: run .planning/debug/scratch/08-live-uat/_deep_check.py <ORIG> <OUT> <page> <tag> from repo root. TOOLING GOTCHAS discovered this session: (1) _deep_check.py crashes with cp950 UnicodeEncodeError when the region text contains non-cp950 chars (e.g. the garbage OCR layer in F4) -- wrap stdout as utf-8 (see _f4_struct.py / _f4_crop.py) or set PYTHONIOENCODING=utf-8. (2) deep_check's auto-detected region is a single bbox of ALL changed pixels -- for raster or multi-change files it spans the whole page and its per-check region numbers become misleading (F4 looked like 93% white / 4% dark, which was just adjacent retained legit content, NOT residual mark). For such files, isolate 'orig-dark -> out-light' pixels (see _f4_crop.py) and measure the logo band specifically. (3) The tool consistently sets a page /Rotate on output (F3 0->270, F4 0->90) to display the sideways portrait-canvas scans as upright landscape -- benign, but flag if the colleague's signing system is geometry-sensitive."
 }
