@@ -204,6 +204,41 @@ def _short_git_sha() -> str:
         return "unknown"
 
 
+# [WR-03 修復] FIXTURES_DIR 為「合法 out path 的唯一 prefix」— 用 Path.resolve() +
+# is_relative_to() 取代舊版 substring match("tests/fixtures/cad-glyph/" in out_str)。
+# 舊版可被以下路徑繞過:
+#   - /tmp/tests/fixtures/cad-glyph/decoy/../../../etc/foo.pdf(substring 命中,但
+#     resolved 後不在 fixtures dir)
+#   - Tests/Fixtures/Cad-Glyph/foo.pdf(Windows 大小寫不敏感檔系統,Path 等價但
+#     substring 大小寫敏感 → 繞過)
+FIXTURES_DIR = (
+    Path(__file__).resolve().parent.parent / "tests" / "fixtures" / "cad-glyph"
+).resolve()
+
+
+def _out_path_in_fixtures_dir(out_path: Path) -> bool:
+    """檢查 ``out_path.resolve()`` 是否 strictly inside ``FIXTURES_DIR``。
+
+    Python 3.9+ ``Path.is_relative_to`` 是 prefix(非 substring)check,且運作在
+    resolve 後的絕對路徑上 — 自然 reject ``../`` traversal 與 case-mismatch
+    (Windows 上 Path equality 是 case-insensitive,Linux 上 case-sensitive,
+    兩者皆比 substring 嚴格)。
+    """
+    try:
+        resolved = out_path.resolve()
+    except (OSError, RuntimeError):
+        return False
+    try:
+        return resolved.is_relative_to(FIXTURES_DIR)
+    except AttributeError:
+        # Python < 3.9 fallback(本專案 3.12+,理論上不會走到此分支)
+        try:
+            resolved.relative_to(FIXTURES_DIR)
+            return True
+        except ValueError:
+            return False
+
+
 _USER_METADATA_FIELDS = (
     "author",
     "producer",
@@ -524,10 +559,11 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
 
     # Out-path containment guard — V5 + Anti-Pattern「Raw supplier PDF accidentally committed」
     # 同時也是 acceptance criteria 的 hard self-assert(Warning #7)。
-    out_str = str(out_path).replace("\\", "/")
-    if "tests/fixtures/cad-glyph/" not in out_str:
+    # [WR-03 修復] 改用 Path.resolve() + is_relative_to() 而非 substring match,
+    # 防 `../`/case-mismatch/decoy-path 繞過。
+    if not _out_path_in_fixtures_dir(out_path):
         print(
-            f"錯誤:--out 必須在 tests/fixtures/cad-glyph/ 底下;收到 {out_path}",
+            f"錯誤:--out 必須在 {FIXTURES_DIR} 底下;收到 {out_path.resolve()}",
             file=sys.stderr,
         )
         return 1
@@ -662,13 +698,15 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
         )
 
         # Out-path containment 已在前置驗過,但 redundancy 是 safety
-        if "tests/fixtures/cad-glyph/" not in out_str:
+        # [WR-03 修復] 用 resolve + is_relative_to(prefix check)取代 substring,
+        # 防繞過。前置 entry-point check 與此處 self-assert 共用 helper,真正 redundant。
+        if not _out_path_in_fixtures_dir(out_path):
             print(
-                f"錯誤:Self-assert out path 失敗:{out_path} 不在 tests/fixtures/cad-glyph/",
+                f"錯誤:Self-assert out path 失敗:{out_path.resolve()} 不在 {FIXTURES_DIR}",
                 file=sys.stderr,
             )
             return 1
-        print("  ✓ out path 在 tests/fixtures/cad-glyph/")
+        print(f"  ✓ out path 在 {FIXTURES_DIR}")
 
         # Step 6 — Save + close
         print("步驟 6/6:save(garbage=4, deflate=True, clean=True)…")
