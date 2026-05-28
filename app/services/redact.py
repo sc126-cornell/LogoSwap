@@ -31,9 +31,19 @@ geometry surgery). The prior Phase-4 cover-routine leak only needed
 re-colouring 1742 separate white covers — the hotfix #06 dispatcher closes
 that step, so the new failure path is strictly harder.
 
-True deletion of zero-area sources requires content-stream surgery (a candidate
-hotfix #07 / Option B if higher assurance is required); see
-``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the full analysis.
+UPDATE (Phase 7 / Option B, 2026-05-28): page-level true deletion has SHIPPED.
+Option B (:func:`pdf_engine.delete_zero_area_type_f_fills_inside`) now runs in
+:func:`remove_region_vector` BEFORE the dense/sparse dispatcher and TRULY
+deletes the page-level zero-area ``type='f'`` sources from the content stream
+upstream — so for the common page-level case the sources are gone, not merely
+overlaid. The OVERLAY described above therefore remains as a last-mile defence
+only for the residue Option B cannot reach: (1) form-XObject-internal residue
+(Option B is page-level-only and does NOT descend into form-XObject streams —
+logged via :func:`pdf_engine.log_xobject_intersect`, not deleted), and (2)
+regex-miss / ``_DISALLOWED_IN_BLOCK`` co-located-content fail-safe cases (Option
+B conservatively returns 0 and leaves the stream untouched). See
+``.planning/phases/05-ubuntu/hotfix-06-dct-residue/`` for the original hotfix-#06
+analysis and Phase 7 for the Option B content-stream surgery.
 
 
 - :func:`remove_region_vector` — Phase 2 path. Used when the framed rect overlaps NO
@@ -248,8 +258,13 @@ def remove_region_vector(page, rect) -> bool:
     # from the content stream — they remain, visually superseded by the opaque
     # image XObject. Recovery now requires removing the image AND per-path bbox
     # surgery (strictly harder than re-colouring vector covers, but not impossible).
-    # True content-stream deletion of zero-area sources is deferred to a future
-    # content-stream-surgery hotfix (Option B / #07).
+    # NOTE (Phase 7 / Option B): the page-level zero-area sources have ALREADY been
+    # truly deleted UPSTREAM by Option B (delete_zero_area_type_f_fills_inside,
+    # called above at the option_b_deleted step) before this dispatcher runs — so
+    # for the common page-level case there is nothing left here to recover. This
+    # dense branch's overlay is now a last-mile defence only for form-XObject-
+    # internal residue (page-level-only strategy, logged not deleted) + Option B
+    # regex-miss / _DISALLOWED_IN_BLOCK fail-safe cases.
     #
     # Done AFTER the residual assertion so neither code path can trip
     # ``get_drawings_fully_inside`` (zero-area fills are already excluded from that
