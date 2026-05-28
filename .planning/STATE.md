@@ -2,9 +2,9 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: complete
-stopped_at: Phase 6 complete — quality gates green + fixtures upgraded to real
-last_updated: "2026-05-28T01:40:00.000Z"
+status: Quality gates 全綠(review/fix + secure 已跑;validate Nyquist 因配置停用為 no-op);3/3 fixture 為 real supplier(synthetic 升級已完成,PROVISIONAL 已移除)
+stopped_at: Phase 7 context gathered
+last_updated: "2026-05-28T02:14:32.983Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 3
@@ -91,6 +91,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28
-Stopped at: Phase 6 complete — 三道閘全綠 + fixtures upgraded to real;ready for `/gsd-discuss-phase 7 --chain`
-Resume file: None
+Last session: 2026-05-28T02:14:32.969Z
+Stopped at: Phase 7 context gathered
+Resume file: .planning/phases/07-option-b-implementation-content-stream-surgery/07-CONTEXT.md
