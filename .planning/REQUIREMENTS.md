@@ -14,7 +14,7 @@
 
 content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator 拔 image XObject 的攻擊面。
 
-- [ ] **SEC-01**: 使用者透過 LogoSwap 處理的 CAD-glyph PDF,被 Illustrator / Acrobat Pro 級工具編輯刪除 image XObject 圖層後,框選區內供應商商標 vector path 在重新渲染時不可見(零面積 type='f' 已從 page content stream 真正刪除,不只是被 overlay 蓋住)
+- [x] **SEC-01**: 使用者透過 LogoSwap 處理的 CAD-glyph PDF,被 Illustrator / Acrobat Pro 級工具編輯刪除 image XObject 圖層後,框選區內供應商商標 vector path 在重新渲染時不可見(零面積 type='f' 已從 page content stream 真正刪除,不只是被 overlay 蓋住)
 - [x] **SEC-02**: 對「正常面積 vector 商標」PDF(`apply_redactions` 已能真正刪除的類型),Option B 為 no-op,不破壞既有清乾淨的渲染結果、不引入新的 visual artefact
 - [x] **SEC-03**: Option B 只修改 page-level content stream,不誤改 form XObject 內容(Illustrator embedded 巢狀 XObject 常見);若 zero-area fills 位於 form XObject 內,系統需安全處理(可選:不處理 + 記 log,或進入 form XObject 內處理 — 由 phase planning 決定)
 
@@ -77,7 +77,7 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 | TEST-01    | Phase 6 | Complete |
 | TEST-02    | Phase 6 | Complete |
 | THREAT-01  | Phase 6 | Complete |
-| SEC-01     | Phase 7 | Pending |
+| SEC-01     | Phase 7 | Complete |
 | SEC-02     | Phase 7 | Complete |
 | SEC-03     | Phase 7 | Complete |
 | TEST-03    | Phase 7 | Complete |

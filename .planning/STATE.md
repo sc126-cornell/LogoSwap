@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: executing
+status: verifying
 stopped_at: Phase 7 context gathered
-last_updated: "2026-05-28T04:03:00.603Z"
+last_updated: "2026-05-28T10:13:39.507Z"
 last_activity: 2026-05-28
 progress:
   total_phases: 3
   completed_phases: 2
-  total_plans: 4
-  completed_plans: 4
+  total_plans: 5
+  completed_plans: 5
   percent: 100
 ---
 
@@ -27,7 +27,7 @@ See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 Phase: 7 (Option B Implementation — Content-Stream Surgery) — EXECUTING
 Plan: 2 of 2
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-05-28
 
 Progress: [██████████] 100%
@@ -95,6 +95,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T04:02:12.350Z
+Last session: 2026-05-28T10:13:39.494Z
 Stopped at: Phase 7 context gathered
 Resume file: None

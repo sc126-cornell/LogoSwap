@@ -77,7 +77,7 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
 **Plans**: 3 plans
   - [x] 07-01-PLAN.md — pdf_engine.py Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) + tests/test_pdf_engine.py 14 TEST-03 cases (SEC-02, SEC-03, TEST-03)
   - [x] 07-02-PLAN.md — redact.py dispatcher integration (line 195/232 boundary, +12 LOC) + xfail decorator removal in tests/test_illustrator_attack_regression.py + SEC-01 acceptance gate verify (SEC-01, SEC-02, SEC-03)
-  - [ ] 07-03-PLAN.md — [gap closure] Shape 1 locator rework (single-pass `_build_shape1_candidate_index` + bbox-keyed cardinality:perf 765s→<5s + match 14%→~100% + 重複-bbox 全刪) + 高密度/重複-bbox/genuine-miss 單元測試 + attack precondition 重設計(無 overlay+region 乾淨=PASS)+ figure-glyph fixture 調查與修補 → 3 illustrator-attack regression PASS (SEC-01, SEC-02, SEC-03, TEST-03)
+  - [x] 07-03-PLAN.md — [gap closure] Shape 1 locator rework (single-pass `_build_shape1_candidate_index` + bbox-keyed cardinality:perf 765s→<5s + match 14%→~100% + 重複-bbox 全刪) + 高密度/重複-bbox/genuine-miss 單元測試 + attack precondition 重設計(無 overlay+region 乾淨=PASS)+ figure-glyph fixture 調查與修補 → 3 illustrator-attack regression PASS (SEC-01, SEC-02, SEC-03, TEST-03)
 
 ### Phase 8: Documentation Sync + LIVE Rollout
 **Goal**: Option B 落地後同步所有面向同事 / 法務 / 維運的決策文件 — 三處「LIMITATION (be honest)」docstring 更新、HANDOFF.md 加 6.5 小節、PROJECT.md Key Decisions 加 v1.1 落地列,把實作推上 Zeabur(或本機 Docker)並對 ≥1 個 CAD-glyph 樣本完成端到端 LIVE-UAT(upload → 框選 → process → download → Illustrator-attack-simulation 全綠)。**紀律:**沿用 v1.0 流程 — UAT 期間 commit local but never push,LIVE-UAT 通過 + final review/fix pass 後才 push;AGPL §13 三件套無變更(僅文件文字調整,GitHub/LICENSE/UI footer 既有就位)。
