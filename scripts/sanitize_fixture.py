@@ -65,6 +65,7 @@ import argparse
 import datetime as _dt
 import hashlib
 import json
+import math
 import re
 import subprocess
 import sys
@@ -602,7 +603,10 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
 
         # Step 4 — TESTCO 零面積 wordmark 注入(Shape API,Option B verbatim)
         print("步驟 4/6:注入 TESTCO 零面積 wordmark(Shape.draw_rect W=0 + shape.commit)…")
-        n_target = max(int(original_zero_area_count * 0.95), 1)
+        # WR-05 修復:用 math.ceil 而非 int(floor),避免小 count(如 original=2)時
+        # int(2 * 0.95) = int(1.9) = 1,而 self-assert 門檻 0.9 * 2 = 1.8 要求 ≥ 2,
+        # 導致 reproducible self-assert failure。ceil(2 * 0.95) = ceil(1.9) = 2 → 通過。
+        n_target = max(math.ceil(original_zero_area_count * 0.95), 1)
         committed = _inject_testco_zero_area_wordmark(page, union_bbox, n_target)
         print(f"  ✓ 已 commit {committed} 個 zero-area type='f' fill(目標 {n_target})")
 
