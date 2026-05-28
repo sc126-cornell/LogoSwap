@@ -1322,7 +1322,14 @@ def delete_zero_area_type_f_fills_inside(
     ``doc.update_stream`` with the asymmetric multi-stream pattern (write all to
     ``[0]``, empty ``[1:]`` — PATTERNS S1 verbatim).
 
-    Returns the count of paths deleted. Returns 0 on:
+    Returns the count of byte ranges actually spliced out of the content stream
+    (WR-05 — honest telemetry: the true delete count, NOT the intent count of
+    detected ZAFs). On the success path this equals the number of detected ZAFs
+    (each ZAF-bbox key contributes ≥1 deduplicated byte range); the two would only
+    diverge if a future change matched more/fewer ranges than detected ZAFs at a key.
+    The value feeds the ``option_b_deleted`` info log only — it is advisory, not a
+    safety post-condition (the real safety gate is the attack post-condition
+    ``count_zero_area_fills_in_region == 0`` + white ≥ 98 %). Returns 0 on:
       - No zero-area ``type='f'`` fills fully inside ``user_rect`` (SEC-02 fast no-op
         — most v1.0 vector logo PDFs go here).
       - Cardinality mismatch between detected ZAFs and matched byte ranges (D-A5
@@ -1466,7 +1473,11 @@ def delete_zero_area_type_f_fills_inside(
         for xref in content_xrefs[1:]:
             doc.update_stream(xref, b"", compress=True)
 
-    return len(zafs)
+    # WR-05: return the TRUE delete count (byte ranges actually spliced), not the
+    # intent count ``len(zafs)``. On the success path these coincide; returning the
+    # actual splice count makes the ``option_b_deleted`` log honest if they ever
+    # diverge (e.g. a future change matching more/fewer ranges than detected ZAFs).
+    return len(ranges_to_delete)
 
 
 def log_xobject_intersect(
