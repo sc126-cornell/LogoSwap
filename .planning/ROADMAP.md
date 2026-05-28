@@ -74,7 +74,9 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
   3. Option B helper 單元測試覆蓋 zero-area fill counter、content stream rewrite 算子序列邊界判定、form XObject 巢狀偵測(page-level only,不下鑽)、no-op 行為(input 無 zero-area fill)、密度梯度(0 / 1 / 100 / 1742 個 zero-area fill 條件)
   4. `grep -rn "import fitz" app/` 仍只在 `app/services/pdf_engine.py` 一行 — AGPL seam 未破
   5. 框選區若位於 form XObject 內,系統不靜默誤改,以 log 記錄 + safe-skip(SEC-03 page-level only 策略)
-**Plans**: TBD
+**Plans**: 2 plans
+  - [ ] 07-01-PLAN.md — pdf_engine.py Option B helpers (delete_zero_area_type_f_fills_inside + log_xobject_intersect) + tests/test_pdf_engine.py 14 TEST-03 cases (SEC-02, SEC-03, TEST-03)
+  - [ ] 07-02-PLAN.md — redact.py dispatcher integration (line 195/232 boundary, +12 LOC) + xfail decorator removal in tests/test_illustrator_attack_regression.py + SEC-01 acceptance gate verify (SEC-01, SEC-02, SEC-03)
 
 ### Phase 8: Documentation Sync + LIVE Rollout
 **Goal**: Option B 落地後同步所有面向同事 / 法務 / 維運的決策文件 — 三處「LIMITATION (be honest)」docstring 更新、HANDOFF.md 加 6.5 小節、PROJECT.md Key Decisions 加 v1.1 落地列,把實作推上 Zeabur(或本機 Docker)並對 ≥1 個 CAD-glyph 樣本完成端到端 LIVE-UAT(upload → 框選 → process → download → Illustrator-attack-simulation 全綠)。**紀律:**沿用 v1.0 流程 — UAT 期間 commit local but never push,LIVE-UAT 通過 + final review/fix pass 後才 push;AGPL §13 三件套無變更(僅文件文字調整,GitHub/LICENSE/UI footer 既有就位)。
@@ -102,7 +104,7 @@ v1.0: 1 → 2 → 3 → 4 → 5 (complete) → v1.1: 6 → 7 → 8
 | 4. 點陣圖與圖片型檔案  | v1.0 | 2/2 | Complete    | 2026-05-23 |
 | 5. 部署與穩固化        | v1.0 | 2/2 | Complete    | 2026-05-24 |
 | 6. Regression Foundation + Threat Model Re-evaluation | v1.1 | 2/2 | Complete   | 2026-05-28 |
-| 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 0/TBD | Not started | - |
+| 7. Option B Implementation — Content-Stream Surgery   | v1.1 | 0/2 | Not started | - |
 | 8. Documentation Sync + LIVE Rollout                  | v1.1 | 0/TBD | Not started | - |
 
 ## Backlog
