@@ -480,6 +480,79 @@ def _cmap_fallback_supplier_name_replace(
     return True
 
 
+def _redact_supplier_name_glyph(
+    doc: fitz.Document, page: fitz.Page, supplier_name: str
+) -> int:
+    """Implementation note C(glyph-level CMap-aware fallback,2026-05-28 補強)。
+
+    若 _cmap_fallback_supplier_name_replace 的 latin-1 content-stream find-replace 失敗
+    (典型情境:PScript5.dll 出口 PDF 使用 CMap-encoded 自訂 font,content stream 內存
+    的是字元代碼如 <00A1 00B2 00C3> 而不是原 supplier name UTF-8 bytes — 字串替換找不
+    到字面 supplier_name),改用 PyMuPDF redaction API:`page.search_for` 在 glyph 層
+    找 supplier name 的視覺 bbox → `add_redact_annot` 加上 white fill → `apply_redactions(text=PDF_REDACT_TEXT_REMOVE)`
+    在 glyph 層真正移除文字物件(不影響 image XObjects 與 vector graphics)。
+
+    返回實際 redact 的 bbox 數量(0 = 沒找到,>0 = 已 redact)。
+    """
+    if not supplier_name:
+        return 0
+    bboxes = page.search_for(supplier_name)
+    if not bboxes:
+        return 0
+    for rect in bboxes:
+        # 略微 inflate 以含全 glyph(search_for 的 bbox 偶爾切到 stroke 邊緣)
+        rect = fitz.Rect(rect) + (-1, -1, 1, 1)
+        page.add_redact_annot(rect, fill=(1, 1, 1))
+    # 只移除 text — 不動 image XObjects(避免破壞 stamps 等預期保留物件)、不動 vector graphics
+    page.apply_redactions(
+        images=fitz.PDF_REDACT_IMAGE_NONE,
+        graphics=fitz.PDF_REDACT_LINE_ART_NONE,
+        text=fitz.PDF_REDACT_TEXT_REMOVE,
+    )
+    return len(bboxes)
+
+
+def _delete_supplier_annotations(
+    doc: fitz.Document, page: fitz.Page, supplier_name: str
+) -> int:
+    """Implementation note D(annotation-level CMap-aware fallback,2026-05-28 補強)。
+
+    若 redaction fallback 仍無法移除 supplier_name(典型情境:PScript5 + Acrobat 加上
+    `/Subtype /Stamp` annotation,annotation 的 appearance stream 是巢狀 Form XObject
+    — PyMuPDF apply_redactions 不會遞迴進 Form XObject 內部 — 因此 stamp 內的 supplier
+    glyph 無法用 redaction 移除),改用最直接的方法:**刪除整個含 supplier_name 的
+    annotation**。
+
+    Stamp annotation 在 supplier CAD PDF 中典型是「发行章 / 量产章」+ 廠商識別,**整個
+    annotation 就是 supplier IP** — 移除是正確的 sanitization,不會破壞主要 CAD 設計
+    圖。SEC-03 form-XObject 巢狀的「page-level only + log」策略對 annotation 同樣適用
+    (annotation 是 page-level 物件,雖然其 appearance 是 Form XObject,但删 annotation
+    本身仍是 page-level 操作)。
+
+    Detection:每個 annotation 透過 `page.get_text(clip=annot.rect)` 抽取覆蓋區的文字
+    (這個方法 PyMuPDF 會渲染 annotation appearance,所以 CMap-encoded text 能被抓),
+    若包含 supplier_name 則刪除該 annotation。
+
+    返回實際刪除的 annotation 數量。
+    """
+    if not supplier_name:
+        return 0
+    annots_to_delete = []
+    for annot in page.annots():
+        # 用 clip=annot.rect 讓 get_text 渲染 annotation 區的文字(含 appearance stream)
+        try:
+            annot_text = page.get_text(clip=annot.rect)
+        except Exception:
+            continue
+        if supplier_name in annot_text:
+            annots_to_delete.append(annot)
+    deleted = 0
+    for annot in annots_to_delete:
+        page.delete_annot(annot)
+        deleted += 1
+    return deleted
+
+
 def _write_manifest(
     out_path: Path,
     region_rect: tuple[float, float, float, float],
@@ -677,11 +750,35 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
             page = doc[page_index]
             text_after = page.get_text()
             if supplier_name in text_after:
+                # Implementation note C — glyph-level redaction(CMap-encoded font 真正修法)
                 print(
-                    f"錯誤:CMap fallback 後 supplier_name {supplier_name!r} 仍出現於 get_text()",
+                    f"⚠ content-stream find-replace 漏抓(CMap-encoded font);"
+                    f"改用 glyph-level redaction(search_for + add_redact_annot + apply_redactions)...",
                     file=sys.stderr,
                 )
-                return 1
+                n_redacted = _redact_supplier_name_glyph(doc, page, supplier_name)
+                page = doc[page_index]
+                text_after = page.get_text()
+                if supplier_name in text_after:
+                    # Implementation note D — annotation-level delete(Form XObject 內巢狀 stamp 的真正修法)
+                    print(
+                        f"⚠ glyph-level redaction 仍漏抓(supplier 在 Form XObject annotation appearance 內);"
+                        f"改用 annotation-level delete(刪除含 supplier_name 的整個 stamp annotation)...",
+                        file=sys.stderr,
+                    )
+                    n_deleted = _delete_supplier_annotations(doc, page, supplier_name)
+                    page = doc[page_index]
+                    text_after = page.get_text()
+                    if supplier_name in text_after:
+                        print(
+                            f"錯誤:annotation-level delete 後 supplier_name {supplier_name!r} 仍出現於 get_text()"
+                            f"(redacted {n_redacted} bboxes + deleted {n_deleted} annotations)",
+                            file=sys.stderr,
+                        )
+                        return 1
+                    print(f"  ✓ annotation-level delete 移除 {n_deleted} 個含 supplier_name 的 annotation")
+                else:
+                    print(f"  ✓ glyph-level redaction 移除 {n_redacted} 個 supplier_name bbox")
         print(f"  ✓ supplier_name {supplier_name!r} 不在 get_text()")
 
         post_zero_area_count = pdf_engine.count_zero_area_fills_fully_inside(
