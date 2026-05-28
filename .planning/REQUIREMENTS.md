@@ -37,8 +37,8 @@ content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator �
 
 Option B 落地後同步所有面向同事 / 法務 / 維運的決策文件。
 
-- [ ] **DOC-01**: `HANDOFF.md` 第 6 節(核心領域知識備忘)更新 — 加入 6.5 小節「Option B content-stream surgery」,描述「為什麼 apply_redactions + Option A 不夠、Option B 補上的是什麼、CAD-glyph 與一般 vector 商標的處理差異」;Option A 描述同步調整為「Option A + B 雙層防線」
-- [ ] **DOC-02**: `PROJECT.md` Key Decisions 加入「Hotfix v1.1 — Option B 落地」決策列,Rationale 記錄 v1.0 deferral 假設破滅的證據點;`.planning/STATE.md` Deferred 表中 Option B 條目移除(已在 v1.1 啟動時改寫,driver phase 完成時 final-clean)
+- [x] **DOC-01**: `HANDOFF.md` 第 6 節(核心領域知識備忘)更新 — 加入 6.5 小節「Option B content-stream surgery」,描述「為什麼 apply_redactions + Option A 不夠、Option B 補上的是什麼、CAD-glyph 與一般 vector 商標的處理差異」;Option A 描述同步調整為「Option A + B 雙層防線」
+- [x] **DOC-02**: `PROJECT.md` Key Decisions 加入「Hotfix v1.1 — Option B 落地」決策列,Rationale 記錄 v1.0 deferral 假設破滅的證據點;`.planning/STATE.md` Deferred 表中 Option B 條目移除(已在 v1.1 啟動時改寫,driver phase 完成時 final-clean)
 
 ### LIVE 部署收口(DEPLOY)
 
@@ -82,8 +82,8 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 | SEC-03     | Phase 7 | Complete |
 | TEST-03    | Phase 7 | Complete |
 | THREAT-02  | Phase 8 | Complete |
-| DOC-01     | Phase 8 | Pending |
-| DOC-02     | Phase 8 | Pending |
+| DOC-01     | Phase 8 | Complete |
+| DOC-02     | Phase 8 | Complete |
 | DEPLOY-01  | Phase 8 | Pending |
 
 **Coverage:**
