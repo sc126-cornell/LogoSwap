@@ -99,7 +99,7 @@ For complete v1.0 phase goals, success criteria, requirements, and plans see the
   4. LIVE 環境(Zeabur 或本機 Docker)上跑新版,對 ≥1 個 CAD-glyph 樣本完成 upload → 框選 → process → download,LIVE 檔再跑一次 attack-simulation 腳本,render 結果 ≥98% 白(LIVE-UAT 綠燈)
   5. v1.1 milestone close 前 final code-review pass 跑完,所有 push 已到 origin,git tag `v1.1` 已標
 **Plans**: 4 plans
-  - [ ] 08-01-PLAN.md — THREAT-02: rewrite the three honest-limitation docstrings (pdf_engine.py:933 + redact.py:6 + redact.py:245) to Option-B-accurate framing
+  - [x] 08-01-PLAN.md — THREAT-02: rewrite the three honest-limitation docstrings (pdf_engine.py:933 + redact.py:6 + redact.py:245) to Option-B-accurate framing
   - [ ] 08-02-PLAN.md — DOC-01 + DOC-02: HANDOFF §6.5 + Option A reference, PROJECT Key Decisions row, STATE Option B final-clean, flip the four req checkboxes
   - [ ] 08-03-PLAN.md — DEPLOY-01: gitignore leak-guard + single push to Zeabur + LIVE-UAT on a real supplier PDF + D-04 one-off attack-sim (then retire)
   - [ ] 08-04-PLAN.md — final code-review/fix pass + push origin + /gsd-complete-milestone (owns the v1.1 tag — no double-tag)

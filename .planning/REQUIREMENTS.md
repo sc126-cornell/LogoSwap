@@ -23,7 +23,7 @@ content-stream surgery 真正刪除零面積 type='f' fills,關閉 Illustrator �
 把「Illustrator-class editor」加入威脅 actor,更新所有相關安全文件。
 
 - [x] **THREAT-01**: STRIDE 威脅模型新增 "Illustrator-class editor attacker" actor;Hotfix 06 的 T-02-07 從 "CLOSED with documented residual" 重新評估,Option B 落地後重新關閉為 "CLOSED via Option B"
-- [ ] **THREAT-02**: 三處「LIMITATION (be honest)」docstring 區段同步更新 — `app/services/pdf_engine.py::replace_region_with_white_raster`、`app/services/redact.py` 模組層級 `TRUE_REMOVAL_LIMITATION`、`app/services/redact.py` dispatcher inline comment「HONEST LIMITATION」— 從「需要 delete image XObject + per-path bbox surgery 攻擊」改為「Option B 已關閉零面積 source 路徑」
+- [x] **THREAT-02**: 三處「LIMITATION (be honest)」docstring 區段同步更新 — `app/services/pdf_engine.py::replace_region_with_white_raster`、`app/services/redact.py` 模組層級 `TRUE_REMOVAL_LIMITATION`、`app/services/redact.py` dispatcher inline comment「HONEST LIMITATION」— 從「需要 delete image XObject + per-path bbox surgery 攻擊」改為「Option B 已關閉零面積 source 路徑」
 
 ### Regression 測試基礎(TEST)
 
@@ -81,7 +81,7 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 | SEC-02     | Phase 7 | Complete |
 | SEC-03     | Phase 7 | Complete |
 | TEST-03    | Phase 7 | Complete |
-| THREAT-02  | Phase 8 | Pending |
+| THREAT-02  | Phase 8 | Complete |
 | DOC-01     | Phase 8 | Pending |
 | DOC-02     | Phase 8 | Pending |
 | DEPLOY-01  | Phase 8 | Pending |

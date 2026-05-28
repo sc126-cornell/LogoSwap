@@ -4,14 +4,14 @@ milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
 status: executing
 stopped_at: Phase 8 context gathered
-last_updated: "2026-05-28T15:52:01.261Z"
-last_activity: 2026-05-28 -- Phase 8 planning complete
+last_updated: "2026-05-28T15:58:52.543Z"
+last_activity: 2026-05-28
 progress:
   total_phases: 3
   completed_phases: 2
   total_plans: 9
-  completed_plans: 5
-  percent: 56
+  completed_plans: 6
+  percent: 67
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 **Core value:** 能乾淨地「移除而非覆蓋」供應商商標圖案與文字,換上我司商標,產出品牌正確的 PDF。
-**Current focus:** Phase 7 完成(2026-05-28)— Option B 落地、verify + 三道閘全綠。下一步:`/gsd-discuss-phase 8 --chain`(文件同步 + LIVE 部署)。
+**Current focus:** Phase 8 — Documentation Sync + LIVE Rollout
 
 ## Current Position
 
-Phase: 7 (Option B Implementation — Content-Stream Surgery) — COMPLETE
-Plan: 3 of 3(含 07-03 gap-closure)
+Phase: 8 (Documentation Sync + LIVE Rollout) — EXECUTING
+Plan: 2 of 4
 Status: Ready to execute
-Last activity: 2026-05-28 -- Phase 8 planning complete
+Last activity: 2026-05-28
 
-Progress: [██████████] 100%(2 / 3 phases complete;Phase 8 待跑)
+Progress: [███████░░░] 67%
 
 ## Accumulated Context
 
@@ -60,6 +60,7 @@ Progress: [██████████] 100%(2 / 3 phases complete;Phase 8 �
 - [Phase 7 close 2026-05-28]: **T-06-01 + T-02-07 CLOSED via Option B** — content-stream gate 委派 production `count_zero_area_fills_fully_inside`(讀 content stream 非渲染像素),mixed-glyph 3396 ZAF 過 `count==0` 證明真刪非 Option A overlay 視覺遮蓋;兩道閘(white≥98% AND count==0)unconditional asserts。supersede chain 07→06→archived 06-HOTFIX 已鎖
 - [Phase 7 close 2026-05-28]: production code 改動只 `pdf_engine.py`(+helpers)+ `redact.py`(+~15 LOC,0 deletions,既有 dispatcher 一字不改);AGPL seam intact(`import fitz` 只 `pdf_engine.py:21`);baseline 338 passed + 3 skipped + 0 xfailed
 - [Phase 8 部署提醒 IN-02]: secure audit 環境是 Python 3.14,CLAUDE.md mandate 是 3.12 — Phase 8 LIVE 部署要確認 pin 3.12 維持 regex/logging 行為 parity(非 source defect)
+- [Phase ?]: [Phase 8 Plan 08-01] THREAT-02 三處 honest-limitation docstring 同步:由「true deletion 留待 future/candidate Option B/#07」改寫為「Option B 已 upstream 真正刪除 page-level 零面積 source;overlay 為 form-XObject 殘留(已 log)+ regex-miss fail-safe 的 last-mile 防線」。零 logic 改動;AGPL seam intact;§1.4 三 non-target marker 未動。commits 9a3a8c0 + c6a5274
 
 ### Pending Todos
 
@@ -100,6 +101,6 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T15:24:55.164Z
+Last session: 2026-05-28T15:58:44.539Z
 Stopped at: Phase 8 context gathered
-Resume file: .planning/phases/08-documentation-sync-live-rollout/08-CONTEXT.md
+Resume file: None
