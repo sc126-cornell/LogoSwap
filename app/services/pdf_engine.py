@@ -14,9 +14,13 @@ takes down a worker.
 
 from __future__ import annotations
 
+import logging
+import re
 from pathlib import Path
 
 import fitz  # PyMuPDF — AGPL; isolated here on purpose. (see module docstring)
+
+logger = logging.getLogger(__name__)
 
 
 class PdfEngineError(Exception):
@@ -292,6 +296,79 @@ _WHITE_FILL_EPS = 0.005
 # fills; supplier-logo decomposition produces hundreds to thousands. The gap is
 # wide enough that the threshold is robust to a 5–10x shift in either direction.
 ZERO_AREA_RASTER_THRESHOLD = 100
+
+
+# --- Phase 7 Option B — content-stream surgery (SEC-01 / SEC-02 / SEC-03) -------------
+#
+# Module-level compiled regex patterns for the page-level zero-area type='f' fill
+# deletion helper (see ``delete_zero_area_type_f_fills_inside`` below). Compiled ONCE
+# at import time — recompiling per call would be a hot-path performance pitfall on
+# large supplier PDFs (Pitfall 8 — `mixed-glyph-01.pdf` carries 3396 ZAFs in a 1.3MB
+# content stream).
+#
+# These regexes are the BYTE-LEVEL surface area Phase 7 reasons about. Every byte the
+# helper touches passes through (a) the safe-skip mask built from
+# ``_SAFE_SKIP_REGIONS_RE`` and (b) one of the two shape detectors
+# ``_RE_FILL_RECT_RE`` / ``_Q_BLOCK_RE``. See 07-RESEARCH § Architecture Patterns and
+# 07-PATTERNS Risk Callouts #1 + #4 for the design rationale.
+
+# Safe-skip context detection (D-A2). 5 alternations cover the PDF byte contexts
+# where ASCII operator characters lose their semantics:
+#   1. BT ... ET            — text blocks (text-show strings may contain m/l/f bytes)
+#   2. BI ... ID ... EI     — inline images (arbitrary binary bytes)
+#   3. ( ... )              — PostScript-style literal strings (with \( \) escape)
+#   4. < ... >              — hex strings (e.g. <6d6c66> = "mlf" hex)
+#   5. % ... \n             — comments to EOL
+#
+# Built ONCE per ``delete_zero_area_type_f_fills_inside`` call (O(N) bytearray
+# pre-pass) — any operator-locating regex MUST consult the mask before treating a
+# match as real. Without this safe-skip pre-pass a bare ``q\b[^Q]*?Q\b`` pattern
+# terminates prematurely on a `Q` byte inside `(Quality)` (Pitfall 1 / 06-PATTERNS
+# Risk Callout WR-02).
+_SAFE_SKIP_REGIONS_RE = re.compile(
+    rb"""
+      (BT \b [\s\S]*? \b ET \b)                      # text block
+    | (BI \b [\s\S]*? \b ID \b [\s\S]*? \b EI \b)    # inline image (BI ... ID ... EI)
+    | (\( (?: \\. | [^()\\] )* \))                   # paren literal (with \( \) escape)
+    | (< [^>]* >)                                    # hex string
+    | (% [^\n\r]* )                                  # comment till EOL
+    """,
+    re.VERBOSE | re.DOTALL,
+)
+
+# Shape 2 detector: standalone `<x> <y> <w> <h> re ... fillop` pattern (Acrobat /
+# TESTCO sanitize injection / general). `f*` MUST precede `f` in the alternation —
+# regex alternation is greedy left-to-right and a bare `f` would shadow `f*` (Pitfall
+# 2). All 7 ISO 32000-1 §8.5.3 fill-producing operators must be covered:
+# ``f``, ``F``, ``f*``, ``B``, ``b``, ``B*``, ``b*``.
+_RE_FILL_RECT_RE = re.compile(
+    rb"""
+      (?P<x>-?\d+\.?\d*)   \s+
+      (?P<y>-?\d+\.?\d*)   \s+
+      (?P<w>-?\d+\.?\d*)   \s+
+      (?P<h>-?\d+\.?\d*)   \s+
+      re \b
+      (?P<between>\s+)
+      (?P<fillop>f\*|f|F|B\*|b\*|B|b)
+      \b
+    """,
+    re.VERBOSE,
+)
+
+# Shape 1 detector: tightly-bounded q...Q block containing m...l...fillop
+# (PScript5 path block). The ``[^Q]{0,2048}?`` bound caps the inner search to a
+# sane local context window — prevents pathological backtracking on large content
+# streams (Pitfall 8 performance). This pattern is only the SHAPE DETECTOR —
+# actual ZAF identification still goes through ``get_drawings()``; this regex
+# locates candidate q...Q byte ranges to consider.
+_Q_BLOCK_RE = re.compile(
+    rb"""
+      \b q \b
+      (?P<body> [^Q]{0,2048}? )
+      \b Q \b
+    """,
+    re.VERBOSE | re.DOTALL,
+)
 
 
 def map_tuple_to_rect(
@@ -854,6 +931,396 @@ def save_doc(
     this) — never save back onto the upload.
     """
     doc.save(str(path), garbage=garbage, deflate=deflate, clean=clean)
+
+
+# --- Phase 7 Option B helpers (SEC-01 / SEC-02 / SEC-03) -------------------------------
+#
+# Page-level content-stream surgery for zero-area ``type='f'`` fills, plus the
+# Form-XObject intersect logging helper. These two public helpers form the seam-side
+# half of Phase 7; the redact.py dispatcher (Plan 07-02) wires them in upstream of the
+# existing Hotfix 06 dense/sparse last-mile defence. See 07-RESEARCH and 07-PATTERNS
+# for design rationale and verbatim Risk Callouts.
+
+def _build_safe_skip_mask(stream: bytes) -> bytearray:
+    """Return a same-length bytearray; mask[i]==0 means 'inside safe-skip region'.
+
+    O(N) one-time pre-pass over the content stream. Any operator-locating regex MUST
+    intersect its match span with this mask before treating the match as real — the
+    bare ASCII operator characters lose semantics inside the 5 PDF safe-skip
+    contexts (BT/ET, BI/ID/EI, ``(...)``, ``<...>``, ``%...\\n``).
+
+    See 07-PATTERNS Risk Callout #4 + Pitfall 1 in 07-RESEARCH for the empirical
+    motivation (the WR-02 caveat from ``tests/_illustrator_attack.py:19-37``).
+    """
+    mask = bytearray(b"\x01" * len(stream))
+    for m in _SAFE_SKIP_REGIONS_RE.finditer(stream):
+        # bytearray supports slice assignment to a bytes value of the same length;
+        # this is dramatically faster than the per-byte loop on large streams.
+        mask[m.start():m.end()] = b"\x00" * (m.end() - m.start())
+    return mask
+
+
+def _is_unmasked(mask: bytearray, start: int, end: int) -> bool:
+    """True iff every byte in ``[start, end)`` is searchable (mask byte == 1)."""
+    if start < 0 or end > len(mask) or start >= end:
+        return False
+    # Fast path: `bytes.find` on a single 0-byte across the slice; absence == clear.
+    return mask.find(b"\x00", start, end) == -1
+
+
+def _splice_out(stream: bytes, ranges: list[tuple[int, int]]) -> bytes:
+    """Remove ``[start, end)`` byte ranges from ``stream``.
+
+    Ranges are sorted by ``start`` (caller-supplied order is accepted but the function
+    sorts defensively); overlapping ranges raise ``ValueError`` because that would
+    indicate a regex / cardinality bug upstream and the safe behaviour is to abort
+    (Plan 07-01 STEP D's cardinality assertion would itself trip before we get here,
+    but defence in depth is cheap).
+    """
+    if not ranges:
+        return stream
+    ranges_sorted = sorted(ranges)
+    # Defensive overlap check — if it ever trips, something upstream is broken.
+    for i in range(1, len(ranges_sorted)):
+        if ranges_sorted[i][0] < ranges_sorted[i - 1][1]:
+            raise ValueError(
+                f"overlapping byte ranges to splice: {ranges_sorted[i - 1]} and "
+                f"{ranges_sorted[i]}"
+            )
+    out = bytearray()
+    cursor = 0
+    for start, end in ranges_sorted:
+        out += stream[cursor:start]
+        cursor = end
+    out += stream[cursor:]
+    return bytes(out)
+
+
+def _locate_shape1_byte_range(
+    stream: bytes,
+    mask: bytearray,
+    zaf: dict,
+    tolerance: float,
+) -> tuple[int, int] | None:
+    """Locate the byte range of a Shape 1 (PScript5 m/l/f*) ZAF.
+
+    For each q...Q block in the stream:
+      1. Verify the block is fully outside any safe-skip region.
+      2. Parse the optional ``cm`` matrix (defaults to identity).
+      3. Collect all m/l operand points inside the body.
+      4. Transform the local-space path bbox through ``cm`` to user-space.
+      5. Compare against the ZAF's user-space rect (with ``tolerance`` slack).
+      6. Confirm at least one fill-producing operator (f/F/f*/B/b/B*/b*) appears.
+
+    Returns ``(start, end)`` of the q...Q byte range, or ``None`` if no unique
+    match is found (the cardinality assertion in the caller will then trip and
+    fail-safe per D-A5).
+    """
+    zaf_rect = zaf["rect"]  # fitz.Rect, post-CTM in user-space
+
+    _NUMBER = rb"-?\d+\.?\d*"
+    _CM_RE = re.compile(
+        rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+("
+        + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+cm\b",
+    )
+    _POINT_RE = re.compile(
+        rb"(" + _NUMBER + rb")\s+(" + _NUMBER + rb")\s+[ml]\b",
+    )
+    _FILL_OP_RE = re.compile(rb"\b(?:f\*|f|F|B\*|b\*|B|b)\b")
+
+    matches: list[tuple[int, int]] = []
+    for q_match in _Q_BLOCK_RE.finditer(stream):
+        start, end = q_match.start(), q_match.end()
+        if not _is_unmasked(mask, start, end):
+            continue
+        body = q_match.group("body")
+
+        cm_match = _CM_RE.search(body)
+        if cm_match:
+            try:
+                a, b, c, d, e, f = (float(cm_match.group(i)) for i in range(1, 7))
+                ctm = fitz.Matrix(a, b, c, d, e, f)
+            except (ValueError, TypeError):
+                continue
+        else:
+            ctm = fitz.Identity
+
+        points: list[tuple[float, float]] = []
+        for pm in _POINT_RE.finditer(body):
+            try:
+                px, py = float(pm.group(1)), float(pm.group(2))
+            except (ValueError, TypeError):
+                continue
+            points.append((px, py))
+        if not points:
+            continue
+
+        loc_x0 = min(p[0] for p in points)
+        loc_y0 = min(p[1] for p in points)
+        loc_x1 = max(p[0] for p in points)
+        loc_y1 = max(p[1] for p in points)
+        local_rect = fitz.Rect(loc_x0, loc_y0, loc_x1, loc_y1)
+        user_match = local_rect * ctm
+        user_match.normalize()
+
+        # Match against ZAF's user-space rect with per-coordinate tolerance.
+        if (
+            abs(user_match.x0 - zaf_rect.x0) < tolerance
+            and abs(user_match.y0 - zaf_rect.y0) < tolerance
+            and abs(user_match.x1 - zaf_rect.x1) < tolerance
+            and abs(user_match.y1 - zaf_rect.y1) < tolerance
+        ):
+            if _FILL_OP_RE.search(body):
+                matches.append((start, end))
+
+    # Unique match → return; ambiguous / missing → None (cardinality fail-safe).
+    if len(matches) == 1:
+        return matches[0]
+    return None
+
+
+def _build_shape2_candidate_index(
+    stream: bytes, mask: bytearray, tolerance: float
+) -> dict:
+    """Single-pass build of ``{(x0,y0,x1,y1)_rounded → [byte_ranges]}`` for zero-area
+    Shape 2 (``<x> <y> <w> <h> re ... fillop``) candidates.
+
+    Only candidates with ``abs(w) < tolerance`` OR ``abs(h) < tolerance`` are
+    indexed (per Pitfall 5 — a NEGATIVE w/h does NOT imply zero-area; ``re`` with
+    ``-1 -1`` defines a unit-area rectangle).
+
+    Rounding to 3 decimals stabilises the dict key across float-printing precision
+    noise between PScript5 emit and fitz's float64 round-trip.
+    """
+    index: dict[tuple[float, float, float, float], list[tuple[int, int]]] = {}
+    for m in _RE_FILL_RECT_RE.finditer(stream):
+        start, end = m.start(), m.end()
+        if not _is_unmasked(mask, start, end):
+            continue
+        try:
+            x = float(m.group("x"))
+            y = float(m.group("y"))
+            w = float(m.group("w"))
+            h = float(m.group("h"))
+        except (ValueError, TypeError):
+            continue
+        # Pitfall 5: zero-area requires abs(w) or abs(h) below tolerance — a
+        # negative w/h is a valid non-degenerate rectangle.
+        if abs(w) >= tolerance and abs(h) >= tolerance:
+            continue
+        x0, x1 = sorted((x, x + w))
+        y0, y1 = sorted((y, y + h))
+        key = (round(x0, 3), round(y0, 3), round(x1, 3), round(y1, 3))
+        index.setdefault(key, []).append((start, end))
+    return index
+
+
+def _locate_shape2_byte_range(
+    zaf: dict, index: dict, tolerance: float
+) -> tuple[int, int] | None:
+    """Look up a Shape 2 ZAF in the pre-built candidate index.
+
+    Returns the byte range if exactly one candidate matches the ZAF's rounded
+    user-space rect key; returns ``None`` if zero or multiple matches found
+    (cardinality assertion will then fail-safe).
+    """
+    zaf_rect = zaf["rect"]
+    key = (
+        round(zaf_rect.x0, 3),
+        round(zaf_rect.y0, 3),
+        round(zaf_rect.x1, 3),
+        round(zaf_rect.y1, 3),
+    )
+    candidates = index.get(key, [])
+    if len(candidates) == 1:
+        return candidates[0]
+    # ``tolerance`` parameter accepted for signature symmetry with Shape 1; the
+    # index key rounding already absorbs sub-millipoint precision noise.
+    _ = tolerance
+    return None
+
+
+def delete_zero_area_type_f_fills_inside(
+    page: "fitz.Page",
+    user_rect: "fitz.Rect",
+    tolerance: float = _DEGENERATE_BBOX_EPS,
+) -> int:
+    """Delete page-level zero-area ``type='f'`` paths fully inside ``user_rect``.
+
+    Phase 7 Option B core helper (SEC-01). Page-level content-stream surgery:
+    identifies fully-inside-rect zero-area filled paths via ``page.get_drawings()``,
+    locates their byte ranges in ``page.read_contents()`` via anchor-based regex
+    over a 5-context safe-skip mask, then splices them out and writes back via
+    ``doc.update_stream`` with the asymmetric multi-stream pattern (write all to
+    ``[0]``, empty ``[1:]`` — PATTERNS S1 verbatim).
+
+    Returns the count of paths deleted. Returns 0 on:
+      - No zero-area ``type='f'`` fills fully inside ``user_rect`` (SEC-02 fast no-op
+        — most v1.0 vector logo PDFs go here).
+      - Cardinality mismatch between detected ZAFs and matched byte ranges (D-A5
+        fail-safe — emits ``logger.warning("option_b_parse_anomaly", extra={...})``
+        and leaves the content stream UNTOUCHED).
+
+    Form-XObject internal streams are NOT traversed — ``page.read_contents()`` API
+    contract guarantees page-level only. SEC-03 transparency is provided by the
+    separate ``log_xobject_intersect`` helper.
+
+    HONEST LIMITATION
+    -----------------
+    本 helper 採 regex anchor matching;PDF 內容流的 byte-level 表達細節(operator
+    間任意 whitespace、CTM nested q/Q stack、PScript5 vs Acrobat 寫法差異)可能讓
+    某些 zero-area path 的 byte 範圍 regex 漏抓。漏抓時 cardinality assertion 失敗
+    → return 0 + logger.warning("option_b_parse_anomaly") → 既有 dispatcher
+    (Phase 4-6 Option A overlay + cover_zero_area_artefacts) 接 last-mile defense。
+    詳見 06-PATTERNS Risk Callout #4 + 07-RESEARCH § Common Pitfalls Pitfall 1。
+    """
+    user_rect_tuple = (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
+
+    # STEP A — pre-screen via page.get_drawings() (SEC-02 fast no-op path).
+    # Same 4-gate filter as count_zero_area_fills_fully_inside (IN-01 alignment):
+    # type='f' + zero-area bbox + fully inside user_rect + non-None rect.
+    zafs: list[dict] = []
+    for drawing in page.get_drawings():
+        if drawing.get("type") != "f":
+            continue
+        d_rect = drawing.get("rect")
+        if d_rect is None:
+            continue
+        dr = fitz.Rect(d_rect)
+        dr.normalize()
+        # IN-01: same epsilon as get_drawings_fully_inside + cover_zero_area_artefacts.
+        # Pitfall 5: width/height from fitz are always positive (Rect normalises), so a
+        # plain `<` test is correct here — the abs() check only matters when reading
+        # raw `re` operands (handled in _build_shape2_candidate_index).
+        if not (dr.width < tolerance or dr.height < tolerance):
+            continue
+        if not _rect_contains(user_rect_tuple, (dr.x0, dr.y0, dr.x1, dr.y1)):
+            continue
+        zafs.append(drawing)
+
+    if not zafs:
+        return 0  # SEC-02 fast no-op — content stream untouched.
+
+    # STEP B — read content stream and build safe-skip mask (D-A2).
+    stream = page.read_contents()
+    mask = _build_safe_skip_mask(stream)
+
+    # STEP C — anchor-based byte-range discovery.
+    # Build the Shape 2 candidate index ONCE (dict-lookup over O(N+M) regex scan
+    # of the whole stream) — per-ZAF lookup is then O(1). Shape 1 still runs the
+    # bounded q...Q regex per ZAF but the [^Q]{0,2048}? bound caps the work.
+    shape2_index = _build_shape2_candidate_index(stream, mask, tolerance)
+    ranges_to_delete: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+    for zaf in zafs:
+        items = zaf.get("items") or []
+        # Dispatch by item type: 're' → Shape 2 dict lookup; m/l → Shape 1 q...Q
+        # search. Mixed items (rare/unknown) → None → cardinality fail-safe.
+        if items and all(it and it[0] == "re" for it in items):
+            byte_range = _locate_shape2_byte_range(zaf, shape2_index, tolerance)
+        elif items and all(it and it[0] in ("l", "m") for it in items):
+            byte_range = _locate_shape1_byte_range(stream, mask, zaf, tolerance)
+        else:
+            byte_range = None
+        if byte_range is None:
+            continue
+        # Defence in depth: refuse to splice the same byte range twice (would create
+        # an overlapping-ranges ValueError in _splice_out anyway, but explicit is
+        # better than implicit when the failure is a silent data-loss bug).
+        if byte_range in seen:
+            continue
+        seen.add(byte_range)
+        ranges_to_delete.append(byte_range)
+
+    # STEP D — cardinality assertion (D-A5 fail-safe).
+    # If the byte ranges we located do NOT match the ZAF count from get_drawings(),
+    # we abort WITHOUT writing back. The existing Phase 4-6 dispatcher (Option A
+    # overlay + cover_zero_area_artefacts) takes over as last-mile defence.
+    if len(ranges_to_delete) != len(zafs):
+        logger.warning(
+            "option_b_parse_anomaly",
+            extra={
+                "page_index": page.number,
+                "user_rect": list(user_rect_tuple),
+                "expected": len(zafs),
+                "matched": len(ranges_to_delete),
+            },
+        )
+        return 0
+
+    # STEP E — splice and multi-stream write-back (PATTERNS S1 VERBATIM).
+    new_bytes = _splice_out(stream, ranges_to_delete)
+    doc = page.parent  # fitz.Page.parent → fitz.Document (Pitfall 7)
+    content_xrefs = page.get_contents()
+    # LOAD-BEARING — DO NOT collapse the two branches into a single loop, DO NOT
+    # distribute slices across xrefs, DO NOT remove compress=True. The asymmetric
+    # write-all-to-[0] + empty-rest pattern is empirically verified on Phase 6
+    # forensic evidence (06-PATTERNS Risk Callout #4).
+    if len(content_xrefs) == 1:
+        doc.update_stream(content_xrefs[0], new_bytes, compress=True)
+    else:
+        doc.update_stream(content_xrefs[0], new_bytes, compress=True)
+        for xref in content_xrefs[1:]:
+            doc.update_stream(xref, b"", compress=True)
+
+    return len(zafs)
+
+
+def log_xobject_intersect(
+    page: "fitz.Page", user_rect: "fitz.Rect", logger=None
+) -> int:
+    """Log Form-XObject bboxes intersecting ``user_rect``; return count. SEC-03.
+
+    Side-effect-only transparency helper. Walks ``page.get_xobjects()`` (Form XObjects
+    only — image XObjects are excluded by the fitz API) and emits a structured
+    ``logger.warning("option_b_xobject_intersect", extra={...})`` when at least one
+    Form XObject bbox intersects ``user_rect``. Never mutates the document.
+
+    ``logger`` is optional — when ``None`` the module-level logger is used. Plan 07-02
+    will inject the dispatcher's logger so the event surfaces in the redact.py
+    namespace rather than pdf_engine.
+
+    HONEST LIMITATION
+    -----------------
+    Page-level Option B 不下鑽 Form XObject 內部 stream(SEC-03 page-level only 策略
+    per D-B1)。若 XObject 內含零面積 type='f' fills,本 helper 只負責透明化 log
+    intersect 事件;實際的視覺殘留由既有 dispatcher 的 dense/sparse branch
+    (Option A overlay / cover_zero_area_artefacts)接 last-mile defense。
+    """
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    n = 0
+    for entry in page.get_xobjects():
+        # PyMuPDF 1.27.x returns (xref, name, invoker, bbox); bbox is fitz.Rect in
+        # page user-space (no CTM math needed — verified via Context7 + WebFetch).
+        # Defensive unpack: skip malformed entries rather than crashing on
+        # forward-compat changes.
+        if len(entry) < 4:
+            continue
+        bbox = entry[3]
+        if bbox is None:
+            continue
+        try:
+            if bbox.intersects(user_rect):
+                n += 1
+        except (AttributeError, TypeError):
+            # bbox not a fitz.Rect — defensive skip (should not happen on 1.27.x).
+            continue
+    if n > 0:
+        logger.warning(
+            "option_b_xobject_intersect",
+            extra={
+                "page_index": page.number,
+                "user_rect": [
+                    user_rect.x0,
+                    user_rect.y0,
+                    user_rect.x1,
+                    user_rect.y1,
+                ],
+                "xobject_count": n,
+            },
+        )
+    return n
 
 
 def close(doc: "fitz.Document") -> None:
