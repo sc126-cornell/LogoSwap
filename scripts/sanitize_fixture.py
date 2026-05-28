@@ -32,6 +32,16 @@ Sidecar manifest schema:
     manifest schema per CONTEXT § Claude's Discretion);Phase 7 unit tests / consumer code
     對齊本 schema(PATTERNS Warning #8)。
 
+    Zero-area count fields(WR-01 修復後 — 三欄並存):
+
+    - `expected_zero_area_count_pre_process`(LEGACY,backward-compat):
+        real-mode = 原 supplier 在 sanitize 動手前 count;
+        synthetic-mode = save 之後 count(兩種模式語義不同 — 保留以免破壞既有 manifest)。
+    - `original_supplier_zero_area_count`(NEW;real-mode 才有非 null 值):
+        原 supplier 在 sanitize 動手前 count(明確命名)。synthetic 模式為 null。
+    - `expected_zero_area_count_post_build`(NEW;real + synthetic 雙模都有):
+        sanitized PDF save 後重新讀回的 count。**Phase 7 / future consumer 應優先使用**。
+
 CLI 用法:
     python scripts/sanitize_fixture.py \
         --in raw-supplier.pdf \
@@ -421,10 +431,27 @@ def _write_manifest(
     supplier_name: str,
     *,
     synthetic: bool,
+    original_supplier_zero_area_count: int | None = None,
+    expected_zero_area_count_post_build: int | None = None,
 ) -> Path:
     """寫 sidecar JSON manifest(split-coordinate schema)。
 
     返回 manifest 路徑。
+
+    Field semantics(WR-01 修復 — 2026-05-28):
+
+    - ``expected_zero_area_count_pre_process``(LEGACY,backward-compat 保留):
+      在 real-supplier 模式下 = 原 supplier PDF 在 sanitize 動手前的 zero-area count;
+      在 synthetic 模式下 = 從零建構的 PDF 在 save 之後的 zero-area count
+      (兩種模式語義不同 — 為避免破壞已 commit 的 manifest schema 而保留)。
+
+    - ``original_supplier_zero_area_count``(NEW,real-mode 才寫):
+      原 supplier PDF 在 sanitize 動手前的 zero-area count(明確命名,real-mode only)。
+      synthetic 模式下永遠為 ``null``。
+
+    - ``expected_zero_area_count_post_build``(NEW,雙模式都寫):
+      sanitized PDF save 之後重新讀回的 zero-area count;Phase 7 / 未來 consumer
+      應優先使用此欄位作 "canonical count the test should assert against"。
     """
     x0, y0, x1, y1 = region_rect
     px_scale = dpi / 72.0
@@ -434,6 +461,16 @@ def _write_manifest(
         "dpi": dpi,
         "page_index": page_index,
         "expected_zero_area_count_pre_process": int(expected_zero_area_count_pre_process),
+        "original_supplier_zero_area_count": (
+            int(original_supplier_zero_area_count)
+            if original_supplier_zero_area_count is not None
+            else None
+        ),
+        "expected_zero_area_count_post_build": (
+            int(expected_zero_area_count_post_build)
+            if expected_zero_area_count_post_build is not None
+            else None
+        ),
         "original_supplier_name_sha256": (
             "sha256:" + hashlib.sha256(supplier_name.encode("utf-8")).hexdigest()[:16]
         ),
@@ -614,6 +651,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
     finally:
         doc.close()
 
+    # WR-01 修復:real-supplier mode 同時寫 legacy + 明確命名雙欄位。
+    # post_zero_area_count 已在 self-assert 區段(line ~565)算過,沿用其值。
     manifest_path = _write_manifest(
         out_path=out_path,
         region_rect=region_rect,
@@ -622,6 +661,8 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
         expected_zero_area_count_pre_process=original_zero_area_count,
         supplier_name=supplier_name,
         synthetic=False,
+        original_supplier_zero_area_count=original_zero_area_count,
+        expected_zero_area_count_post_build=post_zero_area_count,
     )
     print(f"  ✓ sidecar manifest written: {manifest_path}")
     print("完成。")
@@ -696,6 +737,9 @@ def _run_synthesize_mode(
     finally:
         doc.close()
 
+    # WR-01 修復:synthetic mode 沒有「pre-process supplier count」概念 — legacy 欄位
+    # 沿用 post_count_final(向後相容),original_supplier_zero_area_count=None,
+    # expected_zero_area_count_post_build=post_count_final(consumer 應優先看此欄)。
     manifest_path = _write_manifest(
         out_path=out_path,
         region_rect=region_rect,
@@ -704,6 +748,8 @@ def _run_synthesize_mode(
         expected_zero_area_count_pre_process=post_count_final,
         supplier_name=supplier_name,
         synthetic=True,
+        original_supplier_zero_area_count=None,
+        expected_zero_area_count_post_build=post_count_final,
     )
     print(f"  ✓ synthetic sidecar manifest written: {manifest_path}")
     print("完成(synthetic mode — Phase 6 close 為 PROVISIONAL)。")
