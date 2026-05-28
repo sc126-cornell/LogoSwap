@@ -689,22 +689,36 @@ def test_remove_region_vector_dense_zero_area_routes_to_raster_fallback(monkeypa
 
 
 def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
-    """Hotfix #06 — end-to-end integration (NO monkey-patch).
+    """Hotfix #06 dense path — end-to-end integration (NO monkey-patch).
 
     Builds a real PDF page with >= ZERO_AREA_RASTER_THRESHOLD zero-area ``type='f'``
     fills using PyMuPDF's Shape API (``draw_rect`` with W=0 + ``finish(fill=...)``
     produces real zero-area filled paths — verified to surface in ``get_drawings()``
-    with ``type='f'`` and bbox W=0). Runs ``remove_region_vector`` end-to-end
-    (counter, dispatcher, raster fallback, post-condition) and verifies the
-    user-visible invariants:
+    with ``type='f'`` and bbox W=0). Runs ``remove_region_vector`` end-to-end.
 
-      - exactly one image XObject is inserted on the page (the raster fallback overlay)
-      - no white-fill DRAWINGS intersect the user rect (the legacy attack surface is gone)
+    PHASE 7 OPTION B UPDATE (SEC-01)
+    --------------------------------
+    Before Phase 7, this fixture's 120 page-level zero-area fills tripped the dense
+    dispatcher's ``ZERO_AREA_RASTER_THRESHOLD`` raster-overlay branch (a COVER, not a
+    delete). Phase 7 Option B now runs UPSTREAM of that dispatcher and TRULY DELETES
+    the page-level zero-area sources from the content stream, so ``zero_area_count``
+    is driven to 0 before the dispatcher is reached → the dense raster-overlay branch
+    is correctly NOT triggered (it is now reserved as a last-mile defence for
+    form-XObject NESTED residue only; this synthetic fixture has only page-level
+    fills, all of which Option B deletes). This is the SEC-01 true-removal win:
+    deletion strictly dominates the prior overlay. Verifies the user-visible
+    invariants under the new behaviour:
+
+      - the page-level zero-area count is driven to 0 (Option B truly deleted them)
+      - NO raster fallback image XObject is inserted (the page-level source is gone,
+        so there is nothing left for the dense overlay to mask)
+      - no white-fill DRAWINGS intersect the user rect (no per-artefact covers)
       - the rendered page is white inside the user rect (visual cleanliness)
       - the function returns True (content was removed)
 
-    This is the only test in the suite that proves the dense-path behaviour without
-    monkey-patching the seam — the BL-01 / WR-02 follow-up from the hotfix #06 review.
+    This is the only test in the suite that proves the page-level dense-path
+    behaviour without monkey-patching the seam — the BL-01 / WR-02 follow-up from
+    the hotfix #06 review, now updated for the Option B true-deletion outcome.
     """
     import fitz
 
@@ -737,7 +751,8 @@ def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
         )
         assert zero_count >= pdf_engine.ZERO_AREA_RASTER_THRESHOLD, (
             f"synthesized fixture has {zero_count} zero-area paths, need "
-            f">= {pdf_engine.ZERO_AREA_RASTER_THRESHOLD} for the dense branch"
+            f">= {pdf_engine.ZERO_AREA_RASTER_THRESHOLD} so the dense fixture is dense "
+            f"BEFORE Option B runs"
         )
         # Pre-condition: no image XObject on page yet.
         assert page.get_images(full=True) == [], "fixture must start with no images"
@@ -745,31 +760,33 @@ def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
         removed = redact.remove_region_vector(page, user_rect)
         assert removed is True, "content WAS present; remove_region_vector should return True"
 
-        # POST 1: exactly one image XObject inserted — the raster fallback overlay.
-        imgs = page.get_images(full=True)
-        assert len(imgs) == 1, (
-            f"dense branch must insert exactly 1 raster fallback image; got {len(imgs)}"
+        # POST 1: Phase 7 Option B truly DELETED the page-level zero-area sources
+        # upstream → count is 0 (the SEC-01 true-removal outcome; this strictly
+        # dominates the prior raster overlay COVER).
+        post_count = pdf_engine.count_zero_area_fills_fully_inside(
+            page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
         )
-        # POST 2: the inserted image covers the user rect.
-        xref = imgs[0][0]
-        placed_rects = page.get_image_rects(xref)
-        assert placed_rects, "inserted image must have a placement rect"
-        placed = placed_rects[0]
-        assert (
-            placed.x0 <= user_rect.x0 + 0.5
-            and placed.y0 <= user_rect.y0 + 0.5
-            and placed.x1 >= user_rect.x1 - 0.5
-            and placed.y1 >= user_rect.y1 - 0.5
-        ), f"fallback image rect {placed} does not cover user rect {user_rect}"
-        # POST 3: NO white-fill DRAWINGS intersect the user rect (the legacy
-        # attack surface — re-coloring per-artefact covers to reveal the source
-        # shape — is gone).
+        assert post_count == 0, (
+            f"Option B must truly delete the page-level zero-area sources; "
+            f"{post_count} still fully inside the user rect"
+        )
+        # POST 2: NO raster fallback image XObject — the dense overlay branch is no
+        # longer reached for page-level residue (Option B emptied it). The dense
+        # raster overlay now only fires for form-XObject NESTED residue (SEC-03),
+        # which this page-level synthetic fixture does not have.
+        imgs = page.get_images(full=True)
+        assert len(imgs) == 0, (
+            f"Option B deleted the page-level source; the dense raster overlay must "
+            f"NOT fire (it is now form-XObject last-mile defence only); got {len(imgs)} images"
+        )
+        # POST 3: NO white-fill DRAWINGS intersect the user rect (no per-artefact
+        # covers — the legacy attack surface — and Option B leaves no white paint).
         whitepaint = pdf_engine.get_white_fill_drawings_intersecting(
             page, (user_rect.x0, user_rect.y0, user_rect.x1, user_rect.y1)
         )
         assert whitepaint == [], (
-            f"dense branch must NOT paint per-artefact white covers (legacy attack "
-            f"surface); got {len(whitepaint)} white-fill drawings"
+            f"no per-artefact white covers must remain (legacy attack surface); "
+            f"got {len(whitepaint)} white-fill drawings"
         )
         # POST 4: visual cleanliness — sample a few pixels INSIDE the user rect,
         # well away from the rect edges. They must all be (or near) white.
@@ -787,8 +804,8 @@ def test_remove_region_vector_dense_real_zero_area_paths_end_to_end():
         for x, y in sample_coords:
             rgb = pix.pixel(x, y)
             assert all(c >= 250 for c in rgb[:3]), (
-                f"pixel at ({x},{y}) is not white: {rgb} — raster fallback did not "
-                f"visually mask the zero-area residue"
+                f"pixel at ({x},{y}) is not white: {rgb} — Option B deletion did not "
+                f"leave the region visually clean"
             )
     finally:
         doc.close()

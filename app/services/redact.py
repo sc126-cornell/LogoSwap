@@ -81,7 +81,15 @@ grep come back clean.
 
 from __future__ import annotations
 
+import logging
+
 from . import pdf_engine
+
+# Phase 7 Option B(SEC-01)— 模組層級 logger,沿用 app/services/integrity.py:26-32 同包
+# sibling 慣例(stdlib logging,non-fitz,不破 AGPL seam,per Risk Callout #5)。
+# 供 remove_region_vector 內 Option B dispatcher block 發 structured log event:
+#   option_b_deleted(本檔 emit)/ option_b_xobject_intersect(pdf_engine 內 emit)。
+logger = logging.getLogger(__name__)
 
 # Pitfall 4: a stroked path's wrapping rectangle is larger than the visible line (line
 # width x 1.5 per direction, default miter limit 10). Growing the redaction rect by ~5pt
@@ -193,6 +201,23 @@ def remove_region_vector(page, rect) -> bool:
             "residual_content",
             "移除後仍偵測到殘留內容(文字或向量),無法保證真正移除。",
         )
+
+    # Phase 7 Option B — page-level content-stream surgery (SEC-01)。
+    # 真正刪除 fully-inside-rect 零面積 type='f' fills(CAD-glyph 供應商商標分解),
+    # upstream defense before 既有 Phase 5 Hotfix 06 dispatcher(form-XObject 內巢狀
+    # 殘留時才會走下方 dense/sparse last-mile defense)。helper 採 D-A5 fail-safe:
+    # regex 漏抓時 return 0 + 內部 logger.warning,絕不 raise、絕不破壞性寫回,故此處
+    # 不包 try/except(包了反而吞掉 helper 的 warning,失去 SEC-03 透明化)。
+    # NOTE: 傳入的是 fitz.Rect 物件 ``rect``(非上方的 user_rect tuple)— Plan 07-01
+    # helper 簽名收 fitz.Rect 並於內部自行轉 tuple。
+    deleted = pdf_engine.delete_zero_area_type_f_fills_inside(page, rect)
+    if deleted > 0:
+        logger.info(
+            "option_b_deleted", extra={"page_index": page.number, "count": deleted}
+        )
+    # SEC-03 透明化:page-level only 策略下,form-XObject 內巢狀零面積殘留不下鑽刪除,
+    # 但若有 form-XObject bbox 與框選區相交則 structured-log(emit 在 pdf_engine 內)。
+    pdf_engine.log_xobject_intersect(page, rect, logger=logger)
 
     # Zero-area artefact cleanup — dispatched on residue DENSITY (hotfix #06,
     # dCt-residue).
