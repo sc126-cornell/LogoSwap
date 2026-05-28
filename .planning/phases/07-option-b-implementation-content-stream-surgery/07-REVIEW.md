@@ -15,7 +15,7 @@ findings:
   warning: 6
   info: 4
   total: 11
-status: issues_found
+status: fixed
 ---
 
 # Phase 7: Code Review Report
@@ -262,6 +262,81 @@ pull, region already clean) without weakening either threshold. No change needed
 
 ---
 
+## Fix Application
+
+**Fixed:** 2026-05-28
+**Fixer:** Claude (gsd-code-fixer)
+**Scope:** BLOCKER + WARNING (CR-01 + WR-01..WR-06). Info findings (IN-01..IN-04) out of scope.
+**Production-code scope:** all fixes confined to `app/services/pdf_engine.py`. `redact.py`
+NOT touched. AGPL seam intact (`import fitz` only at `pdf_engine.py:21`).
+
+| Finding | Status | Commit | Notes |
+|---------|--------|--------|-------|
+| CR-01 | fixed | `a10704b` | Conservative skip: `_DISALLOWED_IN_BLOCK` (Do/BT/sh/BI) — block with co-located content not indexed → D-A5 fail-safe → overlay last-mile. Test proves `/Fm0 Do` survives. |
+| WR-01 | fixed | `b0887f0` | `_NUMBER` (leading-dot) hoisted before Shape 2; applied to x/y/w/h + `_SAFE_BETWEEN_TOKEN`. |
+| WR-02 | fixed | `b0887f0` | `fillop` trailing `\b` → `(?![A-Za-z*])`; full `f*`/`b*`/`B*` token captured, no dangling `*`. |
+| WR-03 | fixed | `d25958d` | Inline-image mask replaced by `_mask_inline_images` stateful scanner (length-aware via `/L`/`/Length`, whitespace-delimited `EI` fallback). |
+| WR-04 | fixed | `237f1e0` | Dead `_locate_shape2_byte_range` deleted (zero callers, stale single-match rule). |
+| WR-05 | fixed | `e081914` | Return `len(ranges_to_delete)` (true splice count) not `len(zafs)`; docstring corrected. |
+| WR-06 | fixed | `b0887f0` | Shape 2 tests: 7 fill operators + leading-dot reals + dangling-`*` splice + negative-w/h Pitfall 5. |
+
+### Fix details
+
+- **CR-01 (over-delete data loss, BLOCKER):** Chose the conservative approach per the
+  finding's preferred path (5330290 minimum-change + "never over-delete legit content").
+  Added module-level `_DISALLOWED_IN_BLOCK = re.compile(rb"\bDo\b|\bBT\b|\bsh\b|\bBI\b")`.
+  `_build_shape1_candidate_index` now refuses to index any `q...Q` block whose body
+  carries co-located non-path content. Such a block's zaf-bbox key looks "missing" to
+  the dispatcher → D-A5 cardinality fail-safe (return 0, no destructive write) → existing
+  Option A overlay last-mile defense. Reproduction test:
+  `q 10 20 m 10 100 l f /Fm0 Do Q` is not indexed (Do survives); control block of a pure
+  zero-area path is still indexed (guard is not over-broad). Parametrized over all four
+  disallowed tokens.
+
+- **WR-01 + WR-02 (Shape 2 regex):** `_NUMBER` moved ahead of the Shape 2 detectors and
+  applied to `_RE_FILL_RECT_RE`'s x/y/w/h groups and the numeric branch of
+  `_SAFE_BETWEEN_TOKEN`. The `fillop` group's trailing `\b` replaced with `(?![A-Za-z*])`
+  so the even-odd `*` suffix is consumed. Verified: `.5`/`-.061`/`.0` now parse; `f*`/`b*`/`B*`
+  capture the full token (no dangling `*` after splice).
+
+- **WR-03 (inline-image mask hole):** The `BI...ID...EI` regex branch was removed from
+  `_SAFE_SKIP_REGIONS_RE` and replaced by a dedicated `_mask_inline_images` stateful
+  scanner called first in `_build_safe_skip_mask`. When the inline dict declares `/L` or
+  `/Length`, the scanner jumps the exact payload byte count (byte-exact, immune to embedded
+  false `EI`); otherwise it falls back to the first whitespace-delimited `EI` followed by a
+  delimiter/EOF (documented best-effort). Regression tests lock both paths: the length-aware
+  path masks a payload containing a standalone ` EI ` while keeping the post-image `re f`
+  searchable.
+
+- **WR-04 (dead code):** `_locate_shape2_byte_range` deleted; replaced with an explanatory
+  comment naming the dispatch loop as the single source of truth.
+
+- **WR-05 (telemetry honesty):** return value changed to `len(ranges_to_delete)`; docstring
+  rewritten to describe the value as advisory telemetry (the real safety gate is the attack
+  post-condition). Existing density-gradient tests (`deleted == n_zaf`) still hold because
+  range count equals zaf count on the success path.
+
+- **WR-06 (missing coverage):** added Shape 2 unit tests covering all 7 fill operators,
+  leading-dot real operands, the dangling-`*` end-to-end splice, and a negative-w/h rect that
+  must NOT be treated as zero-area (Pitfall 5).
+
+- **Info findings (IN-01..IN-04):** out of scope; not addressed. Note IN-01 (`_FILL_OP_RE`
+  matching `f*` as `f`) is benign (presence-check only) and was deliberately left as-is per
+  scope; the WR-02 boundary fix was applied to `_RE_FILL_RECT_RE` only.
+
+### Verification (post-fix)
+
+- `python -m pytest` → **338 passed, 3 skipped, 0 xfailed** (baseline 321 + 3; +17 new
+  tests, no regression).
+- `python -m pytest -k illustrator_attack` → **3 PASSED** (SEC-01 gate green).
+- `python -m pytest tests/test_redact.py::test_fitz_import_confined_to_engine_seam` →
+  **1 PASSED** (AGPL guard green).
+- `import fitz` grep over `app/` → only `pdf_engine.py:21` (AGPL seam intact).
+- `redact.py` unchanged (`git diff` shows only `pdf_engine.py` + `tests/test_pdf_engine.py`).
+
+---
+
 _Reviewed: 2026-05-28_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: deep_
+_Fixed: 2026-05-28 — Claude (gsd-code-fixer) — status: fixed (7/7 in-scope findings)_
