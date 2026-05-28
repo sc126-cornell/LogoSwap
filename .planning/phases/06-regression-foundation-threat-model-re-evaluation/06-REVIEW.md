@@ -17,7 +17,15 @@ findings:
   warning: 7
   info: 5
   total: 13
-status: issues_found
+status: fixed
+fixed_at: 2026-05-28T00:00:00Z
+fixed_count:
+  critical: 1
+  warning: 7
+  info: 0
+  total: 8
+deferred_count:
+  info: 5
 ---
 
 # Phase 6: Code Review Report
@@ -444,3 +452,65 @@ line 58-62.
 _Reviewed: 2026-05-28T00:00:00Z_
 _Reviewer: Claude (gsd-code-reviewer)_
 _Depth: standard_
+
+---
+
+## Fix Application
+
+**Fixed at:** 2026-05-28
+**Fixer:** Claude (gsd-code-fixer)
+**Worktree branch:** `gsd-reviewfix/06-114654`(fast-forward 至 master)
+**Scope:** Critical + Warning(default `--fix` mode);Info findings 不在 scope。
+
+### Baseline preservation
+
+- ✓ pytest baseline `301 passed, 3 skipped, 3 xfailed` 保留(規定不能變)
+- ✓ AGPL guard test `test_fitz_import_confined_to_engine_seam` 綠燈
+- ✓ `app/**/*.py` production code 0 改動(`git diff --stat master app/` 為空)
+- ✓ `import fitz` 仍只出現於 `app/services/pdf_engine.py`(seam intact)
+
+### Fixed Issues
+
+| ID | Title | Commit | Files Modified |
+|---|---|---|---|
+| CR-01 | `_metadata_all_empty` uses wrong key names — self-assert is a no-op | `d0370de` | `scripts/sanitize_fixture.py` |
+| WR-01 | Synthetic-mode `expected_zero_area_count_pre_process` is actually POST-process count | `5b2efaf` | `scripts/sanitize_fixture.py` |
+| WR-02 | q...Q regex splits on `Q` byte inside PDF string literals | `179f05f` | `tests/_illustrator_attack.py` |
+| WR-03 | Out-path containment check is case-sensitive substring — bypassable on Windows | `509cef7` | `scripts/sanitize_fixture.py` |
+| WR-04 | `_strip_brand_glyph_block` coordinate-based hit test only checks `m`/`l` operands | `5be5ef9` | `scripts/sanitize_fixture.py` |
+| WR-05 | `_inject_testco_zero_area_wordmark` n_target rounding mis-aligns with 0.9× threshold | `dca2ec4` | `scripts/sanitize_fixture.py` |
+| WR-06 | Bare `except Exception` swallows real errors in XMP clear path | `e3ac65f` | `scripts/sanitize_fixture.py` |
+| WR-07 | `delete_image_xobjects_intersecting` returns intent count, not actual substitution count | `7514ef1` | `tests/_illustrator_attack.py` |
+
+### Fix Strategy Notes
+
+- **CR-01:** allowlist-style — iterate `doc.metadata.items()`, skip computed fields `{format, encryption}`, fail on any non-empty key. 任何 supplier 帶 hardcoded 9-key 之外的 `/Info` key 都會被攔下。
+- **WR-01:** additive — 保留 LEGACY 欄位(已 commit 的 manifest 不破壞),新增 `original_supplier_zero_area_count` 與 `expected_zero_area_count_post_build` 兩個明確語義欄位;docstring + manifest 模組 docstring 雙文件化。**現有 fixture JSON 不自動 regenerate** — 下次跑 `scripts/sanitize_fixture.py` 時新欄位才會寫入。
+- **WR-02:** docstring-only — module docstring 加長段 caveat 解釋 regex 對 PDF string literal Q-byte 脆弱、對 Phase 7 implementer 的影響、長期改用 tokenizer 的建議。Cross-reference WR-04(共享同 regex)+ WR-07(實際 subn count 讓 regex miss case surface)。
+- **WR-03:** 引入 `FIXTURES_DIR` 常數 + `_out_path_in_fixtures_dir` helper(Path.resolve + is_relative_to)。empirical verification 確認 legit/traversal/decoy 三 case 行為正確。
+- **WR-04:** docstring + inline LIMITATION comment + TODO。Option 2 重寫預估 30-50 行 + 需 multi-fixture 驗證,超出 Phase 6 minimum-change 教訓 → 留 Phase 7+。
+- **WR-05:** **logic-affecting fix** — empirical verification 顯示舊 floor 行為對 original ∈ {2, 3, 5} 必 fail self-assert,新 ceil 行為三 case 全 pass、original=1742 也 pass(no regression)。
+- **WR-06:** 從 `except Exception` 收緊到 `except (RuntimeError, AttributeError)`,且 fail-loud(`return 1`)而非 warn。real-mode + synthetic-mode 同步修復。
+- **WR-07:** track `total_subs`(主 regex + bare fallback 兩條 `subn` count 總和)。若 `xrefs` 非空但 `total_subs == 0` → 回傳 0,讓 caller 的 `assert n_deleted >= 1` 誠實 surface 「attack precondition 不成立」。
+
+### Deferred Issues (Info)
+
+5 個 Info findings 不在 default `--fix` scope:
+
+- **IN-01:** `_short_git_sha` swallows `FileNotFoundError` — 補 stderr warning(cosmetic)
+- **IN-02:** `original_supplier_name_sha256` 只存 16 hex 字元(命名 misleading)
+- **IN-03:** decorator order docstring 解釋繞口
+- **IN-04:** `mixed-glyph-01.json` `created_at_iso` 預先於 listed git sha(chicken-and-egg artefact)
+- **IN-05:** `.gitignore` `*-supplier-raw.pdf` 非 root-anchored
+
+Phase 6 close 不修;若 Phase 7+ 修 sanitize script 時順手帶可,但不強迫。
+
+### Logic Bug Disclosure(per fixer protocol)
+
+- **WR-05** 是 logic-affecting fix(改 floor → ceil)。已透過 standalone Python 腳本 empirical verification 三組 cases(orig ∈ {2, 3, 5} fail→pass,orig=1742 pass→pass)。但 sanitize script 本身在 phase close 時的執行尚需 Phase 7 implementer 跑「實際 supplier PDF + small-count brand glyph」case 驗證 — 雖然 verification 數學正確,**建議 developer 在 commit 進 master 前親自 cross-check** 此修復對既有 fixtures 的影響(本 worktree 沒重跑 sanitize regenerate manifest,避免 churn 既有 committed JSON)。
+
+---
+
+_Fixed: 2026-05-28T00:00:00Z_
+_Fixer: Claude (gsd-code-fixer)_
+_Commits: d0370de → e3ac65f(8 atomic commits on `gsd-reviewfix/06-114654`)_
