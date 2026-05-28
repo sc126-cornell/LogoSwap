@@ -605,10 +605,21 @@ def main(argv: list[str] | None = None) -> int:  # noqa: C901 — linear recipe,
         print("步驟 1/6:清空 metadata 與 XMP …")
         doc.set_metadata({})  # intent marker(1.27 上為 no-op;見上方註解)
         doc.set_metadata({k: "" for k in _USER_METADATA_FIELDS})  # 實際清空
+        # [WR-06 修復] 不再 bare `except Exception` swallowing。XMP residue 是
+        # 真實 leak risk(README §4 AGPL §13 statement 依賴 XMP 已清),所以:
+        # - RuntimeError(malformed XMP)/ AttributeError(API rename)→ 失敗、退出
+        # - MemoryError / OSError 等系統層 → 不 catch,讓 propagate 上去
+        # - 「PDF 無 XMP stream」case:PyMuPDF set_xml_metadata("") 是 no-op,
+        #   不 raise(若 future PyMuPDF 改為 raise on no-XMP,此判斷可放寬,
+        #   但目前實證 1.27.x 系列為 no-op safe)。
         try:
             doc.set_xml_metadata("")
-        except Exception as e:  # noqa: BLE001 — 某些 PDF 無 XMP stream,呼叫可能 no-op or raise
-            print(f"  (XMP set_xml_metadata 警告 — 視為無 XMP:{e})")
+        except (RuntimeError, AttributeError) as e:
+            print(
+                f"錯誤:無法清空 XMP metadata({e!r})— 視為脫敏失敗,放棄 fixture 輸出",
+                file=sys.stderr,
+            )
+            return 1
         print(f"  ✓ metadata 清空({len(doc.metadata or {})} 欄)")
 
         # Step 2 — 找原 brand glyph union bbox + 記錄基準 zero-area count
@@ -758,10 +769,17 @@ def _run_synthesize_mode(
 
         # Step 1 — Metadata 確保為空
         doc.set_metadata({k: "" for k in _USER_METADATA_FIELDS})
+        # [WR-06 修復] 同主路徑:不再 bare swallow。synthetic doc 是 fitz.open() 從零
+        # 建構,通常無 XMP stream → set_xml_metadata("") 為 no-op,正常不會 raise。
+        # 若 raise 必是 API change / runtime bug,fail-loud 才安全。
         try:
             doc.set_xml_metadata("")
-        except Exception:  # noqa: BLE001
-            pass
+        except (RuntimeError, AttributeError) as e:
+            print(
+                f"錯誤:synthetic mode 無法清空 XMP metadata({e!r})",
+                file=sys.stderr,
+            )
+            return 1
 
         # Step 4(skip 2/3 — 無原 brand glyph)— 在 region_rect 內鋪 120 個 zero-area fill
         n_target = 120  # hardcoded — well above ZERO_AREA_RASTER_THRESHOLD(100)
