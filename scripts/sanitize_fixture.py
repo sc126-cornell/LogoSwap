@@ -205,19 +205,31 @@ _USER_METADATA_FIELDS = (
     "trapped",
 )
 
+# Allowlist of fields PyMuPDF derives from PDF structure (NOT /Info content); these
+# are intentionally non-empty even on a "fully cleared" doc — `set_metadata` does
+# not clear them and **should** not. Anything in doc.metadata NOT in this set is
+# treated as `/Info` content (potentially leaked supplier IP).
+_COMPUTED_METADATA_FIELDS = frozenset({"format", "encryption"})
+
 
 def _metadata_all_empty(doc: fitz.Document) -> bool:
-    """檢查 doc.metadata 中「user-supplied」欄位皆 None 或空字串。
+    """Allow-list check:doc.metadata 中所有非 computed 欄位 MUST 為 None / 空字串 / b""。
 
-    PyMuPDF `doc.metadata` 同時包含 user fields(author / producer / title / keywords /
-    subject / creator / creationDate / modDate / trapped — 來自 PDF /Info dict)與
-    computed fields(`format`、`encryption` — 由 PDF 結構推斷,**非** /Info 內容,
-    `set_metadata({})` 不會清也不該清這些)。本 check 只看 user fields。
+    [CR-01 修復 — 2026-05-28] 舊版以 ``_USER_METADATA_FIELDS`` 9-key denylist 逐欄
+    ``md.get(field)`` 檢查;若供應商 PDF 帶 hardcoded 9 key 之外的 ``/Info`` key
+    (e.g. ``PTEX.Fullbanner``、custom XMP-surface key),denylist 看不到 → self-assert
+    成 no-op → leaked supplier IP 可能 commit 進 public repo,違反 README §4 AGPL §13
+    statement(``tests/fixtures/cad-glyph/README.md:72-78``)。
+
+    本 allowlist 版本反向:迭代 ``doc.metadata.items()`` 的實際 keys,凡不在
+    ``_COMPUTED_METADATA_FIELDS``(``format``、``encryption`` 由 PDF 結構推斷)
+    的欄位皆須空。任何 stray supplier-injected key 都會被攔下。
     """
     md = doc.metadata or {}
-    for field in _USER_METADATA_FIELDS:
-        v = md.get(field)
-        if v not in (None, "", b""):
+    for field, value in md.items():
+        if field in _COMPUTED_METADATA_FIELDS:
+            continue
+        if value not in (None, "", b""):
             return False
     return True
 
