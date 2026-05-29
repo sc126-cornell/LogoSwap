@@ -93,6 +93,29 @@ def _build_illustrator_style_pdf(
         # Body content well outside the mark rect — must survive untouched.
         page.insert_text(_BODY_TEXT_POINT, "KEEP THIS BODY TEXT")
 
+        # Synthetic DOCUMENT METADATA shaped like a supplier fingerprint (an internal file
+        # path as title + a drafter id as author) + a synthetic XMP packet. Every value is
+        # invented — NO supplier IP — so the metadata-scrub (review WR-01) has real data to
+        # clear. set_metadata writes /Info; set_xml_metadata injects the XMP stream.
+        doc.set_metadata(
+            {
+                "title": r"D:\synthetic\drawings\3013A-FAKE Model (1)",
+                "author": "RD07-SYNTH",
+                "subject": "SYNTH-SUBJECT",
+                "keywords": "SYNTH-KW",
+                "creator": "PScript5.dll (synthetic)",
+                "producer": "Synthetic Distiller (test)",
+            }
+        )
+        doc.set_xml_metadata(
+            "<?xpacket begin='' id='W5M0MpCehiHzreSzNTczkc9d'?>"
+            "<x:xmpmeta xmlns:x='adobe:ns:meta/'>"
+            "<rdf:RDF xmlns:rdf='http://www.w3.org/1999/02/22-rdf-syntax-ns#'>"
+            "<rdf:Description xmlns:dc='http://purl.org/dc/elements/1.1/'>"
+            "<dc:creator>SYNTH-AUTHOR</dc:creator></rdf:Description></rdf:RDF>"
+            "</x:xmpmeta><?xpacket end='w'?>"
+        )
+
         # Build the PGF private stream object.
         priv_xref = doc.get_new_xref()
         doc.update_object(priv_xref, "<<>>")
@@ -243,6 +266,51 @@ def test_save_doc_strips_pieceinfo_and_pgf_streams(tmp_path, with_catalog_piece_
     )
 
 
+@pytest.mark.parametrize("with_catalog_piece_info", [False, True])
+def test_save_doc_scrubs_document_metadata(tmp_path, with_catalog_piece_info):
+    """``save_doc`` must clear the ``/Info`` user fields AND the XMP ``/Metadata`` stream
+    (review WR-01) so the shipped output carries no supplier fingerprint (internal file
+    path as title, drafter id as author, XMP) — while leaving visible content untouched."""
+    raw = _build_illustrator_style_pdf(with_catalog_piece_info=with_catalog_piece_info)
+
+    # Precondition: the fixture genuinely carries non-empty supplier-shaped metadata + XMP.
+    src = fitz.open(stream=raw, filetype="pdf")
+    try:
+        src_md = src.metadata or {}
+        assert src_md.get("title"), "fixture must carry a non-empty /Info title to clear"
+        assert src_md.get("author"), "fixture must carry a non-empty /Info author to clear"
+        assert src.xref_get_key(src.pdf_catalog(), "Metadata")[0] != "null", (
+            "fixture must carry an XMP /Metadata stream to clear"
+        )
+    finally:
+        src.close()
+    nonwhite_before = _nonwhite_pixel_count(raw)
+
+    out = tmp_path / "scrubbed.pdf"
+    doc = pdf_engine.open_pdf(raw)
+    try:
+        pdf_engine.save_doc(doc, out)
+    finally:
+        pdf_engine.close(doc)
+    saved = out.read_bytes()
+
+    chk = fitz.open(stream=saved, filetype="pdf")
+    try:
+        out_md = chk.metadata or {}
+        leaked = {k: out_md.get(k) for k in pdf_engine._USER_METADATA_FIELDS if out_md.get(k)}
+        assert not leaked, f"/Info metadata survived save_doc (supplier fingerprint leak): {leaked}"
+        assert chk.xref_get_key(chk.pdf_catalog(), "Metadata")[0] == "null", (
+            "XMP /Metadata stream survived save_doc"
+        )
+    finally:
+        chk.close()
+
+    # Content-neutral: clearing metadata draws nothing differently.
+    assert _nonwhite_pixel_count(saved) == nonwhite_before, (
+        "visible content changed after metadata scrub — it must be content-neutral"
+    )
+
+
 def test_strip_piece_info_return_count_and_no_op():
     """``strip_piece_info`` returns the keys cleared, and is a clean no-op on a plain PDF.
 
@@ -321,6 +389,18 @@ def test_process_job_output_has_no_illustrator_private_artwork(
     assert _count_ps_adobe_streams(out_bytes) == 0, (
         "output retains %!PS-Adobe PGF streams — mark recoverable in Illustrator"
     )
+
+    # No residual supplier-metadata fingerprint in the SHIPPED output (review WR-01).
+    out_md = fitz.open(stream=out_bytes, filetype="pdf")
+    try:
+        md = out_md.metadata or {}
+        leaked = {k: md.get(k) for k in pdf_engine._USER_METADATA_FIELDS if md.get(k)}
+        assert not leaked, f"shipped output leaked supplier metadata: {leaked}"
+        assert out_md.xref_get_key(out_md.pdf_catalog(), "Metadata")[0] == "null", (
+            "shipped output retains XMP /Metadata"
+        )
+    finally:
+        out_md.close()
 
     # And the framed mark region renders clean (mark removed in normal renderers too).
     white_pct = _region_white_pct(out_bytes, _MARK_RECT)

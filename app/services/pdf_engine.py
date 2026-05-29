@@ -1058,6 +1058,54 @@ def strip_piece_info(doc: "fitz.Document") -> int:
     return removed
 
 
+# /Info fields that carry DOCUMENT METADATA (potential supplier fingerprint) as opposed to
+# fields PyMuPDF derives from PDF structure (``format`` / ``encryption`` — never touched).
+# Mirrors the proven set in ``scripts/sanitize_fixture.py`` (verified on PyMuPDF 1.27.2.3).
+_USER_METADATA_FIELDS = (
+    "author",
+    "producer",
+    "title",
+    "keywords",
+    "subject",
+    "creator",
+    "creationDate",
+    "modDate",
+    "trapped",
+)
+
+
+def scrub_document_metadata(doc: "fitz.Document") -> None:
+    """Clear the ``/Info`` document metadata + the XMP ``/Metadata`` stream (review WR-01).
+
+    Companion to :func:`strip_piece_info`. Even after the editable artwork is stripped, a
+    supplier-sourced PDF still leaks supplier fingerprint in its DOCUMENT METADATA — on the
+    v1.1 LIVE-UAT file the ``/Info`` ``title`` was the supplier's internal Windows path
+    (``D:\\...\\3013A-13A-C6-XX Model (1)``), ``author`` was ``RD07`` (their drafter id),
+    plus a live XMP ``/Metadata`` stream — all visible in any viewer's Document Properties
+    and readable by an Illustrator-class editor. That undercuts the core value ("brand-correct
+    PDF for external use") even when no visible mark remains. Metadata carries NO visible page
+    content, so clearing it is content-neutral on every save path.
+
+    PyMuPDF 1.27.x quirks: ``set_metadata({})`` is a NO-OP (does not clear) — each field must
+    be set to ``""`` explicitly. And ``set_xml_metadata("")`` RAISES ``FzErrorArgument``
+    ("not a dict") when a ``/Metadata`` stream is actually present, so we instead cut the
+    ``/Metadata`` reference (page + catalog) and let the ``garbage=4`` GC remove the orphaned
+    XMP stream — the same robust reference-cut pattern as :func:`strip_piece_info`. Lives at
+    the AGPL fitz seam for the same reason (every fitz access routes through pdf_engine.py —
+    threat T-02-03).
+    """
+    # /Info: the per-field empty dict is what actually clears it on 1.27.x (bare {} is a no-op).
+    doc.set_metadata({k: "" for k in _USER_METADATA_FIELDS})
+    # XMP: cut the /Metadata reference (page-level + catalog) so the GC drops the orphaned
+    # XMP stream. (Direct set_xml_metadata("") is unusable here — see docstring.)
+    for page in doc:
+        if doc.xref_get_key(page.xref, "Metadata")[0] != "null":
+            doc.xref_set_key(page.xref, "Metadata", "null")
+    catalog_xref = doc.pdf_catalog()
+    if doc.xref_get_key(catalog_xref, "Metadata")[0] != "null":
+        doc.xref_set_key(catalog_xref, "Metadata", "null")
+
+
 def save_doc(
     doc: "fitz.Document",
     path: str | Path,
@@ -1081,8 +1129,16 @@ def save_doc(
     followed by ``garbage=4`` GC, orphans then physically removes the private PGF streams.
     Stripping page-piece data changes no visible content, so it is safe on every save path
     (vector / raster / image-PDF) — non-Illustrator PDFs simply have nothing to strip.
+
+    :func:`scrub_document_metadata` then clears the ``/Info`` dict + XMP ``/Metadata`` so the
+    output carries no residual supplier fingerprint (their internal file path, drafter id,
+    etc.) — also content-neutral. v1.1 editor-residue scope is ``/PieceInfo`` + document
+    metadata; other editor-readable carriers (``/AF`` / ``EmbeddedFiles`` / image
+    ``/Alternates``) were not present in the modeled supplier PDFs and are left to the
+    ``garbage=4`` GC pass + future review (see review WR-01).
     """
     strip_piece_info(doc)
+    scrub_document_metadata(doc)
     doc.save(str(path), garbage=garbage, deflate=deflate, clean=clean)
 
 
