@@ -1008,6 +1008,56 @@ def image_to_a4_pdf(image_bytes: bytes) -> bytes:
         doc.close()
 
 
+def strip_piece_info(doc: "fitz.Document") -> int:
+    """Remove ``/PieceInfo`` from every page AND the catalog. Return keys removed.
+
+    v1.1 LIVE-UAT true-removal hole (debug session ``ai-pieceinfo-residual-mark``):
+    PDFs saved from Adobe Illustrator with "preserve editing capabilities" embed a
+    COMPLETE editable copy of the artwork — including the supplier mark — under page
+    ``/PieceInfo <</Illustrator N 0 R>>`` -> ``<</LastModified .. /Private M 0 R>>`` ->
+    ``%!PS-Adobe`` PGF private-data streams. Our redaction (``apply_redactions`` + the
+    Phase 7 Option-B content-stream surgery) only edits the rendered page ``/Contents``,
+    never this private copy. Result: every normal renderer (MuPDF / PDFium / Acrobat /
+    browsers) shows the mark removed, but Illustrator reads its OWN private artwork and
+    the supplier mark reappears fully editable — defeating the v1.1 core value ("truly
+    remove, not cover") for exactly the modeled Illustrator-class-editor attacker.
+
+    Deleting the ``/PieceInfo`` reference ORPHANS the PGF private streams; the
+    ``garbage=4, clean=True`` pass in :func:`save_doc` then garbage-collects them out of
+    the file (a plain GC alone does NOT remove them — they stay reachable via the
+    PieceInfo chain until that reference is cut, empirically verified). ``/PieceInfo`` is
+    an editor-private "page-piece" dictionary (ISO 32000-1 §14.5) carrying NO visible
+    page content, so stripping it never changes what any renderer draws — it only
+    destroys the recoverable editable original.
+
+    Hand-proven on the LIVE-UAT file ``3013A-13A-C6-XX-3D02-A01-00040.pdf`` (output
+    626862->188265 bytes, ``%!PS-Adobe`` streams 2->0, page ``/PieceInfo`` -> null,
+    visible content unchanged) and USER-CONFIRMED unrecoverable in Adobe Illustrator.
+
+    Lives in this module because ``xref_set_key`` / ``pdf_catalog`` are fitz APIs and the
+    AGPL seam invariant (threat T-02-03) requires every fitz access to route through
+    pdf_engine.py. Returns the number of ``/PieceInfo`` keys actually cleared (pages +
+    catalog) for honest telemetry; 0 means the document carried no editor page-piece data
+    (the common case for non-Illustrator-sourced PDFs — a cheap no-op).
+    """
+    removed = 0
+    # Page-level /PieceInfo (the Illustrator private-artwork carrier in the wild).
+    for page in doc:
+        existing = doc.xref_get_key(page.xref, "PieceInfo")
+        # xref_get_key returns ("null", "null") when the key is absent/JS-null — only
+        # touch pages that actually carry a PieceInfo so the no-op case writes nothing.
+        if existing and existing[0] != "null":
+            doc.xref_set_key(page.xref, "PieceInfo", "null")
+            removed += 1
+    # Catalog-level /PieceInfo (document-wide page-piece data — strip defensively too).
+    catalog_xref = doc.pdf_catalog()
+    cat_existing = doc.xref_get_key(catalog_xref, "PieceInfo")
+    if cat_existing and cat_existing[0] != "null":
+        doc.xref_set_key(catalog_xref, "PieceInfo", "null")
+        removed += 1
+    return removed
+
+
 def save_doc(
     doc: "fitz.Document",
     path: str | Path,
@@ -1021,7 +1071,18 @@ def save_doc(
     ``garbage=4, deflate=True, clean=True`` undoes redaction bloat and compacts the file.
     The caller MUST pass a path distinct from the immutable original (the pipeline asserts
     this) — never save back onto the upload.
+
+    Before saving, :func:`strip_piece_info` removes any ``/PieceInfo`` editor page-piece
+    dictionary (Adobe Illustrator's embedded editable-original-artwork copy) from every
+    page and the catalog. This is the v1.1 fix for the LIVE-UAT true-removal hole (debug
+    session ``ai-pieceinfo-residual-mark``): without it the supplier mark survives in the
+    Illustrator private data and is recoverable in an Illustrator-class editor even though
+    every normal renderer shows it removed. Cutting the reference here, immediately
+    followed by ``garbage=4`` GC, orphans then physically removes the private PGF streams.
+    Stripping page-piece data changes no visible content, so it is safe on every save path
+    (vector / raster / image-PDF) — non-Illustrator PDFs simply have nothing to strip.
     """
+    strip_piece_info(doc)
     doc.save(str(path), garbage=garbage, deflate=deflate, clean=clean)
 
 
