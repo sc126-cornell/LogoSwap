@@ -1,40 +1,45 @@
 {
   "version": "1.0",
-  "timestamp": "2026-05-28T17:20:23.703Z",
+  "timestamp": "2026-05-29T08:08:29.797Z",
   "phase": "08",
   "phase_name": "Documentation Sync + LIVE Rollout",
   "phase_dir": ".planning/phases/08-documentation-sync-live-rollout",
   "plan": 3,
   "task": 2,
   "total_tasks": 3,
-  "status": "paused",
+  "status": "executing",
   "milestone": "v1.1",
-  "milestone_status": "EXECUTING — Phase 8 (last of 6/7/8); LIVE-UAT in progress, paused for colleague Illustrator verification",
+  "milestone_status": "EXECUTING — Phase 8; LIVE-UAT exposed a true-removal bug (PieceInfo), fix landed locally, pending quality gate + LIVE redeploy + Illustrator re-UAT",
+  "headline": "UAT found a real true-removal hole my MuPDF/PDFium/content-stream verification could NOT detect; Adobe Illustrator (authoritative) recovered the supplier mark. Root cause + fix found and committed locally (d594335). NOT yet deployed to LIVE.",
   "completed_tasks": [
-    {"id": 1, "name": "Plan 03 Task 1 — harden .gitignore against scratch/supplier-PDF leak", "status": "done", "commit": "946da28"},
-    {"id": 2, "name": "Plan 03 Task 2 — single push + LIVE deploy + LIVE-UAT", "status": "in_progress", "progress": "Push done (master on origin); Zeabur LIVE confirmed (/health 200, section-13 footer = sc126-cornell). LIVE-UAT running: content-stream deep_check PASS on F1, F2 (prior session), F3, F4 (this session). PAUSED awaiting colleague Illustrator batch verification before UAT is declared passed."}
+    {"id": 1, "name": "Plan 03 Task 1 — harden .gitignore against scratch/supplier leak", "status": "done", "commit": "946da28"},
+    {"id": 2, "name": "Plan 03 Task 2 — push + LIVE deploy + LIVE-UAT", "status": "in_progress", "progress": "Earlier push done; Zeabur live. LIVE-UAT ran on 4 real supplier files. CRITICAL: my _deep_check.py (MuPDF render + content-stream) PASS verdicts are VOID — they share a blind spot. Re-verified in Adobe Illustrator: F2/F3/F4 clean (user, this morning); F1 (3013A-13A-C6-XX) FAILED — supplier mark recoverable in Illustrator."},
+    {"id": "debug", "name": "/gsd-debug ai-pieceinfo-residual-mark — root cause + fix", "status": "done", "commit": "d594335", "detail": "strip_piece_info(doc) added to pdf_engine.py (AGPL seam) + wired into save_doc; strips page+catalog /PieceInfo then save(garbage=4,clean=True) to GC orphaned Illustrator PGF streams. 5 new tests + full suite 343 passed/3 skipped; AGPL seam intact. Committed local, NOT pushed."}
   ],
   "remaining_tasks": [
-    {"id": 3, "name": "Plan 03 Task 3 — D-04 one-off attack-sim scratch (formal two-gate: render >=98% white AND zero-area type='f' ==0) + RETIRE scratch (delete supplier PDFs/scripts/attacked.pdf, prove git ls-files clean) + flip DEPLOY-01 checkbox + write 08-03-SUMMARY.md", "status": "not_started"},
-    {"id": 4, "name": "Plan 04 Task 1 — final code-review/fix (narrow scope: only doc/comment/.gitignore changed, AGPL seam still 1 import line, 3x section-1.4 markers untouched) + confirm 4 req checkboxes (THREAT-02/DOC-01/DOC-02/DEPLOY-01)", "status": "not_started"},
-    {"id": 5, "name": "Plan 04 Task 2 — push origin + run /gsd-complete-milestone (archives ROADMAP/REQUIREMENTS, creates + pushes git tag v1.1; workflow OWNS the tag, do NOT create it separately)", "status": "not_started"}
+    {"id": "qa-gate", "name": "Quality gate on d594335 — code-review/fix + secure (in progress this session)", "status": "in_progress"},
+    {"id": "redeploy", "name": "Step 2 — git push origin master (D-01 scoped) to redeploy LIVE with the PieceInfo fix; verify /health + footer", "status": "not_started"},
+    {"id": "re-uat", "name": "Step 3 — Illustrator re-UAT: process F1 on the REDEPLOYED LIVE, download, open in Adobe Illustrator, confirm mark UNRECOVERABLE (authoritative). User-driven.", "status": "not_started"},
+    {"id": 3, "name": "Plan 03 Task 3 — D-04 attack-sim + RETIRE scratch + flip DEPLOY-01 + 08-03-SUMMARY", "status": "not_started"},
+    {"id": 4, "name": "Plan 04 — final review + /gsd-complete-milestone (tag v1.1)", "status": "not_started"}
   ],
   "blockers": [
-    {"description": "UAT-pass confirmation is gated on the colleague's Adobe Illustrator verification of all 4 UAT output files (F1-F4) — the authoritative truth-test. Scheduled ~2026-05-30 (the day after this pause).", "type": "human_action", "workaround": "None — this is the authoritative gate by design; scripted content-stream checks are only supporting evidence."}
+    {"description": "LIVE tool still has the bug — F1's clean version was a manual post-process, not the deployed tool. Must redeploy (push) before re-UAT.", "type": "technical", "workaround": "Fix committed locally d594335; redeploy via Phase 8 D-01 scoped push."},
+    {"description": "Final UAT acceptance requires Adobe Illustrator open-and-recover by the user (render/script verification is insufficient — proven this session).", "type": "human_action", "workaround": "None — Illustrator is the authoritative gate."}
   ],
   "human_actions_pending": [
-    {"action": "Colleague opens F1-F4 OUTPUT PDFs in Adobe Illustrator and attempts to recover the supplier logos in the FRAMED regions (delete overlay/clipping mask, ungroup, delete layers). Reports per-file result.", "context": "Illustrator is the authoritative 'truly removed' test for v1.1 (threat model = Illustrator-class editor attacker). UAT passes only if the framed supplier marks cannot be recovered in Illustrator.", "blocking": true}
+    {"action": "After LIVE redeploy: re-process F1 (3013A-13A-C6-XX) on the LIVE site, download, open output in Adobe Illustrator, confirm the supplier mark cannot be recovered.", "context": "F1 is the only UAT file with embedded Illustrator PieceInfo; this is the regression-proof on the deployed fix.", "blocking": true}
   ],
   "decisions": [
-    {"decision": "Gate UAT-pass on the colleague's Illustrator batch verification of all 4 files, not on my scripted checks alone.", "rationale": "Illustrator is the authoritative truth-test; render/script analysis is supporting evidence only (per project principle).", "phase": "08"},
-    {"decision": "F3 (B-3012IP-WM02-T430) dCt/DAN-CHIEF logo = truly removed (vector). Region is empty 255.0 white, NO white cover (0 images, 0 white fills), zero-area type='f' ==0.", "rationale": "Content-stream + visual crop confirm content deleted via apply_redactions, not covered.", "phase": "08"},
-    {"decision": "F4 (3013A-19-C3-W4-3D02-A01-00071) DCE/NINGBO DAN-CHIEF NETWORK = truly removed (RASTER). The 7566 logo pixels are 100% white (255.0) in the single page image; output has only 1 image (no separate white overlay), so pixels were rewritten, not covered.", "rationale": "File is a 300-DPI scanned PDF, 0 vectors; PyMuPDF raster redaction whitened pixels in-place and re-encoded the image.", "phase": "08"},
-    {"decision": "Unframed supplier marks (top-left red stamps on F2/F3/F4, bottom-right red approval stamps on F3/F4, 'All Copy Rights Reserved' text) are OUT OF SCOPE for the UAT verdict.", "rationale": "They were not framed by the user, so they are not part of what the tool was asked to remove. Illustrator finding them is NOT a tool failure. To remove them: re-frame and re-process.", "phase": "08"}
+    {"decision": "Root cause of F1 true-removal failure = embedded Adobe Illustrator private editing data (page /PieceInfo -> %!PS-Adobe PGF streams). PyMuPDF redaction only edits page /Contents, never the PieceInfo copy; Illustrator reads its private data and recovers the mark.", "rationale": "Confirmed via xref inspection + proven fix + user Illustrator confirmation.", "phase": "08"},
+    {"decision": "Fix = strip /PieceInfo (page+catalog) then save(garbage=4,deflate,clean) in pdf_engine.py save step (AGPL seam). Hand-verified 626KB->188KB, %!PS-Adobe streams 0, content unchanged; user-confirmed unrecoverable in Illustrator. Landed as d594335.", "rationale": "Minimum-change; closes the threat; content-neutral no-op for non-Illustrator PDFs.", "phase": "08"},
+    {"decision": "Prior _deep_check.py / MuPDF / PDFium PASS verdicts on F1-F4 are VOID for certifying true removal — they share the blind spot. Verification must add a PieceInfo/AI-stream check, but Illustrator remains the authoritative gate.", "rationale": "Two independent renderers showed F1 clean; only Illustrator (editor) recovered the mark.", "phase": "08"},
+    {"decision": "Scope: only F1 (had embedded AI PieceInfo) affected. F2/F3/F4 have no PieceInfo and were Illustrator-verified clean.", "rationale": "Scope scan of all UAT outputs for /PieceInfo + %!PS-Adobe.", "phase": "08"}
   ],
   "uncommitted_files": [
-    {"path": ".planning/STATE.md", "note": "Pre-existing modification; owned by /gsd-complete-milestone reconciliation, NOT part of this WIP commit."},
-    {"path": ".planning/config.json", "note": "Pre-existing modification; not part of this WIP commit."}
+    {"path": ".planning/STATE.md", "note": "Pre-existing; owned by /gsd-complete-milestone reconciliation."},
+    {"path": ".planning/config.json", "note": "Pre-existing; not in scope."}
   ],
-  "next_action": "Ask the user for the colleague's Illustrator verification result on F1-F4. If ALL pass (no supplier logo recoverable in the framed regions) -> proceed to Plan 03 Task 3 (D-04 attack-sim two-gate, retire scratch, flip DEPLOY-01, write 08-03-SUMMARY). If ANY file fails -> /gsd-debug that file (likely an Option B blind spot, e.g. zero-area source inside a form XObject, SEC-03 deferred). Do NOT auto-advance to milestone close before the Illustrator sign-off.",
-  "context_notes": "We are paused mid Plan-03-Task-2 (the LIVE-UAT substep) at the user's request to wait for the colleague's Illustrator check. UAT files live OUTSIDE the repo: F3 in C:\\Users\\scott\\Downloads\\test 3\\, F4 in C:\\Users\\scott\\Downloads\\test 4\\ (output = *_logoswap*.pdf, original = same name without suffix). Standard per-file check: run .planning/debug/scratch/08-live-uat/_deep_check.py <ORIG> <OUT> <page> <tag> from repo root. TOOLING GOTCHAS discovered this session: (1) _deep_check.py crashes with cp950 UnicodeEncodeError when the region text contains non-cp950 chars (e.g. the garbage OCR layer in F4) -- wrap stdout as utf-8 (see _f4_struct.py / _f4_crop.py) or set PYTHONIOENCODING=utf-8. (2) deep_check's auto-detected region is a single bbox of ALL changed pixels -- for raster or multi-change files it spans the whole page and its per-check region numbers become misleading (F4 looked like 93% white / 4% dark, which was just adjacent retained legit content, NOT residual mark). For such files, isolate 'orig-dark -> out-light' pixels (see _f4_crop.py) and measure the logo band specifically. (3) The tool consistently sets a page /Rotate on output (F3 0->270, F4 0->90) to display the sideways portrait-canvas scans as upright landscape -- benign, but flag if the colleague's signing system is geometry-sensitive."
+  "next_action": "Finish the quality gate on d594335 (code-review/fix + secure). Then Step 2: pre-push safety check + git push origin master to redeploy LIVE; verify /health + section-13 footer. Then hand re-UAT to the user (process F1 on LIVE, open output in Illustrator, confirm mark unrecoverable). Then Plan 03 Task 3 + Plan 04 close.",
+  "context_notes": "Debug session record: .planning/debug/ai-pieceinfo-residual-mark.md (status resolved). The detection method for THIS class: page /PieceInfo present OR any %!PS-Adobe stream. Diagnostic/manual-fixed artifacts for F1 are OUTSIDE the repo at C:\\Users\\scott\\Downloads\\test 1\\FIXED-OPEN-THIS-IN-AI__pieceinfo-stripped.pdf (kept for reference). Scratch scripts in .planning/debug/scratch/08-live-uat/ are gitignored; Plan 03 Task 3 retires them. master is ahead of origin by the WIP handoff commit + d594335 (both unpushed)."
 }
