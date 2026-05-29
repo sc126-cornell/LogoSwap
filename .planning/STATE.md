@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: Harden against Illustrator-class attacks on CAD-generated PDFs
-status: executing
-stopped_at: Phase 8 context gathered
-last_updated: "2026-05-28T16:05:48.067Z"
-last_activity: 2026-05-28
+status: Awaiting next milestone
+stopped_at: "v1.1 (Illustrator Hardening) SHIPPED + archived + git tag v1.1。Phase 6/7/8 完成;LIVE-UAT 揭露並修復內嵌 Illustrator /PieceInfo + /Info/XMP metadata 真正移除漏洞(save_doc strip,commit d594335 + 2edb62d),9 檔經 Adobe Illustrator 權威驗證通過。345 passed/3 skipped。下一步:/gsd-new-milestone 或 maintenance。"
+last_updated: "2026-05-29T09:29:26.440Z"
+last_activity: 2026-05-29 — Milestone v1.1 completed and archived
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 9
-  completed_plans: 7
-  percent: 78
+  completed_plans: 9
+  percent: 100
 ---
 
 # Project State
@@ -25,12 +25,10 @@ See: .planning/PROJECT.md (updated 2026-05-28 — milestone v1.1 started)
 
 ## Current Position
 
-Phase: 8 (Documentation Sync + LIVE Rollout) — EXECUTING
-Plan: 3 of 4
-Status: Ready to execute
-Last activity: 2026-05-28
-
-Progress: [████████░░] 78%
+Phase: Milestone v1.1 complete
+Plan: —
+Status: Awaiting next milestone
+Last activity: 2026-05-29 — Milestone v1.1 completed and archived
 
 ## Accumulated Context
 
@@ -103,6 +101,10 @@ Inter-milestone ad-hoc tasks(`/gsd-quick`),不算入 milestone progress:
 
 ## Session Continuity
 
-Last session: 2026-05-28T16:05:33.360Z
-Stopped at: Phase 8 context gathered
-Resume file: None
+Last session: 2026-05-28T16:24:27.941Z
+Stopped at: Phase 8 Wave 2 進行中:防洩漏 guard 已 commit(946da28)+ master 已 push 上 origin(72 commits,Zeabur 新版已上線確認 /health 200 + footer sc126-cornell)。目前 PAUSED 在 LIVE-UAT 子步驟 — 使用者要測多個檔案。⚠️ 勿重複 push;UAT 完成後才寫一次性 attack-sim 驗證 + Wave 3 收尾
+Resume file: .planning/phases/08-documentation-sync-live-rollout/08-03-PLAN.md
+
+## Operator Next Steps
+
+- Start the next milestone with /gsd-new-milestone

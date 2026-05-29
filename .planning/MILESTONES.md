@@ -1,5 +1,20 @@
 # Milestones
 
+## v1.1 Illustrator Hardening (Shipped: 2026-05-29)
+
+**Phases completed:** 3 phases, 9 plans, 15 tasks
+
+**Key accomplishments:**
+
+- Option B linear recipe(per checker Blocker #1):
+- 3 exports + 2 private helpers,全部 type-hinted、無 module-level side effect、無 main()
+- Hybrid get_drawings()+anchor-regex helper that truly deletes page-level zero-area type='f' fills (both PScript5 m/l and Acrobat re shapes) with a 5-context safe-skip mask, cardinality fail-safe, and PATTERNS S1 multi-stream write-back, plus a SEC-03 form-XObject intersect logger — all behind the AGPL seam, covered by 14 TEST-03 unit tests.
+- 把 Plan 07-01 的 Option B helper 接進 redact.remove_region_vector 的 line 195/197 boundary(2 LOC import + ~15 LOC dispatcher block,既有 dispatcher 一字不改),並拔除 Phase 6 三個 xfail-strict regression decorator;Option B 對 text-glyph fixture 真正刪除 page-level 零面積 source(count 1→0、render 99.59% 白),但 SEC-01 acceptance gate 未過 — 3 個 regression case 因 Plan 07-01 helper 在 mixed-glyph(3396 ZAF cardinality fail-safe)限制 + figure-glyph 既有 residual_content 斷言 + text-glyph 缺 Option A overlay 可攻擊(attack precondition)而 FAIL,屬上游 scope,標記 Self-Check FAILED 交 orchestrator。
+- 關閉 Plan 07-02 標記 FAILED 的 SEC-01 acceptance gate:把 Shape 1 locator 從 per-zaf 全串流 finditer(765s / 14% 命中)重寫為鏡像 Shape 2 的 single-pass 候選索引 + bbox-keyed Option (ii) cardinality(<5s / 100% 命中、重複-bbox 全刪),並修正 `_NUMBER` 對 PScript5 leading-dot real(`-.061` / `.06`)的漏抓根因 — 此為 mixed-glyph 14%→100% 命中率的決定性修補。同步重設計 attack precondition(承認 Option B true removal → 無 overlay 可拔 + region 乾淨 = PASS,兩道真實安全閘門檻不放鬆),並把 figure-glyph fixture 從 raw B-3012IP 的真實零面積 cluster 重新 sanitize。結果:`python -m pytest -k illustrator_attack -v` 顯示 3 PASSED,全套件 321 passed + 3 skipped + 0 xfailed + 0 failed。
+- v1.1 deployed to LIVE on Zeabur; LIVE-UAT on real supplier PDFs exposed a true-removal hole (Adobe Illustrator recovered the supplier mark from embedded /PieceInfo private artwork) that render/content-stream checks could NOT detect — fixed by stripping /PieceInfo + document metadata on save, redeployed, and verified across 9 supplier files in Adobe Illustrator.
+
+---
+
 ## v1.0 MVP — LogoSwap LIVE (Shipped: 2026-05-24,LIVE-UAT verified: 2026-05-27)
 
 **LIVE URL:** https://logoswap.scottchen0622.com
@@ -33,6 +48,7 @@
 ### Final LIVE-UAT verification (2026-05-27)
 
 LogoSwap (2) 檔案 forensic 通過:
+
 - `white_dr=0`(legacy 攻擊面消失);`text=0`(NINGBO 真正刪除);`images=2`(EXW logo + raster fallback overlay)
 - Re-color attack 產出純空白(vs 舊版 LIVE 可還原 dCt logo)
 - 視覺渲染乾淨:「EXW Excellence Wire Ind. Co., Ltd」正確顯示,dCt + NINGBO 完全不見

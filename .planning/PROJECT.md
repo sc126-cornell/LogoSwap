@@ -24,10 +24,13 @@
 - [x] 使用者可上傳**圖片型(點陣/掃描)PDF** 與**獨立影像檔**(PNG/JPG/TIFF)(Phase 4 — UPLOAD-02/03;hotfix 收口含 RGBA 合成白底、pristine 預覽資料源、megapixel 硬上限)
 - [x] 對點陣圖/影像內容,框選區域以白色填滿(Phase 4 — REMOVE-02;含 Adobe-hairline / CAD-glyph zero-area artefact 物理覆蓋)
 - [x] 可以 Docker 部署為網頁服務,處理大型與旋轉頁面、暫存檔自動清理、原始檔 SHA-256 驗證(Phase 5 — DEPLOY-01/02;**live 2026-05-24** at https://logoswap.scottchen0622.com via Zeabur PaaS,Cloudflare DNS,AGPL §13 三件套就位)
+- [x] **v1.1 — Illustrator Hardening(shipped 2026-05-29)** — 供應商商標的可還原來源被真正刪除,連 Adobe Illustrator 編輯器都還原不出:Option B content-stream surgery 刪 page-level 零面積 type='f' CAD-glyph sources(Phase 6/7 — TEST-01/02/03 + THREAT-01 + SEC-01/02/03),LIVE 部署 + 文件同步(Phase 8 — THREAT-02 + DOC-01/02 + DEPLOY-01),並修復 LIVE-UAT 發現的內嵌 Illustrator `/PieceInfo` + `/Info`/XMP metadata 真正移除漏洞;**9 個真實供應商檔經 Adobe Illustrator 權威驗證通過**
 
 ### Active
 
 <!-- Current scope. Building toward these. -->
+
+> ✅ **v1.1 shipped 2026-05-29** — moved to Validated + Key Decisions. The block below is historical context. **No active milestone** — define the next one via `/gsd-new-milestone`. Phase 8 LIVE-UAT additionally surfaced + closed the embedded-Illustrator `/PieceInfo` + metadata true-removal hole (beyond the original Option-B scope).
 
 **Milestone v1.1 — Harden against Illustrator-class attacks on CAD-generated PDFs(2026-05-28 啟動)**
 
@@ -76,6 +79,7 @@ _2026-05-28 移除:Option B(content-stream surgery)— 已升格為 v1.1 active 
 - 目標部署環境為 Ubuntu 伺服器,於公司內部網路使用。
 - 未來可能將本工具掛入同事開發的「表單簽核網站」作為小工具。
 - 技術上傾向使用 PyMuPDF;其 redaction 機制可在指定矩形區域內真正移除文字/向量物件,並對影像區域填色,正好對應「移除而非覆蓋」的核心需求。
+- **目前狀態(2026-05-29):** v1.0 + v1.1 皆 shipped + LIVE(Zeabur,https://logoswap.scottchen0622.com)。三層真正移除防線 = `apply_redactions` + Option B page-level 零面積 content-stream surgery + 存檔時 strip 內嵌 Illustrator `/PieceInfo`/metadata。AGPL fitz seam 維持單檔(`pdf_engine.py`)。測試 345 passed / 3 skipped。真正移除的權威驗證 = Adobe Illustrator open-and-recover。
 
 ## Constraints
 
@@ -111,6 +115,8 @@ _2026-05-28 移除:Option B(content-stream surgery)— 已升格為 v1.1 active 
 | **Phase 6 — pure test+doc phase 可在不動 production code 下立紅燈基線** | 沒動 `app/**/*.py` 任一行就交付:`tests/fixtures/cad-glyph/` 3 個 real-supplier sanitized fixture、`tests/_illustrator_attack.py` 共用 helper、`tests/test_illustrator_attack_regression.py` 3 個 `xfail(strict=True)` 紅燈、`06-SECURITY.md` 加入 Illustrator-class editor actor。Phase 7 落地 Option B 後 XPASS(strict) 強迫拔 marker = 自動 handoff signal | ✓ Validated (Phase 6 三道閘全綠 2026-05-28) |
 | **Sanitize fixture 4-tier fallback chain(Impl notes A → B → C → D)** | A:brand-glyph `q...Q` content-stream block strip;B:latin-1 content-stream find-replace;C(新)`add_redact_annot + apply_redactions(text=PDF_REDACT_TEXT_REMOVE)` glyph-level redaction 處理 CMap-encoded 字型;D(新)`page.delete_annot()` 整塊刪除 Form-XObject stamp annotation。PScript5 + Acrobat Distiller 出口的 PDF 把 supplier 名放在 stamp annotation 的 appearance stream 內(SEC-03 巢狀場景),A/B 抓不到、C 抓不到、D 才能處理 | ✓ Validated (commit 0045c6b;3013A-36A + B-3012IP fixture 升級成功 2026-05-28) |
 | **`tests/fixtures/cad-glyph/` 是 conftest「never commit binary」convention 的唯一例外** | v1.1 SEC-03 + Illustrator-class threat model 需要對真實 supplier CAD PDF 跑 regression test;真實 PDF 帶的 corner cases(PScript5 quirk、CMap encoding、Form-XObject stamp、零面積 type='f' 密度梯度)是 in-memory `_build_pdf` 漏掉的;受控例外 + sanitize_fixture.py self-asserts + AGPL §13 README 文件化是合理 trade-off | ✓ Validated (Phase 6 close 2026-05-28) |
+| **v1.1 Phase 8 — 存檔時 strip 內嵌 Illustrator `/PieceInfo` + 清 `/Info`/XMP metadata** | LIVE-UAT 發現 Illustrator 來源的供應商 PDF 把完整可編輯原稿藏在 `/PieceInfo`(`%!PS-Adobe` PGF 串流);redaction 只動 page `/Contents` → 一般渲染器看不到、Illustrator 還原得出。`/Info` title 還洩供應商內部檔案路徑、author 是 drafter id。`save_doc` strip `/PieceInfo`(page+catalog)+ 清 metadata/XMP,`garbage=4` GC 掉孤兒串流(content-neutral,對非 Illustrator 檔 no-op) | ✓ Validated (debug `ai-pieceinfo-residual-mark`;commit d594335 + 2edb62d;9 檔 Adobe Illustrator 驗證通過;345 passed) |
+| **「真正移除」的驗證閘門 = Adobe Illustrator open-and-recover(render/腳本不足以證明)** | v1.1 Phase 8:MuPDF + PDFium 雙引擎渲染 + content-stream 掃描全判 F1「乾淨」,但 Adobe Illustrator 還原出完整商標。render/content-stream 分析偵測不到「藏在編輯器私有資料」的殘留 | ⚠️ Revisit — 任何「真正移除」宣告都必須回到 Illustrator 實測(memory `feedback_illustrator_verification`);自動化只能當 proxy(查 `/PieceInfo` + `%!PS-Adobe` 串流) |
 
 ## Evolution
 
@@ -130,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-28 — Milestone v1.1 started(Illustrator-class threat model + Option B content-stream surgery)。前次更新 2026-05-24 Phase 5 完成 + LIVE 上線(milestone v1.0 完整交付)。*
+*Last updated: 2026-05-29 — Milestone v1.1 (Illustrator Hardening) shipped + LIVE(Option B + PieceInfo/metadata strip;9 檔 Illustrator 驗證通過)。前次更新 2026-05-28 v1.1 started;2026-05-24 v1.0 Phase 5 + LIVE 上線。*
