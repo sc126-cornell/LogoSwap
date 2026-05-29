@@ -44,7 +44,7 @@ Option B 落地後同步所有面向同事 / 法務 / 維運的決策文件。
 
 Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 
-- [ ] **DEPLOY-01**: Option B + 新 regression test 推到 Zeabur(若 Zeabur 仍開著)或本機 Docker,LogoSwap 對 ≥1 個 CAD-glyph 樣本完成 upload → 框選 → process → download → Illustrator-attack-simulation 全綠通過
+- [x] **DEPLOY-01**: Option B + 新 regression test 推到 Zeabur(若 Zeabur 仍開著)或本機 Docker,LogoSwap 對 ≥1 個 CAD-glyph 樣本完成 upload → 框選 → process → download → Illustrator-attack-simulation 全綠通過
 
 ## Future Requirements(deferred)
 
@@ -84,7 +84,7 @@ Option B 上 LIVE 並 LIVE-UAT 驗證(沿用 v1.0 流程)。
 | THREAT-02  | Phase 8 | Complete |
 | DOC-01     | Phase 8 | Complete |
 | DOC-02     | Phase 8 | Complete |
-| DEPLOY-01  | Phase 8 | Pending |
+| DEPLOY-01  | Phase 8 | Complete |
 
 **Coverage:**
 - v1.1 requirements: 11 total
